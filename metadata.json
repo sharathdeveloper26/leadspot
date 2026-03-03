@@ -1,0 +1,5 @@
+{
+  "name": "Multi-Tenant SaaS CRM",
+  "description": "A multi-tenant SaaS CRM with Super Admins and Client Admins, built with React and Firebase.",
+  "requestFramePermissions": []
+}

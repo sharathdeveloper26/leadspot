@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function getRole() {
+      return request.auth.token.role;
+    }
+    function getClientId() {
+      return request.auth.token.clientId;
+    }
+
+    match /leads/{leadId} {
+      // Both client_admin and client_agent can read/write if the lead's clientId matches their token's clientId
+      allow read, write: if isAuthenticated() && 
+        (getRole() == 'client_admin' || getRole() == 'client_agent') && 
+        resource.data.clientId == getClientId();
+        
+      // Allow create if they are setting the clientId to their own
+      allow create: if isAuthenticated() && 
+        (getRole() == 'client_admin' || getRole() == 'client_agent') && 
+        request.resource.data.clientId == getClientId();
+    }
+
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Client admins can read users in their own client workspace (to list agents)
+      allow read: if isAuthenticated() && 
+        getRole() == 'client_admin' && 
+        resource.data.clientId == getClientId();
+    }
+    
+    // Add other rules as needed (e.g., for clients collection)
+  }
+}

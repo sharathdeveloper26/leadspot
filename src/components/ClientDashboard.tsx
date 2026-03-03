@@ -1,0 +1,1844 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import LeadDetailsModal, { Lead } from './LeadDetailsModal';
+import AddLeadModal from './AddLeadModal';
+
+interface Agent {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  createdAt: any;
+}
+
+const PIPELINE_STATUSES = [
+  'New', 
+  'Attempted Contact', 
+  'Connected / Warm', 
+  'Site Visit Scheduled', 
+  'Site Visit Completed', 
+  'Negotiation', 
+  'Closed Won', 
+  'Closed Lost', 
+  'Junk / Invalid'
+];
+
+declare global {
+  interface Window {
+    FB: any;
+    fbAsyncInit: any;
+  }
+}
+
+export default function ClientDashboard() {
+  const { user, clientId, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState<'leads' | 'integrations' | 'team' | 'reports'>('leads');
+  const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('pipeline');
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [teamMembers, setTeamMembers] = useState<{id: string, name: string}[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
+  const [addingLead, setAddingLead] = useState(false);
+  const [addingAgent, setAddingAgent] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
+
+  // Lead Form State
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [projectProperty, setProjectProperty] = useState('');
+  const [status, setStatus] = useState('New');
+  const [source, setSource] = useState('');
+  const [subSource, setSubSource] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
+
+  // Agent Form State
+  const [agentName, setAgentName] = useState('');
+  const [agentEmail, setAgentEmail] = useState('');
+  const [agentPassword, setAgentPassword] = useState('');
+  const [inlineEditingAgentId, setInlineEditingAgentId] = useState<string | null>(null);
+  const [inlineEditingName, setInlineEditingName] = useState('');
+
+  // Report Filters
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [leadSourceFilter, setLeadSourceFilter] = useState('All');
+
+  // Leads View Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All');
+
+  // Facebook Integration State
+  const [fbPages, setFbPages] = useState<any[]>([]);
+  const [linkedPages, setLinkedPages] = useState<any[]>([]);
+  const [isLoadingFb, setIsLoadingFb] = useState(false);
+
+  // Lead Sources State
+  const [leadSources, setLeadSources] = useState<{id: string, name: string}[]>([]);
+  const [leadSubSources, setLeadSubSources] = useState<{id: string, name: string}[]>([]);
+
+  // Assignment Rules State
+  const [assignmentRules, setAssignmentRules] = useState<{id: string, sourceName: string, agentId: string, agentName: string}[]>([]);
+  const [newRuleSource, setNewRuleSource] = useState('');
+  const [newRuleAgentId, setNewRuleAgentId] = useState('');
+  const [addingRule, setAddingRule] = useState(false);
+
+  const combinedSources = useMemo(() => {
+    const sourcesSet = new Set<string>();
+    leadSources.forEach(s => {
+      if (s.name) sourcesSet.add(s.name);
+    });
+    leads.forEach(lead => {
+      if (lead.source) sourcesSet.add(lead.source);
+    });
+    return Array.from(sourcesSet).sort((a, b) => a.localeCompare(b));
+  }, [leadSources, leads]);
+
+  const webhookUrl = `https://us-central1-mintage-crm.cloudfunctions.net/incomingLeadWebhook?clientId=${user?.clientId}`;
+
+  const fetchLeads = async () => {
+    if (!user?.clientId) return;
+    setLoading(true);
+    try {
+      const q = query(
+        collection(db, 'leads'), 
+        where('clientId', '==', user.clientId)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const fetchedLeads: Lead[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedLeads.push({ id: doc.id, ...doc.data() } as Lead);
+      });
+      
+      // Sort descending by createdAt
+      fetchedLeads.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis() || 0;
+        const timeB = b.createdAt?.toMillis() || 0;
+        return timeB - timeA;
+      });
+      
+      setLeads(fetchedLeads);
+    } catch (error) {
+      console.error("Error fetching leads:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTeamMembers = async () => {
+    if (!user?.clientId) return;
+    try {
+      const q = query(collection(db, 'users'), where('clientId', '==', user.clientId));
+      const snapshot = await getDocs(q);
+      const fetchedTeam: {id: string, name: string}[] = [];
+      snapshot.forEach(doc => {
+        fetchedTeam.push({ id: doc.id, name: doc.data().name || doc.data().email });
+      });
+      fetchedTeam.sort((a, b) => a.name.localeCompare(b.name));
+      setTeamMembers(fetchedTeam);
+    } catch (error) {
+      console.error("Error fetching team members:", error);
+    }
+  };
+
+  const fetchAgents = async () => {
+    if (!user?.clientId) return;
+    try {
+      const q = query(
+        collection(db, 'users'),
+        where('clientId', '==', user.clientId),
+        where('role', '==', 'client_agent')
+      );
+      const snapshot = await getDocs(q);
+      const fetchedAgents: Agent[] = [];
+      snapshot.forEach(doc => {
+        fetchedAgents.push({ id: doc.id, ...doc.data() } as Agent);
+      });
+      setAgents(fetchedAgents);
+    } catch (error) {
+      console.error("Error fetching agents:", error);
+    }
+  };
+
+  const fetchLinkedPages = async () => {
+    if (!user?.clientId) return;
+    try {
+      const q = query(
+        collection(db, 'facebook_integrations'),
+        where('clientId', '==', user.clientId)
+      );
+      const snapshot = await getDocs(q);
+      const pages: any[] = [];
+      snapshot.forEach(doc => {
+        pages.push({ id: doc.id, ...doc.data() });
+      });
+      setLinkedPages(pages);
+    } catch (error) {
+      console.error("Error fetching linked pages:", error);
+    }
+  };
+
+  const fetchLeadSources = async () => {
+    if (!user?.clientId) return;
+    try {
+      const q = query(collection(db, 'lead_sources'), where('clientId', '==', user.clientId));
+      const snapshot = await getDocs(q);
+      const fetched: {id: string, name: string}[] = [];
+      snapshot.forEach(doc => {
+        fetched.push({ id: doc.id, name: doc.data().name });
+      });
+      fetched.sort((a, b) => a.name.localeCompare(b.name));
+      setLeadSources(fetched);
+      if (fetched.length > 0) {
+        setSource(fetched[0].name);
+      }
+
+      const qSub = query(collection(db, 'lead_sub_sources'), where('clientId', '==', user.clientId));
+      const snapshotSub = await getDocs(qSub);
+      const fetchedSub: {id: string, name: string}[] = [];
+      snapshotSub.forEach(doc => {
+        fetchedSub.push({ id: doc.id, name: doc.data().name });
+      });
+      fetchedSub.sort((a, b) => a.name.localeCompare(b.name));
+      setLeadSubSources(fetchedSub);
+    } catch (error) {
+      console.error("Error fetching lead sources:", error);
+    }
+  };
+
+  const fetchAssignmentRules = async () => {
+    if (!user?.clientId) return;
+    try {
+      const q = query(collection(db, 'lead_assignment_rules'), where('clientId', '==', user.clientId));
+      const snapshot = await getDocs(q);
+      const fetched: {id: string, sourceName: string, agentId: string, agentName: string}[] = [];
+      snapshot.forEach(doc => {
+        fetched.push({ id: doc.id, ...doc.data() } as any);
+      });
+      setAssignmentRules(fetched);
+    } catch (error) {
+      console.error("Error fetching assignment rules:", error);
+    }
+  };
+
+  const handleAddAssignmentRule = async () => {
+    if (!user?.clientId || !newRuleSource || !newRuleAgentId) return;
+    setAddingRule(true);
+    try {
+      const agent = teamMembers.find(m => m.id === newRuleAgentId);
+      if (!agent) return;
+
+      const docRef = await addDoc(collection(db, 'lead_assignment_rules'), {
+        clientId: user.clientId,
+        sourceName: newRuleSource,
+        agentId: newRuleAgentId,
+        agentName: agent.name,
+        createdAt: serverTimestamp()
+      });
+
+      setAssignmentRules([...assignmentRules, {
+        id: docRef.id,
+        sourceName: newRuleSource,
+        agentId: newRuleAgentId,
+        agentName: agent.name
+      }]);
+      setNewRuleSource('');
+      setNewRuleAgentId('');
+    } catch (error) {
+      console.error("Error adding assignment rule:", error);
+      alert("Failed to add rule.");
+    } finally {
+      setAddingRule(false);
+    }
+  };
+
+  const handleDeleteRule = async (ruleId: string) => {
+    if (!ruleId) {
+      console.error("No ruleId provided to delete");
+      return;
+    }
+    try {
+      console.log("Deleting rule with ID:", ruleId);
+      await deleteDoc(doc(db, 'lead_assignment_rules', ruleId));
+      setAssignmentRules(prevRules => prevRules.filter(r => r.id !== ruleId));
+      console.log("Rule deleted successfully");
+    } catch (error) {
+      console.error("Error deleting assignment rule:", error);
+      alert("Failed to delete rule. Check console for details.");
+    }
+  };
+
+  useEffect(() => {
+    fetchLeads();
+    fetchAgents();
+    fetchTeamMembers();
+    fetchLinkedPages();
+    fetchLeadSources();
+    fetchAssignmentRules();
+  }, [user?.clientId]);
+
+  const handleLeadUpdated = (updatedLead: Lead) => {
+    setLeads(leads.map(l => l.id === updatedLead.id ? updatedLead : l));
+    setSelectedLead(updatedLead);
+  };
+
+  const openLeadDetails = (lead: Lead) => {
+    setSelectedLead(lead);
+    setIsLeadModalOpen(true);
+  };
+
+  const handleAddLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.clientId) return;
+    setAddingLead(true);
+    try {
+      const assignedUser = teamMembers.find(m => m.id === assignedTo);
+      const assignedToName = assignedUser ? assignedUser.name : (assignedTo === user.uid ? user.email : '');
+
+      await addDoc(collection(db, 'leads'), {
+        clientId: user.clientId,
+        firstName,
+        lastName,
+        email,
+        phone,
+        projectProperty,
+        status,
+        source: source || 'Manual',
+        subSource: subSource || '',
+        assignedTo: assignedTo || user?.uid,
+        assignedToId: assignedTo || user?.uid,
+        assignedToName: assignedToName,
+        createdAt: serverTimestamp()
+      });
+      
+      setFirstName('');
+      setLastName('');
+      setEmail('');
+      setPhone('');
+      setProjectProperty('');
+      setStatus('New');
+      setSubSource('');
+      setAssignedTo('');
+      setIsModalOpen(false);
+      
+      await fetchLeads();
+    } catch (error) {
+      console.error("Error adding lead:", error);
+      alert("Failed to add lead. Check console for details.");
+    } finally {
+      setAddingLead(false);
+    }
+  };
+
+  const handleCreateAgent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddingAgent(true);
+    try {
+      const createAgentFn = httpsCallable(functions, 'createAgent');
+      await createAgentFn({
+        email: agentEmail,
+        password: agentPassword,
+        name: agentName
+      });
+      
+      setAgentName('');
+      setAgentEmail('');
+      setAgentPassword('');
+      setIsAgentModalOpen(false);
+      
+      await fetchAgents();
+      alert("Agent created successfully.");
+    } catch (error: any) {
+      console.error("Error saving agent:", error);
+      alert(error.message || "Failed to save agent.");
+    } finally {
+      setAddingAgent(false);
+    }
+  };
+
+  const handleEditAgent = async (agent: Agent) => {
+    console.log('Button clicked!', agent.id);
+    setInlineEditingAgentId(agent.id);
+    setInlineEditingName(agent.name);
+  };
+
+  const handleSaveInlineEdit = async (agentId: string) => {
+    if (!inlineEditingName || inlineEditingName.trim() === '') {
+      setInlineEditingAgentId(null);
+      return;
+    }
+
+    try {
+      const updateAgentFn = httpsCallable(functions, 'updateAgent');
+      await updateAgentFn({ agentId, name: inlineEditingName.trim() });
+      await fetchAgents();
+      setInlineEditingAgentId(null);
+      alert("Agent updated successfully.");
+    } catch (error: any) {
+      console.error("Error updating agent:", error);
+      alert(error.message || "Failed to update agent.");
+    }
+  };
+
+  const handleDeleteAgent = async (agentId: string) => {
+    console.log('Button clicked!', agentId);
+    try {
+      const deleteAgentFn = httpsCallable(functions, 'deleteAgent');
+      await deleteAgentFn({ agentId });
+      await fetchAgents();
+      alert("Agent deleted successfully.");
+    } catch (error: any) {
+      console.error("Error deleting agent:", error);
+      alert(error.message || "Failed to delete agent.");
+    }
+  };
+
+  const handleStatusChange = async (leadId: string, newStatus: string) => {
+    try {
+      // Optimistic update
+      setLeads(leads.map(lead => lead.id === leadId ? { ...lead, status: newStatus } : lead));
+      await updateDoc(doc(db, 'leads', leadId), { status: newStatus });
+    } catch (error) {
+      console.error("Error updating status:", error);
+      // Revert on error
+      fetchLeads();
+    }
+  };
+
+  const handleAssignLead = async (leadId: string, agentId: string) => {
+    try {
+      const assignedUser = teamMembers.find(m => m.id === agentId);
+      const assignedToName = assignedUser ? assignedUser.name : '';
+      
+      setLeads(leads.map(lead => lead.id === leadId ? { 
+        ...lead, 
+        assignedTo: agentId,
+        assignedToId: agentId,
+        assignedToName: assignedToName
+      } : lead));
+      
+      await updateDoc(doc(db, 'leads', leadId), { 
+        assignedTo: agentId,
+        assignedToId: agentId,
+        assignedToName: assignedToName
+      });
+    } catch (error) {
+      console.error("Error assigning lead:", error);
+      fetchLeads();
+    }
+  };
+
+  useEffect(() => {
+    if (window.FB) return;
+    window.fbAsyncInit = function() {
+      window.FB.init({
+        appId      : '1439047481212574',
+        cookie     : true,
+        xfbml      : true,
+        version    : 'v19.0'
+      });
+    };
+    (function(d, s, id){
+       var js, fjs = d.getElementsByTagName(s)[0];
+       if (d.getElementById(id)) {return;}
+       js = d.createElement(s) as any; js.id = id;
+       (js as any).src = "https://connect.facebook.net/en_US/sdk.js";
+       if (fjs && fjs.parentNode) {
+         fjs.parentNode.insertBefore(js, fjs);
+       } else {
+         d.head.appendChild(js);
+       }
+     }(document, 'script', 'facebook-jssdk'));
+  }, []);
+
+  const handleConnectFacebook = () => {
+    setIsLoadingFb(true);
+    window.FB.login((response: any) => {
+      if (response.authResponse) {
+        window.FB.api('/me/accounts', (apiResponse: any) => {
+          if (apiResponse && !apiResponse.error) {
+            setFbPages(apiResponse.data || []);
+          } else {
+            console.error('Error fetching pages:', apiResponse.error);
+            alert('Failed to fetch Facebook Pages.');
+          }
+          setIsLoadingFb(false);
+        });
+      } else {
+        console.log('User cancelled login or did not fully authorize.');
+        setIsLoadingFb(false);
+      }
+    }, { scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval' });
+  };
+
+  const handleLinkPage = async (page: any) => {
+    if (!user?.clientId) return;
+    try {
+      const pageRef = doc(db, 'facebook_integrations', page.id);
+      await setDoc(pageRef, {
+        clientId: user.clientId,
+        pageId: page.id,
+        pageName: page.name,
+        pageAccessToken: page.access_token,
+        status: 'active',
+        createdAt: serverTimestamp()
+      });
+      fetchLinkedPages();
+    } catch (error) {
+      console.error('Error linking page:', error);
+      alert('Failed to link page.');
+    }
+  };
+
+  const handleDisconnectPage = async (pageId: string) => {
+    try {
+      await deleteDoc(doc(db, 'facebook_integrations', pageId));
+      fetchLinkedPages();
+    } catch (error) {
+      console.error("Error disconnecting Facebook page:", error);
+      alert("Failed to disconnect. Please try again.");
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Filtered Leads for Reports
+  const filteredLeads = leads.filter(lead => {
+    let matches = true;
+    
+    if (leadSourceFilter !== 'All') {
+      const source = lead.source || '';
+      if (!source.toLowerCase().includes(leadSourceFilter.toLowerCase())) {
+        matches = false;
+      }
+    }
+    
+    if (startDate) {
+      const leadDate = lead.createdAt?.toDate();
+      if (leadDate && leadDate < new Date(startDate)) matches = false;
+    }
+    if (endDate) {
+      const leadDate = lead.createdAt?.toDate();
+      // Add 1 day to end date to include the whole day
+      const end = new Date(endDate);
+      end.setDate(end.getDate() + 1);
+      if (leadDate && leadDate >= end) matches = false;
+    }
+    
+    return matches;
+  });
+
+  // Calculate dynamic source data for PieChart
+  const sourceDataMap = new Map<string, number>();
+  filteredLeads.forEach(lead => {
+    const source = lead.source || 'Manual';
+    sourceDataMap.set(source, (sourceDataMap.get(source) || 0) + 1);
+  });
+  const dynamicSourceData = Array.from(sourceDataMap.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
+  const PIE_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16'];
+
+  // Calculate dynamic status data for BarChart
+  const statusDataMap = new Map<string, number>();
+  filteredLeads.forEach(lead => {
+    const status = lead.status || 'New';
+    statusDataMap.set(status, (statusDataMap.get(status) || 0) + 1);
+  });
+  const dynamicStatusData = Array.from(statusDataMap.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => {
+      const indexA = PIPELINE_STATUSES.indexOf(a.name);
+      const indexB = PIPELINE_STATUSES.indexOf(b.name);
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+      return b.count - a.count;
+    });
+
+  const getSourceBadge = (source?: string, subSource?: string) => {
+    const s = source?.toLowerCase() || 'manual';
+    let icon = <Globe className="w-3 h-3" />;
+    let colorClass = "bg-stone-100 text-stone-600";
+    let label = source || 'Manual';
+
+    if (s.includes('facebook')) {
+      icon = <Facebook className="w-3 h-3" />;
+      colorClass = "bg-blue-100 text-blue-700";
+    } else if (s.includes('google')) {
+      icon = <Search className="w-3 h-3" />;
+      colorClass = "bg-amber-100 text-amber-700";
+    } else if (s.includes('website')) {
+      icon = <Globe className="w-3 h-3" />;
+      colorClass = "bg-emerald-100 text-emerald-700";
+    }
+
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${colorClass}`}>
+        {icon} {label} {subSource ? `/ ${subSource}` : ''}
+      </span>
+    );
+  };
+
+  const getStatusBadgeClass = (status: string) => {
+    switch (status) {
+      case 'New': return 'bg-emerald-100 text-emerald-700';
+      case 'Attempted Contact': return 'bg-blue-50 text-blue-600';
+      case 'Connected / Warm': return 'bg-blue-100 text-blue-700';
+      case 'Site Visit Scheduled': return 'bg-purple-50 text-purple-600';
+      case 'Site Visit Completed': return 'bg-purple-100 text-purple-700';
+      case 'Negotiation': return 'bg-amber-100 text-amber-700';
+      case 'Closed Won': return 'bg-stone-800 text-white';
+      case 'Closed Lost': return 'bg-red-100 text-red-700';
+      case 'Junk / Invalid': return 'bg-stone-200 text-stone-600';
+      default: return 'bg-stone-100 text-stone-700';
+    }
+  };
+
+  // Filtered Leads for Main View
+  const filteredLeadsView = leads.filter(lead => {
+    let matches = true;
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const fullName = `${lead.firstName} ${lead.lastName}`.toLowerCase();
+      if (!fullName.includes(query) && 
+          !lead.email?.toLowerCase().includes(query) && 
+          !lead.phone?.toLowerCase().includes(query)) {
+        matches = false;
+      }
+    }
+    if (leadsViewSourceFilter !== 'All') {
+      if (lead.source !== leadsViewSourceFilter) {
+        matches = false;
+      }
+    }
+    return matches;
+  });
+
+  return (
+    <div className="min-h-screen bg-stone-50 flex font-sans text-stone-900">
+      {/* Sidebar */}
+      <aside className="w-64 bg-white border-r border-stone-200 flex flex-col">
+        <div className="h-16 flex items-center px-6 border-b border-stone-100">
+          <div className="flex items-center gap-2 text-emerald-600 font-semibold text-lg tracking-tight">
+            <Building2 className="w-6 h-6" />
+            <span>Client Portal</span>
+          </div>
+        </div>
+        
+        <div className="px-4 py-6 text-xs font-semibold text-stone-400 uppercase tracking-wider">
+          Workspace
+        </div>
+        
+        <nav className="flex-1 px-3 space-y-1">
+          <button 
+            onClick={() => setActiveTab('leads')}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+              activeTab === 'leads' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
+            }`}
+          >
+            <Users className="w-5 h-5" />
+            Leads
+          </button>
+          {user?.role === 'client_admin' && (
+            <>
+              <button 
+                onClick={() => setActiveTab('team')}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                  activeTab === 'team' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
+                }`}
+              >
+                <UserCog className="w-5 h-5" />
+                Team
+              </button>
+              <button 
+                onClick={() => setActiveTab('integrations')}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+                  activeTab === 'integrations' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
+                }`}
+              >
+                <Link2 className="w-5 h-5" />
+                Integrations
+              </button>
+            </>
+          )}
+          <button 
+            onClick={() => setActiveTab('reports')}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
+              activeTab === 'reports' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5" />
+            Reports
+          </button>
+        </nav>
+
+        <div className="p-4 border-t border-stone-100">
+          <button 
+            onClick={logout}
+            className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-colors"
+          >
+            <LogOut className="w-5 h-5" />
+            Sign Out
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col h-screen overflow-hidden">
+        <header className="h-16 bg-white border-b border-stone-200 flex items-center justify-between px-8 shrink-0">
+          <h1 className="text-xl font-semibold tracking-tight">
+            {activeTab === 'leads' ? 'Leads Management' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Dashboard' : 'Integrations'}
+          </h1>
+          <div className="flex items-center gap-2 text-sm text-stone-500 bg-stone-100 px-3 py-1.5 rounded-full">
+            <UserCircle2 className="w-4 h-4" />
+            {user?.email}
+          </div>
+        </header>
+
+        <div className="flex-1 p-8 overflow-auto">
+          <div className="max-w-7xl mx-auto h-full flex flex-col">
+            
+            {activeTab === 'leads' ? (
+              <>
+                {/* Header Actions */}
+                <div className="flex items-center justify-between mb-8 shrink-0">
+                  <div>
+                    <h2 className="text-2xl font-semibold tracking-tight mb-1">Your Leads</h2>
+                    <p className="text-stone-500 text-sm">Manage and track your prospective customers.</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-xl px-3 py-1.5 shadow-sm">
+                      <Search className="w-4 h-4 text-stone-400" />
+                      <input
+                        type="text"
+                        placeholder="Search leads..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="text-sm border-none focus:ring-0 text-stone-600 bg-transparent w-40 outline-none"
+                      />
+                    </div>
+                    <select
+                      value={leadsViewSourceFilter}
+                      onChange={(e) => setLeadsViewSourceFilter(e.target.value)}
+                      className="text-sm border border-stone-200 rounded-xl px-3 py-2 text-stone-600 bg-white shadow-sm focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                    >
+                      <option value="All">All Sources</option>
+                      {combinedSources.map(sourceName => (
+                        <option key={sourceName} value={sourceName}>{sourceName}</option>
+                      ))}
+                    </select>
+                    <div className="flex items-center bg-white border border-stone-200 rounded-xl p-1 shadow-sm">
+                      <button
+                        onClick={() => setViewMode('pipeline')}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                          viewMode === 'pipeline' ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-700'
+                        }`}
+                      >
+                        <KanbanSquare className="w-4 h-4" />
+                        Pipeline
+                      </button>
+                      <button
+                        onClick={() => setViewMode('table')}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                          viewMode === 'table' ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-700'
+                        }`}
+                      >
+                        <List className="w-4 h-4" />
+                        Table
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => setIsModalOpen(true)}
+                      className="flex items-center gap-2 py-2 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-600 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add New Lead
+                    </button>
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className="p-12 flex justify-center">
+                    <div className="w-8 h-8 border-4 border-emerald-600/20 border-t-emerald-600 rounded-full animate-spin" />
+                  </div>
+                ) : leads.length === 0 ? (
+                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-12 text-center">
+                    <Users className="w-12 h-12 text-stone-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-stone-900 mb-1">No leads found</h3>
+                    <p className="text-stone-500 text-sm">Get started by adding a new lead.</p>
+                  </div>
+                ) : viewMode === 'table' ? (
+                  /* Table View */
+                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden shrink-0">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-stone-50 border-b border-stone-200 text-xs uppercase tracking-wider text-stone-500 font-semibold">
+                            <th className="px-6 py-4">Date</th>
+                            <th className="px-6 py-4">Name</th>
+                            <th className="px-6 py-4">Phone</th>
+                            <th className="px-6 py-4">Email</th>
+                            <th className="px-6 py-4">Source</th>
+                            <th className="px-6 py-4">Tags</th>
+                            <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4">Project / Property</th>
+                            <th className="px-6 py-4">Assigned To</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-stone-200">
+                          {filteredLeadsView.map((lead) => (
+                            <tr 
+                              key={lead.id} 
+                              onClick={() => openLeadDetails(lead)}
+                              className="hover:bg-stone-50/50 transition-colors cursor-pointer"
+                            >
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-stone-500">
+                                {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="font-medium text-stone-900">
+                                  {lead.firstName} {lead.lastName}
+                                  {lead.isDuplicate && (
+                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 uppercase tracking-wider">
+                                      Duplicate
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center gap-2 text-sm text-stone-500">
+                                  <Phone className="w-3.5 h-3.5" />
+                                  {lead.phone || '-'}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center gap-2 text-sm text-stone-500">
+                                  <Mail className="w-3.5 h-3.5" />
+                                  {lead.email || '-'}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                {getSourceBadge(lead.source, lead.subSource)}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex flex-wrap gap-1 max-w-[150px]">
+                                  {lead.tags?.map(tag => (
+                                    <span key={tag} className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-stone-100 text-stone-600 border border-stone-200 uppercase tracking-tighter">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(lead.status)}`}>
+                                  {lead.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center gap-2 text-stone-600 text-sm">
+                                  <Home className="w-4 h-4 text-stone-400" />
+                                  {lead.projectProperty || '-'}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                {user?.role === 'client_admin' ? (
+                                  <select
+                                    value={lead.assignedToId || lead.assignedTo || ''}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      handleAssignLead(lead.id, e.target.value);
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-sm bg-stone-50 border border-stone-200 rounded-lg px-2 py-1 text-stone-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                                  >
+                                    <option value="">Unassigned</option>
+                                    {teamMembers.map(member => (
+                                      <option key={member.id} value={member.id}>{member.name}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="text-sm text-stone-600">
+                                    {lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned'}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  /* Pipeline View */
+                  <div className="flex-1 overflow-x-auto pb-4">
+                    <div className="flex gap-6 h-full min-w-max">
+                      {PIPELINE_STATUSES.map(status => (
+                        <div key={status} className="w-80 flex flex-col bg-stone-100/50 rounded-2xl border border-stone-200/60 overflow-hidden shrink-0">
+                          <div className="p-4 border-b border-stone-200/60 bg-stone-100/80 flex items-center justify-between shrink-0">
+                            <h3 className="font-semibold text-stone-800">{status}</h3>
+                            <span className="bg-white text-stone-500 text-xs font-medium px-2 py-1 rounded-full shadow-sm border border-stone-200">
+                              {filteredLeadsView.filter(l => l.status === status).length}
+                            </span>
+                          </div>
+                          <div className="flex-1 p-3 overflow-y-auto space-y-3">
+                            {filteredLeadsView.filter(l => l.status === status).map(lead => (
+                              <div 
+                                key={lead.id} 
+                                onClick={() => openLeadDetails(lead)}
+                                className="bg-white p-4 rounded-xl shadow-sm border border-stone-200 hover:shadow-md transition-shadow cursor-pointer"
+                              >
+                                <div className="flex justify-between items-start mb-3">
+                                  <div className="font-medium text-stone-900 leading-tight">{lead.firstName} {lead.lastName}</div>
+                                  {getSourceBadge(lead.source, lead.subSource)}
+                                </div>
+                                <div className="space-y-2 mb-4">
+                                  <div className="flex items-center gap-2 text-xs text-stone-500">
+                                    <Phone className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">{lead.phone || 'No phone'}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-stone-500">
+                                    <Home className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">{lead.projectProperty || 'No project'}</span>
+                                  </div>
+                                </div>
+                                {lead.tags && lead.tags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mb-4">
+                                    {lead.tags.map(tag => (
+                                      <span key={tag} className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-stone-100 text-stone-600 border border-stone-200 uppercase tracking-tighter">
+                                        {tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="flex flex-col gap-2">
+                                  <select
+                                    value={lead.status}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      handleStatusChange(lead.id, e.target.value);
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-full text-xs bg-stone-50 border border-stone-200 rounded-lg px-2 py-1.5 text-stone-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                                  >
+                                    {PIPELINE_STATUSES.map(s => (
+                                      <option key={s} value={s}>{s}</option>
+                                    ))}
+                                  </select>
+                                  {user?.role === 'client_admin' ? (
+                                    <select
+                                      value={lead.assignedToId || lead.assignedTo || ''}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        handleAssignLead(lead.id, e.target.value);
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-full text-xs bg-stone-50 border border-stone-200 rounded-lg px-2 py-1.5 text-stone-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                                    >
+                                      <option value="">Unassigned</option>
+                                      {teamMembers.map(member => (
+                                        <option key={member.id} value={member.id}>{member.name}</option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <div className="text-xs text-stone-500 px-1">
+                                      Agent: {lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned'}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : activeTab === 'team' ? (
+              /* Team View */
+              <div className="max-w-6xl mx-auto space-y-8">
+                <div>
+                  <div className="flex items-center justify-between mb-8">
+                    <div>
+                      <h2 className="text-2xl font-semibold tracking-tight mb-1">Your Team</h2>
+                      <p className="text-stone-500 text-sm">Manage your sales agents and their access.</p>
+                    </div>
+                    {user?.role === 'client_admin' && (
+                      <button
+                        onClick={() => setIsAgentModalOpen(true)}
+                        className="flex items-center gap-2 py-2 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-600 transition-colors"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        Add New Agent
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                    {agents.length === 0 ? (
+                      <div className="p-12 text-center">
+                        <Users className="w-12 h-12 text-stone-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-stone-900 mb-1">No agents found</h3>
+                        <p className="text-stone-500 text-sm">Get started by adding a new agent to your team.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-stone-50 border-b border-stone-200 text-xs uppercase tracking-wider text-stone-500 font-semibold">
+                              <th className="px-6 py-4">Name</th>
+                              <th className="px-6 py-4">Email</th>
+                              <th className="px-6 py-4">Role</th>
+                              <th className="px-6 py-4">Date Added</th>
+                              <th className="px-6 py-4 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-stone-200">
+                            {agents.map((agent) => (
+                              <tr key={agent.id} className="hover:bg-stone-50/50 transition-colors">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  {inlineEditingAgentId === agent.id ? (
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="text"
+                                        value={inlineEditingName}
+                                        onChange={(e) => setInlineEditingName(e.target.value)}
+                                        className="px-2 py-1 text-sm border border-stone-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                        autoFocus
+                                      />
+                                      <button
+                                        onClick={() => handleSaveInlineEdit(agent.id)}
+                                        className="text-emerald-600 hover:text-emerald-700 font-medium text-xs"
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        onClick={() => setInlineEditingAgentId(null)}
+                                        className="text-stone-500 hover:text-stone-700 font-medium text-xs"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="font-medium text-stone-900">
+                                      {agent.name}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center gap-2 text-sm text-stone-500">
+                                    <Mail className="w-3.5 h-3.5" />
+                                    {agent.email}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                    Agent
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-stone-500">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar className="w-4 h-4" />
+                                    {agent.createdAt ? new Date(agent.createdAt.toDate()).toLocaleDateString() : 'Just now'}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                  <button
+                                    onClick={() => handleEditAgent(agent)}
+                                    className="text-indigo-600 hover:text-indigo-900 mr-4"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteAgent(agent.id)}
+                                    className="text-red-600 hover:text-red-900"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Lead Auto-Assignment Rules */}
+                {user?.role === 'client_admin' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-6">
+                      <div>
+                        <h2 className="text-2xl font-semibold tracking-tight mb-1">Lead Auto-Assignment Rules</h2>
+                        <p className="text-stone-500 text-sm">Automatically assign incoming leads to specific agents based on their source.</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                      <div className="p-6 border-b border-stone-200 bg-stone-50">
+                        <h3 className="text-sm font-semibold text-stone-900 mb-4">Create New Rule</h3>
+                        <div className="flex flex-col sm:flex-row gap-4 items-end">
+                          <div className="flex-1 w-full">
+                            <label className="block text-xs font-medium text-stone-700 mb-1">Lead Source</label>
+                            <select
+                              value={newRuleSource}
+                              onChange={(e) => setNewRuleSource(e.target.value)}
+                              className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 text-stone-600 bg-white shadow-sm focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                            >
+                              <option value="">Select a source...</option>
+                              {leadSources.map(source => (
+                                <option key={source.id} value={source.name}>{source.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex-1 w-full">
+                            <label className="block text-xs font-medium text-stone-700 mb-1">Assign To Agent</label>
+                            <select
+                              value={newRuleAgentId}
+                              onChange={(e) => setNewRuleAgentId(e.target.value)}
+                              className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 text-stone-600 bg-white shadow-sm focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                            >
+                              <option value="">Select an agent...</option>
+                              {teamMembers.map(member => (
+                                <option key={member.id} value={member.id}>{member.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <button
+                            onClick={handleAddAssignmentRule}
+                            disabled={!newRuleSource || !newRuleAgentId || addingRule}
+                            className="w-full sm:w-auto flex items-center justify-center gap-2 py-2 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {addingRule ? (
+                              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                            ) : (
+                              <Plus className="w-4 h-4" />
+                            )}
+                            Add Rule
+                          </button>
+                        </div>
+                      </div>
+
+                      {assignmentRules.length === 0 ? (
+                        <div className="p-8 text-center text-stone-500 text-sm">
+                          No auto-assignment rules configured yet.
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-stone-50 border-b border-stone-200 text-xs uppercase tracking-wider text-stone-500 font-semibold">
+                                <th className="px-6 py-4">Lead Source</th>
+                                <th className="px-6 py-4">Assigned Agent</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-stone-200">
+                              {assignmentRules.map((rule) => (
+                                <tr key={rule.id} className="hover:bg-stone-50/50 transition-colors">
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="font-medium text-stone-900 flex items-center gap-2">
+                                      <Globe className="w-4 h-4 text-stone-400" />
+                                      {rule.sourceName}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="flex items-center gap-2 text-stone-600">
+                                      <UserCircle2 className="w-4 h-4 text-stone-400" />
+                                      {rule.agentName}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                                    <button
+                                      onClick={() => handleDeleteRule(rule.id)}
+                                      className="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50 transition-colors"
+                                      title="Delete Rule"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : activeTab === 'reports' ? (
+              /* Reports View */
+              <div className="max-w-7xl mx-auto space-y-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                  <div>
+                    <h2 className="text-2xl font-semibold tracking-tight mb-1">Analytics Dashboard</h2>
+                    <p className="text-stone-500 text-sm">Overview of your lead performance and team metrics.</p>
+                  </div>
+                  
+                  {/* Filters */}
+                  <div className="flex flex-wrap items-center gap-3 bg-white p-2 rounded-xl border border-stone-200 shadow-sm">
+                    <div className="flex items-center gap-2 px-2">
+                      <Calendar className="w-4 h-4 text-stone-400" />
+                      <input 
+                        type="date" 
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="text-sm border-none focus:ring-0 text-stone-600 bg-transparent cursor-pointer"
+                      />
+                      <span className="text-stone-400">-</span>
+                      <input 
+                        type="date" 
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="text-sm border-none focus:ring-0 text-stone-600 bg-transparent cursor-pointer"
+                      />
+                    </div>
+                    <div className="h-6 w-px bg-stone-200 hidden sm:block"></div>
+                    <select 
+                      value={leadSourceFilter}
+                      onChange={(e) => setLeadSourceFilter(e.target.value)}
+                      className="text-sm border-none focus:ring-0 text-stone-600 bg-transparent cursor-pointer"
+                    >
+                      <option value="All">All Sources</option>
+                      {combinedSources.map(sourceName => (
+                        <option key={sourceName} value={sourceName}>{sourceName}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* KPI Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-medium text-stone-500">Total Leads</h3>
+                      <div className="p-2 bg-stone-50 rounded-lg text-stone-600">
+                        <Users className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <p className="text-3xl font-semibold text-stone-900">{filteredLeads.length}</p>
+                  </div>
+                  
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-medium text-stone-500">New Leads</h3>
+                      <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                        <Zap className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <p className="text-3xl font-semibold text-stone-900">
+                      {filteredLeads.filter(l => l.status === 'New').length}
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-medium text-stone-500">Site Visits</h3>
+                      <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                        <Building2 className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <p className="text-3xl font-semibold text-stone-900">
+                      {filteredLeads.filter(l => l.status === 'Site Visit').length}
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-medium text-stone-500">Closed Won</h3>
+                      <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                        <Check className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <p className="text-3xl font-semibold text-stone-900">
+                      {filteredLeads.filter(l => l.status === 'Closed Won').length}
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-medium text-stone-500">Duplicate Leads</h3>
+                      <div className="p-2 bg-red-50 rounded-lg text-red-600">
+                        <XCircle className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <p className="text-3xl font-semibold text-stone-900">
+                      {filteredLeads.filter(l => l.isDuplicate).length}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Charts */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                    <h3 className="text-lg font-semibold text-stone-900 mb-6">Leads by Status</h3>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={dynamicStatusData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dy={10} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dx={-10} />
+                          <Tooltip 
+                            cursor={{ fill: '#f3f4f6' }}
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                          />
+                          <Bar dataKey="count" fill="#059669" radius={[4, 4, 0, 0]} maxBarSize={50} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                    <h3 className="text-lg font-semibold text-stone-900 mb-6">Leads by Source</h3>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={dynamicSourceData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={80}
+                            outerRadius={120}
+                            paddingAngle={2}
+                            dataKey="value"
+                            nameKey="name"
+                          >
+                            {dynamicSourceData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="flex flex-wrap justify-center gap-4 mt-4">
+                        {dynamicSourceData.map((source, index) => (
+                          <div key={source.name} className="flex items-center gap-2 text-sm text-stone-600">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
+                            {source.name}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Agent Performance Table */}
+                <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                  <div className="px-6 py-5 border-b border-stone-200">
+                    <h3 className="text-lg font-semibold text-stone-900">Agent Performance</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-stone-50 border-b border-stone-200 text-xs uppercase tracking-wider text-stone-500 font-semibold">
+                          <th className="px-6 py-4">Agent Name</th>
+                          <th className="px-6 py-4">Total Assigned</th>
+                          <th className="px-6 py-4">New</th>
+                          <th className="px-6 py-4">In Progress</th>
+                          <th className="px-6 py-4">Closed Won</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-200">
+                        {teamMembers.map(agent => {
+                          const agentLeads = filteredLeads.filter(l => (l.assignedToId || l.assignedTo) === agent.id);
+                          return (
+                            <tr key={agent.id} className="hover:bg-stone-50/50 transition-colors">
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="font-medium text-stone-900">{agent.name}</div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-stone-600">
+                                {agentLeads.length}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-stone-600">
+                                {agentLeads.filter(l => l.status === 'New').length}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-stone-600">
+                                {agentLeads.filter(l => ['Contacted', 'Site Visit', 'Negotiation'].includes(l.status)).length}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-stone-600">
+                                {agentLeads.filter(l => l.status === 'Closed Won').length}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {/* Unassigned row */}
+                        <tr className="hover:bg-stone-50/50 transition-colors bg-stone-50/30">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="font-medium text-stone-500 italic">Unassigned</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-stone-500">
+                            {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo)).length}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-stone-500">
+                            {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && l.status === 'New').length}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-stone-500">
+                            {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && ['Contacted', 'Site Visit', 'Negotiation'].includes(l.status)).length}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-stone-500">
+                            {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && l.status === 'Closed Won').length}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Integrations View */
+              <div className="max-w-3xl">
+                <div className="mb-8">
+                  <h2 className="text-2xl font-semibold tracking-tight mb-1">External Integrations</h2>
+                  <p className="text-stone-500 text-sm">Connect your Facebook Ads, Google Ads, or Website to capture leads automatically.</p>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Meta / Facebook Ads Card */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                    <div className="p-6 sm:p-8">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                            <Facebook className="w-8 h-8" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-3 mb-1">
+                              <h3 className="text-lg font-semibold text-stone-900">Meta / Facebook Ads</h3>
+                              {linkedPages.length > 0 ? (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                  {linkedPages.length} Page{linkedPages.length !== 1 ? 's' : ''} Connected
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-600">
+                                  Not Connected
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-stone-500 text-sm">
+                              Automatically sync leads from your Facebook Lead Ads directly into your CRM.
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <button
+                            onClick={handleConnectFacebook}
+                            disabled={isLoadingFb}
+                            className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-xl text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+                          >
+                            {isLoadingFb ? 'Connecting...' : 'Connect Facebook'}
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* Linked Pages List */}
+                      {linkedPages.length > 0 && (
+                        <div className="mt-6 pt-6 border-t border-stone-100">
+                          <h4 className="text-sm font-semibold text-stone-900 mb-4">Connected Pages</h4>
+                          <div className="space-y-3">
+                            {linkedPages.map(page => (
+                              <div key={page.id} className="flex items-center justify-between p-3 bg-stone-50 rounded-xl border border-stone-200">
+                                <div>
+                                  <p className="text-sm font-medium text-stone-900">{page.pageName}</p>
+                                  <p className="text-xs text-stone-500 font-mono mt-0.5">ID: {page.pageId}</p>
+                                </div>
+                                <button
+                                  onClick={() => handleDisconnectPage(page.id)}
+                                  className="text-xs font-medium text-red-600 hover:text-red-700 px-3 py-1.5 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                                >
+                                  Disconnect
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Available Pages to Link */}
+                      {fbPages.length > 0 && (
+                        <div className="mt-6 pt-6 border-t border-stone-100">
+                          <h4 className="text-sm font-semibold text-stone-900 mb-4">Available Pages to Link</h4>
+                          <div className="space-y-3">
+                            {fbPages.map(page => {
+                              const isLinked = linkedPages.some(lp => lp.pageId === page.id);
+                              return (
+                                <div key={page.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-stone-200">
+                                  <div>
+                                    <p className="text-sm font-medium text-stone-900">{page.name}</p>
+                                    <p className="text-xs text-stone-500 font-mono mt-0.5">ID: {page.id}</p>
+                                  </div>
+                                  <button
+                                    onClick={() => handleLinkPage(page)}
+                                    disabled={isLinked}
+                                    className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+                                      isLinked 
+                                        ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
+                                        : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                    }`}
+                                  >
+                                    {isLinked ? 'Linked' : 'Link Page'}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Webhook URL Card */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                    <div className="p-6 sm:p-8">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                          <Zap className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-stone-900">Your Unique Webhook URL</h3>
+                          <p className="text-stone-500 text-sm">Use this URL to send leads from external platforms.</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 flex items-center justify-between gap-4">
+                        <code className="text-xs text-stone-600 break-all font-mono">
+                          {webhookUrl}
+                        </code>
+                        <button
+                          onClick={handleCopy}
+                          className="shrink-0 p-2 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                          title="Copy to clipboard"
+                        >
+                          {copied ? <Check className="w-5 h-5 text-emerald-600" /> : <Copy className="w-5 h-5" />}
+                        </button>
+                      </div>
+
+                      <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-stone-900">
+                            <Facebook className="w-4 h-4 text-blue-600" />
+                            Facebook Ads
+                          </div>
+                          <p className="text-xs text-stone-500 leading-relaxed">
+                            Connect via Zapier or Pabbly Connect using this webhook URL to capture leads from Facebook Lead Forms.
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-stone-900">
+                            <Search className="w-4 h-4 text-amber-500" />
+                            Google Ads
+                          </div>
+                          <p className="text-xs text-stone-500 leading-relaxed">
+                            Paste this URL into your Google Ads Lead Form extension settings to receive leads in real-time.
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-stone-900">
+                            <Globe className="w-4 h-4 text-emerald-600" />
+                            Website Forms
+                          </div>
+                          <p className="text-xs text-stone-500 leading-relaxed">
+                            Send a POST request from your website's contact form directly to this endpoint.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Documentation Card */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6 sm:p-8">
+                    <h3 className="text-lg font-semibold text-stone-900 mb-4">Payload Format</h3>
+                    <p className="text-sm text-stone-500 mb-4">Your external source should send a JSON POST request with the following fields:</p>
+                    <div className="bg-stone-900 rounded-xl p-4 overflow-x-auto">
+                      <pre className="text-xs text-emerald-400 font-mono">
+{`{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "phone": "+1234567890",
+  "source": "Facebook",
+  "project": "Sunset Villas"
+}`}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      </main>
+
+      {/* Modals */}
+      <LeadDetailsModal 
+        lead={selectedLead}
+        isOpen={isLeadModalOpen}
+        onClose={() => {
+          setIsLeadModalOpen(false);
+          setSelectedLead(null);
+        }}
+        onLeadUpdated={handleLeadUpdated}
+        teamMembers={teamMembers}
+      />
+
+      {/* Add Lead Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
+              <h3 className="text-lg font-semibold text-stone-900">Add New Lead</h3>
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleAddLead} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">First Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Last Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Email Address</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Project / Property</label>
+                <input
+                  type="text"
+                  value={projectProperty}
+                  onChange={(e) => setProjectProperty(e.target.value)}
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  placeholder="e.g. Sunset Villas"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Status</label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
+                >
+                  {PIPELINE_STATUSES.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Source</label>
+                <select
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
+                >
+                  {leadSources.length === 0 && <option value="Manual">Manual</option>}
+                  {leadSources.map(s => (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Sub-Source</label>
+                <select
+                  value={subSource}
+                  onChange={(e) => setSubSource(e.target.value)}
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
+                >
+                  <option value="">None</option>
+                  {leadSubSources.map(s => (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {user?.role === 'client_admin' && (
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Assign To</label>
+                  <select
+                    value={assignedTo}
+                    onChange={(e) => setAssignedTo(e.target.value)}
+                    className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
+                  >
+                    <option value="">Unassigned</option>
+                    {teamMembers.map(member => (
+                      <option key={member.id} value={member.id}>{member.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 px-4 py-2 border border-stone-200 text-stone-600 rounded-xl hover:bg-stone-50 transition-colors font-medium text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingLead}
+                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-medium text-sm disabled:opacity-50 flex justify-center items-center"
+                >
+                  {addingLead ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    'Save Lead'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Agent Modal */}
+      {isAgentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
+              <h3 className="text-lg font-semibold text-stone-900">Add New Agent</h3>
+              <button 
+                onClick={() => {
+                  setIsAgentModalOpen(false);
+                  setAgentName('');
+                  setAgentEmail('');
+                  setAgentPassword('');
+                }}
+                className="text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateAgent} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={agentName}
+                  onChange={(e) => setAgentName(e.target.value)}
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={agentEmail}
+                  onChange={(e) => setAgentEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Temporary Password</label>
+                <input
+                  type="password"
+                  required
+                  value={agentPassword}
+                  onChange={(e) => setAgentPassword(e.target.value)}
+                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  minLength={6}
+                />
+                <p className="mt-1 text-xs text-stone-500">Must be at least 6 characters.</p>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAgentModalOpen(false);
+                    setAgentName('');
+                    setAgentEmail('');
+                    setAgentPassword('');
+                  }}
+                  className="flex-1 px-4 py-2 border border-stone-200 text-stone-600 rounded-xl hover:bg-stone-50 transition-colors font-medium text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingAgent}
+                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-medium text-sm disabled:opacity-50 flex justify-center items-center"
+                >
+                  {addingAgent ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    'Create Agent'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
