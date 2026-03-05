@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc, onSnapshot, orderBy, limit, startAfter } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -39,7 +39,6 @@ export default function ClientDashboard() {
   const { user, clientId, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'leads' | 'integrations' | 'team' | 'reports'>('leads');
   const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('pipeline');
-  const [leads, setLeads] = useState<Lead[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [teamMembers, setTeamMembers] = useState<{id: string, name: string}[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +49,18 @@ export default function ClientDashboard() {
   const [copied, setCopied] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
+  const [lastVisibleLead, setLastVisibleLead] = useState<any>(null);
+  const [loadingMoreLeads, setLoadingMoreLeads] = useState(false);
+  const [hasMoreLeads, setHasMoreLeads] = useState(true);
+  const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
+  const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
+
+  // Combined leads for display
+  const leads = useMemo(() => {
+    const combined = [...realTimeLeads, ...olderLeads];
+    // Remove duplicates by ID
+    return Array.from(new Map(combined.map(item => [item.id, item])).values());
+  }, [realTimeLeads, olderLeads]);
 
   // Lead Form State
   const [firstName, setFirstName] = useState('');
@@ -106,13 +117,50 @@ export default function ClientDashboard() {
 
   const webhookUrl = `https://us-central1-mintage-crm.cloudfunctions.net/incomingLeadWebhook?clientId=${user?.clientId}`;
 
-  const fetchLeads = async () => {
+  useEffect(() => {
     if (!user?.clientId) return;
+    
     setLoading(true);
+    const q = query(
+      collection(db, 'leads'),
+      where('clientId', '==', user.clientId),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedLeads: Lead[] = [];
+      snapshot.forEach((doc) => {
+        fetchedLeads.push({ id: doc.id, ...doc.data() } as Lead);
+      });
+      
+      setRealTimeLeads(fetchedLeads);
+      
+      if (!lastVisibleLead && snapshot.docs.length > 0) {
+        setLastVisibleLead(snapshot.docs[snapshot.docs.length - 1]);
+        setHasMoreLeads(snapshot.docs.length === 50);
+      }
+      
+      setLoading(false);
+    }, (error) => {
+      console.error("Error in onSnapshot:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user?.clientId]);
+
+  const loadMoreLeads = async () => {
+    if (!user?.clientId || !lastVisibleLead || loadingMoreLeads || !hasMoreLeads) return;
+    
+    setLoadingMoreLeads(true);
     try {
       const q = query(
-        collection(db, 'leads'), 
-        where('clientId', '==', user.clientId)
+        collection(db, 'leads'),
+        where('clientId', '==', user.clientId),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastVisibleLead),
+        limit(50)
       );
       
       const querySnapshot = await getDocs(q);
@@ -121,18 +169,17 @@ export default function ClientDashboard() {
         fetchedLeads.push({ id: doc.id, ...doc.data() } as Lead);
       });
       
-      // Sort descending by createdAt
-      fetchedLeads.sort((a, b) => {
-        const timeA = a.createdAt?.toMillis() || 0;
-        const timeB = b.createdAt?.toMillis() || 0;
-        return timeB - timeA;
-      });
-      
-      setLeads(fetchedLeads);
+      if (fetchedLeads.length > 0) {
+        setOlderLeads(prev => [...prev, ...fetchedLeads]);
+        setLastVisibleLead(querySnapshot.docs[querySnapshot.docs.length - 1]);
+        setHasMoreLeads(fetchedLeads.length === 50);
+      } else {
+        setHasMoreLeads(false);
+      }
     } catch (error) {
-      console.error("Error fetching leads:", error);
+      console.error("Error loading more leads:", error);
     } finally {
-      setLoading(false);
+      setLoadingMoreLeads(false);
     }
   };
 
@@ -280,7 +327,6 @@ export default function ClientDashboard() {
   };
 
   useEffect(() => {
-    fetchLeads();
     fetchAgents();
     fetchTeamMembers();
     fetchLinkedPages();
@@ -289,7 +335,8 @@ export default function ClientDashboard() {
   }, [user?.clientId]);
 
   const handleLeadUpdated = (updatedLead: Lead) => {
-    setLeads(leads.map(l => l.id === updatedLead.id ? updatedLead : l));
+    setRealTimeLeads(prev => prev.map(l => l.id === updatedLead.id ? updatedLead : l));
+    setOlderLeads(prev => prev.map(l => l.id === updatedLead.id ? updatedLead : l));
     setSelectedLead(updatedLead);
   };
 
@@ -331,8 +378,6 @@ export default function ClientDashboard() {
       setSubSource('');
       setAssignedTo('');
       setIsModalOpen(false);
-      
-      await fetchLeads();
     } catch (error) {
       console.error("Error adding lead:", error);
       alert("Failed to add lead. Check console for details.");
@@ -407,12 +452,12 @@ export default function ClientDashboard() {
   const handleStatusChange = async (leadId: string, newStatus: string) => {
     try {
       // Optimistic update
-      setLeads(leads.map(lead => lead.id === leadId ? { ...lead, status: newStatus } : lead));
+      setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus } : lead));
+      setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus } : lead));
       await updateDoc(doc(db, 'leads', leadId), { status: newStatus });
     } catch (error) {
       console.error("Error updating status:", error);
       // Revert on error
-      fetchLeads();
     }
   };
 
@@ -421,7 +466,13 @@ export default function ClientDashboard() {
       const assignedUser = teamMembers.find(m => m.id === agentId);
       const assignedToName = assignedUser ? assignedUser.name : '';
       
-      setLeads(leads.map(lead => lead.id === leadId ? { 
+      setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { 
+        ...lead, 
+        assignedTo: agentId,
+        assignedToId: agentId,
+        assignedToName: assignedToName
+      } : lead));
+      setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { 
         ...lead, 
         assignedTo: agentId,
         assignedToId: agentId,
@@ -435,7 +486,6 @@ export default function ClientDashboard() {
       });
     } catch (error) {
       console.error("Error assigning lead:", error);
-      fetchLeads();
     }
   };
 
@@ -970,6 +1020,29 @@ export default function ClientDashboard() {
                     </div>
                   </div>
                 )}
+
+                {/* Load More Button */}
+                {hasMoreLeads && leads.length > 0 && (
+                  <div className="mt-6 flex justify-center pb-8">
+                    <button
+                      onClick={loadMoreLeads}
+                      disabled={loadingMoreLeads}
+                      className="flex items-center gap-2 px-6 py-2.5 bg-white border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loadingMoreLeads ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-stone-200 border-t-stone-600 rounded-full animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <Search className="w-4 h-4" />
+                          Load More Leads
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </>
             ) : activeTab === 'team' ? (
               /* Team View */
@@ -1427,7 +1500,7 @@ export default function ClientDashboard() {
                               <h3 className="text-lg font-semibold text-stone-900">Meta / Facebook Ads</h3>
                               {linkedPages.length > 0 ? (
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                                  {linkedPages.length} Page{linkedPages.length !== 1 ? 's' : ''} Connected
+                                  Connected
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-600">

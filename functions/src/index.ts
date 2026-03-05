@@ -1,79 +1,134 @@
 import { onCall, HttpsError, onRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
+import axios from "axios"; 
 
 // Initialize the Firebase Admin SDK
 admin.initializeApp();
 const db = getFirestore(admin.app(), 'crmdb');
 
 export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) => {
-  // 1. Only allow POST requests
-  if (req.method !== "POST") {
-    res.status(405).send("Method Not Allowed. Please use POST.");
-    return;
-  }
+  // 1. HANDSHAKE: Handle Meta Verification (GET Request)
+  if (req.method === "GET") {
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
 
-  // 2. Extract data from body or query (for flexibility)
-  const data = { ...req.query, ...req.body };
-  const { clientId, name, email, phone, source, project } = data;
-
-  // 3. Validate clientId (Required for data isolation)
-  if (!clientId) {
-    res.status(400).send("Error: clientId is required for lead attribution.");
-    return;
-  }
-
-  try {
-    const finalSource = source || "Webhook";
-    let assignedToId = null;
-    let assignedToName = null;
-
-    // Fetch assignment rules
-    const rulesSnapshot = await db.collection("lead_assignment_rules")
-      .where("clientId", "==", clientId)
-      .where("sourceName", "==", finalSource)
-      .get();
-
-    if (!rulesSnapshot.empty) {
-      const ruleData = rulesSnapshot.docs[0].data();
-      assignedToId = ruleData.agentId;
-      assignedToName = ruleData.agentName;
+    // Use the secret you'll put in the Meta Developer Portal
+    if (mode === "subscribe" && token === "MINTAGE_CRM_SECRET") {
+      res.status(200).send(challenge);
+      return;
     }
-
-    // 4. Map incoming data to our Lead schema
-    const leadData = {
-      clientId: clientId,
-      firstName: name || "External",
-      lastName: "Lead",
-      email: email || "",
-      phone: phone || "",
-      source: finalSource,
-      projectProperty: project || "General Inquiry",
-      status: "New",
-      assignedTo: assignedToId,
-      assignedToId: assignedToId,
-      assignedToName: assignedToName,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
-
-    // 5. Save to Firestore
-    await db.collection("leads").add(leadData);
-
-    // 6. Return success
-    res.status(200).json({ 
-      success: true, 
-      message: "Lead captured successfully.",
-      received: leadData 
-    });
-
-  } catch (error: any) {
-    console.error("Webhook Error:", error);
-    res.status(500).send("Internal Server Error: Failed to save lead.");
+    res.status(403).send("Forbidden");
+    return;
   }
+
+  // 2. LEAD CATCHER: Handle POST Request (Manual Webhook OR Meta)
+  if (req.method === "POST") {
+    try {
+      let leadData: any = {};
+      let clientId: string | null = null;
+
+      // CHECK: Is this from Meta? (Facebook sends a specific structure)
+      if (req.body.object === "page" && req.body.entry?.[0]?.changes?.[0]?.value?.leadgen_id) {
+        const changes = req.body.entry[0].changes[0].value;
+        const pageId = changes.page_id;
+        const leadgenId = changes.leadgen_id;
+
+        // Find the client who owns this Facebook Page
+        const integrationQuery = await db.collection("facebook_integrations")
+          .where("pageId", "==", pageId)
+          .limit(1)
+          .get();
+
+        if (integrationQuery.empty) {
+          console.error(`No client integration found for Page ID: ${pageId}`);
+          res.status(404).send("Integration not found");
+          return;
+        }
+
+        const integrationData = integrationQuery.docs[0].data();
+        clientId = integrationData.clientId;
+        const pageAccessToken = integrationData.pageAccessToken;
+
+        // Fetch actual lead details (Name, Email, Phone) from Meta Graph API
+        const fbResponse = await axios.get(
+          `https://graph.facebook.com/v19.0/${leadgenId}?access_token=${pageAccessToken}`
+        );
+        
+        const fbFields = fbResponse.data.field_data;
+        
+        leadData = {
+          name: fbFields.find((f: any) => f.name === "full_name")?.values[0] || "FB Lead",
+          email: fbFields.find((f: any) => f.name === "email")?.values[0] || "",
+          phone: fbFields.find((f: any) => f.name === "phone_number")?.values[0] || "",
+          source: "Facebook",
+          project: "Facebook Ad Campaign"
+        };
+      } else {
+        // Fallback: Use your existing manual webhook logic (for Pabbly/Zapier/Direct)
+        const data = { ...req.query, ...req.body };
+        clientId = data.clientId;
+        leadData = {
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          source: data.source || "Webhook",
+          project: data.project || "General Inquiry"
+        };
+      }
+
+      if (!clientId) {
+        res.status(400).send("Error: clientId is required.");
+        return;
+      }
+
+      // --- START ASSIGNMENT LOGIC (Existing) ---
+      let assignedToId = null;
+      let assignedToName = null;
+
+      const rulesSnapshot = await db.collection("lead_assignment_rules")
+        .where("clientId", "==", clientId)
+        .where("sourceName", "==", leadData.source)
+        .get();
+
+      if (!rulesSnapshot.empty) {
+        const ruleData = rulesSnapshot.docs[0].data();
+        assignedToId = ruleData.agentId;
+        assignedToName = ruleData.agentName;
+      }
+
+      const finalLead = {
+        clientId: clientId,
+        firstName: leadData.name || "External",
+        lastName: "Lead",
+        email: leadData.email || "",
+        phone: leadData.phone || "",
+        source: leadData.source,
+        projectProperty: leadData.project,
+        status: "New",
+        assignedTo: assignedToId,
+        assignedToId: assignedToId,
+        assignedToName: assignedToName,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      await db.collection("leads").add(finalLead);
+      // --- END ASSIGNMENT LOGIC ---
+
+      res.status(200).json({ success: true, message: "Event processed", received: finalLead });
+
+    } catch (error: any) {
+      console.error("Webhook Processing Error:", error);
+      res.status(500).send("Internal Server Error");
+    }
+    return;
+  }
+
+  res.status(405).send("Method Not Allowed");
 });
 
 export const createAgent = onCall(async (request) => {
-  // 1. Verify Authentication & Authorization
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "You must be logged in to create an agent.");
   }
@@ -87,14 +142,12 @@ export const createAgent = onCall(async (request) => {
     throw new HttpsError("failed-precondition", "No clientId found on caller's token.");
   }
 
-  // 2. Extract data
   const { email, password, name } = request.data;
   if (!email || !password || !name) {
     throw new HttpsError("invalid-argument", "Email, password, and name are required.");
   }
 
   try {
-    // 2.5 Check Agent Limit
     const clientDoc = await db.collection("clients").doc(clientId).get();
     if (!clientDoc.exists) {
       throw new HttpsError("not-found", "Client document not found.");
@@ -113,23 +166,20 @@ export const createAgent = onCall(async (request) => {
       throw new HttpsError("resource-exhausted", `Agent limit reached. Maximum allowed is ${maxAgents}.`);
     }
 
-    // 3. Create Auth User
     const userRecord = await admin.auth().createUser({
       email,
       password,
       displayName: name,
-      emailVerified: true // Auto-verify for agents created by admin
+      emailVerified: true 
     });
 
     const userId = userRecord.uid;
 
-    // 4. Set Custom Claims
     await admin.auth().setCustomUserClaims(userId, {
       role: "client_agent",
       clientId: clientId,
     });
 
-    // 5. Save to Firestore
     await db.collection("users").doc(userId).set({
       name,
       email,
@@ -138,11 +188,7 @@ export const createAgent = onCall(async (request) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    return { 
-      success: true, 
-      message: "Agent created successfully", 
-      userId 
-    };
+    return { success: true, message: "Agent created successfully", userId };
   } catch (error: any) {
     console.error("Error creating agent:", error);
     throw new HttpsError("internal", error.message || "Failed to create agent.");
@@ -162,16 +208,12 @@ export const deleteAgent = onCall(async (request) => {
   }
 
   try {
-    // Verify agent belongs to this client
     const agentDoc = await db.collection("users").doc(agentId).get();
     if (!agentDoc.exists || agentDoc.data()?.clientId !== clientId || agentDoc.data()?.role !== "client_agent") {
       throw new HttpsError("permission-denied", "You can only delete agents in your own workspace.");
     }
 
-    // Delete from Auth
     await admin.auth().deleteUser(agentId);
-
-    // Delete from Firestore
     await db.collection("users").doc(agentId).delete();
 
     return { success: true, message: "Agent deleted successfully." };
@@ -194,16 +236,12 @@ export const updateAgent = onCall(async (request) => {
   }
 
   try {
-    // Verify agent belongs to this client
     const agentDoc = await db.collection("users").doc(agentId).get();
     if (!agentDoc.exists || agentDoc.data()?.clientId !== clientId || agentDoc.data()?.role !== "client_agent") {
       throw new HttpsError("permission-denied", "You can only update agents in your own workspace.");
     }
 
-    // Update Auth (DisplayName)
     await admin.auth().updateUser(agentId, { displayName: name });
-
-    // Update Firestore
     await db.collection("users").doc(agentId).update({ name });
 
     return { success: true, message: "Agent updated successfully." };
@@ -214,32 +252,24 @@ export const updateAgent = onCall(async (request) => {
 });
 
 export const registerNewClient = onCall(async (request) => {
-  // 1. Extract data from the request
   const { email, password, companyName } = request.data;
 
-  // 2. Validate input
   if (!email || !password || !companyName) {
-    throw new HttpsError(
-      "invalid-argument",
-      "The function must be called with email, password, and companyName."
-    );
+    throw new HttpsError("invalid-argument", "The function must be called with email, password, and companyName.");
   }
 
   try {
-    // 3. Create the Client document first to generate a clientId
     const clientRef = db.collection("clients").doc();
     const clientId = clientRef.id;
 
     await clientRef.set({
       name: companyName,
-      subscriptionPlan: "BASIC", // Default plan
+      subscriptionPlan: "BASIC",
       status: "ACTIVE",
-      maxAgents: 2, // Default limit
+      maxAgents: 2, 
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 4. Create the Firebase Auth User
-    // We set emailVerified to false so they must verify before accessing the app
     const userRecord = await admin.auth().createUser({
       email: email,
       password: password,
@@ -248,13 +278,11 @@ export const registerNewClient = onCall(async (request) => {
 
     const userId = userRecord.uid;
 
-    // 5. Set Custom Claims for the new Client Admin
     await admin.auth().setCustomUserClaims(userRecord.uid, {
       role: "client_admin",
       clientId: clientRef.id,
     });
 
-    // 6. Create the User document in Firestore
     await db.collection("users").doc(userId).set({
       email: email,
       role: "client_admin",
@@ -262,31 +290,19 @@ export const registerNewClient = onCall(async (request) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 7. Generate Email Verification Link
     const verificationLink = await admin.auth().generateEmailVerificationLink(email);
-    
-    // TODO: Integrate with an email provider (SendGrid, Postmark, Nodemailer) to send this link.
-    // Example: await sendEmail(email, "Verify your email", `Click here: ${verificationLink}`);
     console.log(`Verification link generated for ${email}: ${verificationLink}`);
 
-    // 8. Return success to the frontend
     return {
       success: true,
       message: "Client registered successfully. Please check your email to verify your account.",
       clientId: clientId,
       userId: userId,
-      // NOTE: Returning the link here is useful for development/testing. 
-      // In production, you should email it and remove it from this response payload.
       verificationLink: verificationLink 
     };
 
   } catch (error: any) {
     console.error("Error registering new client:", error);
-    
-    // Throw a structured error back to the client
-    throw new HttpsError(
-      "internal", 
-      error.message || "Failed to register new client."
-    );
+    throw new HttpsError("internal", error.message || "Failed to register new client.");
   }
 });

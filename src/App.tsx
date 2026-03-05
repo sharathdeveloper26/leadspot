@@ -6,6 +6,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { useIdleTimeout } from './hooks/useIdleTimeout';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 import ClientDashboard from './components/ClientDashboard';
 import AgentDashboard from './components/AgentDashboard';
@@ -54,39 +55,46 @@ function RootRedirect() {
   return <div className="p-8 text-center text-red-600">Invalid account role.</div>;
 }
 
+function AppContent() {
+  useIdleTimeout();
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route 
+          path="/super-admin" 
+          element={
+            <ProtectedRoute allowedRole="SUPER_ADMIN">
+              <SuperAdminDashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/client-admin" 
+          element={
+            <ProtectedRoute allowedRole="client_admin">
+              <ClientDashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/agent-dashboard" 
+          element={
+            <ProtectedRoute allowedRole="client_agent">
+              <AgentDashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route path="/" element={<RootRedirect />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route 
-            path="/super-admin" 
-            element={
-              <ProtectedRoute allowedRole="SUPER_ADMIN">
-                <SuperAdminDashboard />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/client-admin" 
-            element={
-              <ProtectedRoute allowedRole="client_admin">
-                <ClientDashboard />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/agent-dashboard" 
-            element={
-              <ProtectedRoute allowedRole="client_agent">
-                <AgentDashboard />
-              </ProtectedRoute>
-            } 
-          />
-          <Route path="/" element={<RootRedirect />} />
-        </Routes>
-      </BrowserRouter>
+      <AppContent />
     </AuthProvider>
   );
 }
