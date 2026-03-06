@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc, onSnapshot, orderBy, limit, startAfter } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc, onSnapshot, orderBy, limit, startAfter, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,6 +47,9 @@ export default function ClientDashboard() {
   const [addingLead, setAddingLead] = useState(false);
   const [addingAgent, setAddingAgent] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [outboundWebhookUrl, setOutboundWebhookUrl] = useState("");
+  const [isSavingOutboundWebhook, setIsSavingOutboundWebhook] = useState(false);
+  const [isTestingOutboundWebhook, setIsTestingOutboundWebhook] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
   const [lastVisibleLead, setLastVisibleLead] = useState<any>(null);
@@ -92,6 +95,7 @@ export default function ClientDashboard() {
   // Facebook Integration State
   const [fbPages, setFbPages] = useState<any[]>([]);
   const [linkedPages, setLinkedPages] = useState<any[]>([]);
+  const [isLoadingLinkedPages, setIsLoadingLinkedPages] = useState(true);
   const [isLoadingFb, setIsLoadingFb] = useState(false);
 
   // Lead Sources State
@@ -220,6 +224,7 @@ export default function ClientDashboard() {
 
   const fetchLinkedPages = async () => {
     if (!user?.clientId) return;
+    setIsLoadingLinkedPages(true);
     try {
       const q = query(
         collection(db, 'facebook_integrations'),
@@ -233,6 +238,8 @@ export default function ClientDashboard() {
       setLinkedPages(pages);
     } catch (error) {
       console.error("Error fetching linked pages:", error);
+    } finally {
+      setIsLoadingLinkedPages(false);
     }
   };
 
@@ -326,12 +333,26 @@ export default function ClientDashboard() {
     }
   };
 
+  const fetchOutboundWebhook = async () => {
+    if (!user?.clientId) return;
+    try {
+      const docRef = doc(db, 'outbound_integrations', user.clientId);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        setOutboundWebhookUrl(docSnap.data().webhookUrl || "");
+      }
+    } catch (error) {
+      console.error("Error fetching outbound webhook:", error);
+    }
+  };
+
   useEffect(() => {
     fetchAgents();
     fetchTeamMembers();
     fetchLinkedPages();
     fetchLeadSources();
     fetchAssignmentRules();
+    fetchOutboundWebhook();
   }, [user?.clientId]);
 
   const handleLeadUpdated = (updatedLead: Lead) => {
@@ -535,7 +556,28 @@ export default function ClientDashboard() {
   const handleLinkPage = async (page: any) => {
     if (!user?.clientId) return;
     try {
-      const pageRef = doc(db, 'facebook_integrations', page.id);
+      // Page Exclusivity Check
+      const q = query(
+        collection(db, 'facebook_integrations'),
+        where('pageId', '==', page.id)
+      );
+      const querySnapshot = await getDocs(q);
+      
+      let isConnectedToOtherClient = false;
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.clientId !== user.clientId) {
+          isConnectedToOtherClient = true;
+        }
+      });
+
+      if (isConnectedToOtherClient) {
+        alert('Error: This Facebook Page is already connected to another client workspace.');
+        return;
+      }
+
+      // Strict Document ID Isolation
+      const pageRef = doc(db, 'facebook_integrations', user.clientId);
       await setDoc(pageRef, {
         clientId: user.clientId,
         pageId: page.id,
@@ -565,6 +607,64 @@ export default function ClientDashboard() {
     navigator.clipboard.writeText(webhookUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSaveOutboundWebhook = async () => {
+    if (!user?.clientId) return;
+    setIsSavingOutboundWebhook(true);
+    try {
+      const docRef = doc(db, 'outbound_integrations', user.clientId);
+      await setDoc(docRef, {
+        clientId: user.clientId,
+        webhookUrl: outboundWebhookUrl,
+        updatedAt: serverTimestamp()
+      });
+      alert('Outbound webhook configuration saved successfully.');
+    } catch (error) {
+      console.error('Error saving outbound webhook:', error);
+      alert('Failed to save outbound webhook configuration.');
+    } finally {
+      setIsSavingOutboundWebhook(false);
+    }
+  };
+
+  const handleTestOutboundWebhook = async () => {
+    if (!outboundWebhookUrl) {
+      alert('Please enter a webhook URL first.');
+      return;
+    }
+    setIsTestingOutboundWebhook(true);
+    try {
+      const testPayload = {
+        id: 'test-lead-123',
+        name: 'John Doe',
+        email: 'john.doe@example.com',
+        phone: '+1234567890',
+        source: 'Test Webhook',
+        status: 'new',
+        createdAt: new Date().toISOString(),
+        clientId: user?.clientId
+      };
+
+      const response = await fetch(outboundWebhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(testPayload),
+      });
+
+      if (response.ok) {
+        alert('Test lead sent successfully!');
+      } else {
+        alert(`Failed to send test lead. Server responded with status: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Error sending test lead:', error);
+      alert('Failed to send test lead. Please check the URL and try again.');
+    } finally {
+      setIsTestingOutboundWebhook(false);
+    }
   };
 
   // Filtered Leads for Reports
@@ -1498,7 +1598,9 @@ export default function ClientDashboard() {
                           <div>
                             <div className="flex items-center gap-3 mb-1">
                               <h3 className="text-lg font-semibold text-stone-900">Meta / Facebook Ads</h3>
-                              {linkedPages.length > 0 ? (
+                              {isLoadingLinkedPages ? (
+                                <div className="h-5 w-20 bg-stone-200 rounded-full animate-pulse"></div>
+                              ) : linkedPages.length > 0 ? (
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
                                   Connected
                                 </span>
@@ -1634,6 +1736,50 @@ export default function ClientDashboard() {
                           <p className="text-xs text-stone-500 leading-relaxed">
                             Send a POST request from your website's contact form directly to this endpoint.
                           </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Export Leads (Outbound Webhook) Card */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                    <div className="p-6 sm:p-8">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                          <Globe className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-stone-900">Export Leads (Outbound Webhook)</h3>
+                          <p className="text-stone-500 text-sm">Send incoming leads to external tools like Google Sheets via Pabbly or Make.com.</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-stone-700 mb-1">Webhook URL</label>
+                          <input
+                            type="url"
+                            value={outboundWebhookUrl}
+                            onChange={(e) => setOutboundWebhookUrl(e.target.value)}
+                            placeholder="https://hook.us1.make.com/..."
+                            className="w-full px-4 py-2 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                          />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={handleSaveOutboundWebhook}
+                            disabled={isSavingOutboundWebhook}
+                            className="px-4 py-2 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors disabled:opacity-50"
+                          >
+                            {isSavingOutboundWebhook ? 'Saving...' : 'Save Configuration'}
+                          </button>
+                          <button
+                            onClick={handleTestOutboundWebhook}
+                            disabled={isTestingOutboundWebhook || !outboundWebhookUrl}
+                            className="px-4 py-2 bg-stone-100 text-stone-700 text-sm font-medium rounded-xl hover:bg-stone-200 transition-colors disabled:opacity-50"
+                          >
+                            {isTestingOutboundWebhook ? 'Sending...' : 'Send Test Lead'}
+                          </button>
                         </div>
                       </div>
                     </div>
