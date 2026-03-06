@@ -546,19 +546,38 @@ export default function ClientDashboard() {
             if (pages.length > 0 && user?.clientId) {
               const page = pages[0];
               try {
-                const pageRef = doc(db, 'facebook_integrations', user.clientId);
-                await setDoc(pageRef, {
-                  clientId: user.clientId,
-                  pageId: page.id,
-                  pageName: page.name,
-                  pageAccessToken: page.access_token,
-                  status: 'active',
-                  createdAt: serverTimestamp()
+                // Subscribe the page to the app's webhook
+                const subscribeResponse = await fetch(`https://graph.facebook.com/v19.0/${page.id}/subscribed_apps`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                  },
+                  body: new URLSearchParams({
+                    subscribed_fields: 'leadgen',
+                    access_token: page.access_token,
+                  }),
                 });
-                console.log('Successfully saved Facebook integration');
-                fetchLinkedPages();
+                
+                const subscribeData = await subscribeResponse.json();
+                
+                if (subscribeData.success) {
+                  const pageRef = doc(db, 'facebook_integrations', user.clientId);
+                  await setDoc(pageRef, {
+                    clientId: user.clientId,
+                    pageId: page.id,
+                    pageName: page.name,
+                    pageAccessToken: page.access_token,
+                    status: 'active',
+                    createdAt: serverTimestamp()
+                  });
+                  console.log('Successfully saved Facebook integration');
+                  fetchLinkedPages();
+                } else {
+                  console.error('Failed to subscribe page:', subscribeData);
+                  alert('Failed to subscribe Facebook Page to webhook.');
+                }
               } catch (saveError) {
-                console.error('Firebase rejected the save:', saveError);
+                console.error('Firebase rejected the save or subscription failed:', saveError);
               }
             }
           } else {
@@ -594,6 +613,26 @@ export default function ClientDashboard() {
 
       if (isConnectedToOtherClient) {
         alert('Error: This Facebook Page is already connected to another client workspace.');
+        return;
+      }
+
+      // Subscribe the page to the app's webhook
+      const subscribeResponse = await fetch(`https://graph.facebook.com/v19.0/${page.id}/subscribed_apps`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          subscribed_fields: 'leadgen',
+          access_token: page.access_token,
+        }),
+      });
+      
+      const subscribeData = await subscribeResponse.json();
+      
+      if (!subscribeData.success) {
+        console.error('Failed to subscribe page:', subscribeData);
+        alert('Failed to subscribe Facebook Page to webhook.');
         return;
       }
 
