@@ -537,9 +537,30 @@ export default function ClientDashboard() {
     setIsLoadingFb(true);
     window.FB.login((response: any) => {
       if (response.authResponse) {
-        window.FB.api('/me/accounts', (apiResponse: any) => {
+        window.FB.api('/me/accounts', async (apiResponse: any) => {
           if (apiResponse && !apiResponse.error) {
-            setFbPages(apiResponse.data || []);
+            const pages = apiResponse.data || [];
+            setFbPages(pages);
+            
+            // Explicit Save Logic: When the Meta SDK successfully returns the Page token and details
+            if (pages.length > 0 && user?.clientId) {
+              const page = pages[0];
+              try {
+                const pageRef = doc(db, 'facebook_integrations', user.clientId);
+                await setDoc(pageRef, {
+                  clientId: user.clientId,
+                  pageId: page.id,
+                  pageName: page.name,
+                  pageAccessToken: page.access_token,
+                  status: 'active',
+                  createdAt: serverTimestamp()
+                });
+                console.log('Successfully saved Facebook integration');
+                fetchLinkedPages();
+              } catch (saveError) {
+                console.error('Firebase rejected the save:', saveError);
+              }
+            }
           } else {
             console.error('Error fetching pages:', apiResponse.error);
             alert('Failed to fetch Facebook Pages.');
@@ -578,14 +599,21 @@ export default function ClientDashboard() {
 
       // Strict Document ID Isolation
       const pageRef = doc(db, 'facebook_integrations', user.clientId);
-      await setDoc(pageRef, {
-        clientId: user.clientId,
-        pageId: page.id,
-        pageName: page.name,
-        pageAccessToken: page.access_token,
-        status: 'active',
-        createdAt: serverTimestamp()
-      });
+      
+      try {
+        await setDoc(pageRef, {
+          clientId: user.clientId,
+          pageId: page.id,
+          pageName: page.name,
+          pageAccessToken: page.access_token,
+          status: 'active',
+          createdAt: serverTimestamp()
+        });
+      } catch (saveError) {
+        console.error("Firebase rejected the save:", saveError);
+        throw saveError;
+      }
+      
       fetchLinkedPages();
     } catch (error) {
       console.error('Error linking page:', error);
@@ -594,8 +622,9 @@ export default function ClientDashboard() {
   };
 
   const handleDisconnectPage = async (pageId: string) => {
+    if (!user?.clientId) return;
     try {
-      await deleteDoc(doc(db, 'facebook_integrations', pageId));
+      await deleteDoc(doc(db, 'facebook_integrations', user.clientId));
       fetchLinkedPages();
     } catch (error) {
       console.error("Error disconnecting Facebook page:", error);
