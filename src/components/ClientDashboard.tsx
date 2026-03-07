@@ -131,6 +131,41 @@ export default function ClientDashboard() {
 
   const webhookUrl = `https://us-central1-mintage-crm.cloudfunctions.net/incomingLeadWebhook?clientId=${user?.clientId}`;
 
+  // Idle Timeout Logic
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      // 15 minutes = 900,000 ms
+      timeoutId = setTimeout(() => {
+        alert('Session expired due to inactivity');
+        logout();
+      }, 900000);
+    };
+
+    // Initialize the timer
+    resetTimer();
+
+    // Event listeners for user activity
+    const events = ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'];
+    
+    const handleActivity = () => {
+      resetTimer();
+    };
+
+    events.forEach(event => {
+      window.addEventListener(event, handleActivity, { passive: true });
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach(event => {
+        window.removeEventListener(event, handleActivity);
+      });
+    };
+  }, [logout]);
+
   useEffect(() => {
     if (!user?.clientId) return;
     
@@ -923,7 +958,7 @@ export default function ClientDashboard() {
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900">
       {/* Mobile Header Bar */}
       <div className="md:hidden flex items-center justify-between bg-white border-b border-slate-200 p-4 shrink-0">
-        <img src="/mintage-logo.png" alt="Mintage CRM" className="h-10 w-auto" />
+        <img src="/mintage-logo.png" alt="Mintage" className="h-10 w-auto" />
         <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
           <Menu className="w-6 h-6" />
         </button>
@@ -2144,9 +2179,9 @@ export default function ClientDashboard() {
 
       {/* Add Lead Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 sm:p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-6 border-b border-slate-200 shrink-0">
               <h3 className="text-lg font-semibold text-slate-900">Add New Lead</h3>
               <button 
                 onClick={() => setIsModalOpen(false)}
@@ -2156,7 +2191,7 @@ export default function ClientDashboard() {
               </button>
             </div>
             
-            <form onSubmit={handleAddLead} className="p-6 space-y-4">
+            <form id="add-lead-form" onSubmit={handleAddLead} className="p-6 overflow-y-auto flex-1 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">First Name</label>
@@ -2268,18 +2303,21 @@ export default function ClientDashboard() {
                 </div>
               )}
 
-              <div className="pt-4 flex gap-3">
+              </form>
+
+              <div className="p-6 border-t border-slate-200 flex justify-end gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors font-medium text-sm"
+                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors font-medium text-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
+                  form="add-lead-form"
                   disabled={addingLead}
-                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-medium text-sm disabled:opacity-50 flex justify-center items-center"
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-medium text-sm disabled:opacity-50 flex justify-center items-center"
                 >
                   {addingLead ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -2288,7 +2326,6 @@ export default function ClientDashboard() {
                   )}
                 </button>
               </div>
-            </form>
           </div>
         </div>
       )}
