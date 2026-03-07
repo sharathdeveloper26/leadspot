@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle, ChevronDown, ChevronUp, Menu } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 import AddLeadModal from './AddLeadModal';
@@ -38,6 +38,8 @@ declare global {
 export default function ClientDashboard() {
   const { user, clientId, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'leads' | 'integrations' | 'team' | 'reports'>('leads');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('pipeline');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [teamMembers, setTeamMembers] = useState<{id: string, name: string}[]>([]);
@@ -91,6 +93,14 @@ export default function ClientDashboard() {
   // Leads View Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All');
+  const [leadsStartDate, setLeadsStartDate] = useState('');
+  const [leadsEndDate, setLeadsEndDate] = useState('');
+
+  // Pagination & Table State
+  const [currentPage, setCurrentPage] = useState(1);
+  const leadsPerPage = 10;
+  const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
+  const [expandedLeads, setExpandedLeads] = useState<string[]>([]);
 
   // Facebook Integration State
   const [fbPages, setFbPages] = useState<any[]>([]);
@@ -793,7 +803,7 @@ export default function ClientDashboard() {
   const getSourceBadge = (source?: string, subSource?: string) => {
     const s = source?.toLowerCase() || 'manual';
     let icon = <Globe className="w-3 h-3" />;
-    let colorClass = "bg-stone-100 text-stone-600";
+    let colorClass = "bg-slate-100 text-slate-600";
     let label = source || 'Manual';
 
     if (s.includes('facebook')) {
@@ -822,10 +832,10 @@ export default function ClientDashboard() {
       case 'Site Visit Scheduled': return 'bg-purple-50 text-purple-600';
       case 'Site Visit Completed': return 'bg-purple-100 text-purple-700';
       case 'Negotiation': return 'bg-amber-100 text-amber-700';
-      case 'Closed Won': return 'bg-stone-800 text-white';
+      case 'Closed Won': return 'bg-slate-800 text-white';
       case 'Closed Lost': return 'bg-red-100 text-red-700';
-      case 'Junk / Invalid': return 'bg-stone-200 text-stone-600';
-      default: return 'bg-stone-100 text-stone-700';
+      case 'Junk / Invalid': return 'bg-slate-200 text-slate-600';
+      default: return 'bg-slate-100 text-slate-700';
     }
   };
 
@@ -846,29 +856,107 @@ export default function ClientDashboard() {
         matches = false;
       }
     }
+    
+    // Date Range Filter
+    if (leadsStartDate || leadsEndDate) {
+      const leadDate = lead.createdAt ? lead.createdAt.toDate() : new Date();
+      // Reset time for comparison
+      leadDate.setHours(0, 0, 0, 0);
+      
+      if (leadsStartDate) {
+        const start = new Date(leadsStartDate);
+        start.setHours(0, 0, 0, 0);
+        if (leadDate < start) matches = false;
+      }
+      if (leadsEndDate) {
+        const end = new Date(leadsEndDate);
+        end.setHours(23, 59, 59, 999);
+        if (leadDate > end) matches = false;
+      }
+    }
+    
     return matches;
   });
 
+  // Pagination & Bulk Delete Logic
+  const totalPages = Math.ceil(filteredLeadsView.length / leadsPerPage);
+  const paginatedLeads = filteredLeadsView.slice((currentPage - 1) * leadsPerPage, currentPage * leadsPerPage);
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedLeads(paginatedLeads.map(l => l.id));
+    } else {
+      setSelectedLeads([]);
+    }
+  };
+
+  const handleSelectLead = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedLeads(prev => 
+      prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]
+    );
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!window.confirm(`Are you sure you want to delete ${selectedLeads.length} selected leads?`)) return;
+    
+    try {
+      for (const id of selectedLeads) {
+        await deleteDoc(doc(db, 'leads', id));
+      }
+      setSelectedLeads([]);
+      setOlderLeads(prev => prev.filter(l => !selectedLeads.includes(l.id)));
+    } catch (error) {
+      console.error("Error deleting leads:", error);
+      alert("Failed to delete some leads.");
+    }
+  };
+
+  const toggleExpandLead = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedLeads(prev => 
+      prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-stone-50 flex font-sans text-stone-900">
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900">
+      {/* Mobile Header Bar */}
+      <div className="md:hidden flex items-center justify-between bg-white border-b border-slate-200 p-4 shrink-0">
+        <img src="/mintage-logo.png" alt="Mintage CRM" className="h-10 w-auto" />
+        <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
+          <Menu className="w-6 h-6" />
+        </button>
+      </div>
+
+      {/* Sidebar Overlay (Mobile) */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 z-40 md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-stone-200 flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b border-stone-100">
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100">
           <div className="flex items-center gap-2 text-emerald-600 font-semibold text-lg tracking-tight">
-            <Building2 className="w-6 h-6" />
-            <span>Client Portal</span>
+            <img src="/mintage-logo.png" alt="Mintage" className="h-8 w-auto" />
           </div>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
         </div>
         
-        <div className="px-4 py-6 text-xs font-semibold text-stone-400 uppercase tracking-wider">
+        <div className="px-4 py-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">
           Workspace
         </div>
         
         <nav className="flex-1 px-3 space-y-1">
           <button 
-            onClick={() => setActiveTab('leads')}
+            onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }}
             className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-              activeTab === 'leads' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
+              activeTab === 'leads' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
             }`}
           >
             <Users className="w-5 h-5" />
@@ -877,18 +965,18 @@ export default function ClientDashboard() {
           {user?.role === 'client_admin' && (
             <>
               <button 
-                onClick={() => setActiveTab('team')}
+                onClick={() => { setActiveTab('team'); setIsMobileMenuOpen(false); }}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                  activeTab === 'team' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
+                  activeTab === 'team' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 <UserCog className="w-5 h-5" />
                 Team
               </button>
               <button 
-                onClick={() => setActiveTab('integrations')}
+                onClick={() => { setActiveTab('integrations'); setIsMobileMenuOpen(false); }}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                  activeTab === 'integrations' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
+                  activeTab === 'integrations' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 <Link2 className="w-5 h-5" />
@@ -897,9 +985,9 @@ export default function ClientDashboard() {
             </>
           )}
           <button 
-            onClick={() => setActiveTab('reports')}
+            onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
             className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-              activeTab === 'reports' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
+              activeTab === 'reports' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
             }`}
           >
             <LayoutDashboard className="w-5 h-5" />
@@ -907,10 +995,10 @@ export default function ClientDashboard() {
           </button>
         </nav>
 
-        <div className="p-4 border-t border-stone-100">
+        <div className="p-4 border-t border-slate-100">
           <button 
             onClick={logout}
-            className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-colors"
+            className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
           >
             <LogOut className="w-5 h-5" />
             Sign Out
@@ -919,75 +1007,100 @@ export default function ClientDashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-16 bg-white border-b border-stone-200 flex items-center justify-between px-8 shrink-0">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex">
           <h1 className="text-xl font-semibold tracking-tight">
             {activeTab === 'leads' ? 'Leads Management' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Dashboard' : 'Integrations'}
           </h1>
-          <div className="flex items-center gap-2 text-sm text-stone-500 bg-stone-100 px-3 py-1.5 rounded-full">
+          <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
             <UserCircle2 className="w-4 h-4" />
             {user?.email}
           </div>
         </header>
 
-        <div className="flex-1 p-8 overflow-auto">
-          <div className="max-w-7xl mx-auto h-full flex flex-col">
+        <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-auto">
+          <div className="max-w-7xl mx-auto h-full flex flex-col min-w-[800px] md:min-w-0">
             
             {activeTab === 'leads' ? (
               <>
                 {/* Header Actions */}
-                <div className="flex items-center justify-between mb-8 shrink-0">
+                <div className="flex justify-between items-center mb-6 shrink-0">
                   <div>
                     <h2 className="text-2xl font-semibold tracking-tight mb-1">Your Leads</h2>
-                    <p className="text-stone-500 text-sm">Manage and track your prospective customers.</p>
+                    <p className="text-slate-500 text-sm">Manage and track your prospective customers.</p>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-xl px-3 py-1.5 shadow-sm">
-                      <Search className="w-4 h-4 text-stone-400" />
-                      <input
-                        type="text"
-                        placeholder="Search leads..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="text-sm border-none focus:ring-0 text-stone-600 bg-transparent w-40 outline-none"
-                      />
-                    </div>
-                    <select
-                      value={leadsViewSourceFilter}
-                      onChange={(e) => setLeadsViewSourceFilter(e.target.value)}
-                      className="text-sm border border-stone-200 rounded-xl px-3 py-2 text-stone-600 bg-white shadow-sm focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
-                    >
-                      <option value="All">All Sources</option>
-                      {combinedSources.map(sourceName => (
-                        <option key={sourceName} value={sourceName}>{sourceName}</option>
-                      ))}
-                    </select>
-                    <div className="flex items-center bg-white border border-stone-200 rounded-xl p-1 shadow-sm">
-                      <button
-                        onClick={() => setViewMode('pipeline')}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                          viewMode === 'pipeline' ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-700'
-                        }`}
+                  <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="flex items-center gap-2 py-2.5 px-6 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-600 transition-colors whitespace-nowrap"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add New Lead
+                  </button>
+                </div>
+
+                {/* Filters & Controls */}
+                <div className="flex flex-wrap items-center gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm mb-6 shrink-0">
+                  <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 h-10">
+                    <input
+                      type="date"
+                      value={leadsStartDate}
+                      onChange={(e) => setLeadsStartDate(e.target.value)}
+                      className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent outline-none"
+                    />
+                    <span className="text-slate-400 text-sm">to</span>
+                    <input
+                      type="date"
+                      value={leadsEndDate}
+                      onChange={(e) => setLeadsEndDate(e.target.value)}
+                      className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent outline-none"
+                    />
+                    {(leadsStartDate || leadsEndDate) && (
+                      <button 
+                        onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); }}
+                        className="ml-2 text-xs font-medium text-slate-500 hover:text-slate-700 bg-slate-200 hover:bg-slate-300 px-2 py-1 rounded-md transition-colors"
                       >
-                        <KanbanSquare className="w-4 h-4" />
-                        Pipeline
+                        Clear
                       </button>
-                      <button
-                        onClick={() => setViewMode('table')}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                          viewMode === 'table' ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-700'
-                        }`}
-                      >
-                        <List className="w-4 h-4" />
-                        Table
-                      </button>
-                    </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 h-10 flex-1 min-w-[200px]">
+                    <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                    <input
+                      type="text"
+                      placeholder="Search leads..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent w-full outline-none"
+                    />
+                  </div>
+                  <select
+                    value={leadsViewSourceFilter}
+                    onChange={(e) => setLeadsViewSourceFilter(e.target.value)}
+                    className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 h-10 text-slate-600 bg-slate-50 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                  >
+                    <option value="All">All Sources</option>
+                    {combinedSources.map(sourceName => (
+                      <option key={sourceName} value={sourceName}>{sourceName}</option>
+                    ))}
+                  </select>
+                  <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-1 h-10">
                     <button
-                      onClick={() => setIsModalOpen(true)}
-                      className="flex items-center gap-2 py-2 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-600 transition-colors"
+                      onClick={() => setViewMode('pipeline')}
+                      className={`flex items-center gap-2 px-3 py-1 rounded-md text-sm font-medium transition-colors h-full ${
+                        viewMode === 'pipeline' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}
                     >
-                      <Plus className="w-4 h-4" />
-                      Add New Lead
+                      <KanbanSquare className="w-4 h-4" />
+                      Pipeline
+                    </button>
+                    <button
+                      onClick={() => setViewMode('table')}
+                      className={`flex items-center gap-2 px-3 py-1 rounded-md text-sm font-medium transition-colors h-full ${
+                        viewMode === 'table' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      <List className="w-4 h-4" />
+                      Table
                     </button>
                   </div>
                 </div>
@@ -997,121 +1110,228 @@ export default function ClientDashboard() {
                     <div className="w-8 h-8 border-4 border-emerald-600/20 border-t-emerald-600 rounded-full animate-spin" />
                   </div>
                 ) : leads.length === 0 ? (
-                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-12 text-center">
-                    <Users className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-stone-900 mb-1">No leads found</h3>
-                    <p className="text-stone-500 text-sm">Get started by adding a new lead.</p>
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+                    <Users className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-slate-900 mb-1">No leads found</h3>
+                    <p className="text-slate-500 text-sm">Get started by adding a new lead.</p>
                   </div>
                 ) : viewMode === 'table' ? (
                   /* Table View */
-                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden shrink-0">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-stone-50 border-b border-stone-200 text-xs uppercase tracking-wider text-stone-500 font-semibold">
-                            <th className="px-6 py-4">Date</th>
-                            <th className="px-6 py-4">Name</th>
-                            <th className="px-6 py-4">Phone</th>
-                            <th className="px-6 py-4">Email</th>
-                            <th className="px-6 py-4">Source</th>
-                            <th className="px-6 py-4">Tags</th>
-                            <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4">Project / Property</th>
-                            <th className="px-6 py-4">Assigned To</th>
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden shrink-0">
+                    {selectedLeads.length > 0 && (
+                      <div className="bg-red-50 px-6 py-3 border-b border-red-100 flex items-center justify-between">
+                        <span className="text-sm font-medium text-red-800">
+                          {selectedLeads.length} lead{selectedLeads.length > 1 ? 's' : ''} selected
+                        </span>
+                        <button
+                          onClick={handleDeleteSelected}
+                          className="flex items-center gap-2 py-1.5 px-3 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete Selected
+                        </button>
+                      </div>
+                    )}
+                    <div className="overflow-x-auto max-h-[calc(100vh-280px)]">
+                      <table className="w-full text-left border-collapse relative">
+                        <thead className="sticky top-0 z-10 bg-slate-50 shadow-sm">
+                          <tr className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
+                            <th className="px-6 py-4 w-10 bg-slate-50">
+                              <input 
+                                type="checkbox" 
+                                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer"
+                                checked={paginatedLeads.length > 0 && selectedLeads.length === paginatedLeads.length}
+                                onChange={handleSelectAll}
+                              />
+                            </th>
+                            <th className="px-6 py-4 w-10 bg-slate-50"></th>
+                            <th className="px-6 py-4 bg-slate-50">Date</th>
+                            <th className="px-6 py-4 bg-slate-50">Name</th>
+                            <th className="px-6 py-4 bg-slate-50">Phone</th>
+                            <th className="px-6 py-4 bg-slate-50">Email</th>
+                            <th className="px-6 py-4 bg-slate-50">Source</th>
+                            <th className="px-6 py-4 bg-slate-50">Tags</th>
+                            <th className="px-6 py-4 bg-slate-50">Status</th>
+                            <th className="px-6 py-4 bg-slate-50">Project / Property</th>
+                            <th className="px-6 py-4 bg-slate-50">Assigned To</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-stone-200">
-                          {filteredLeadsView.map((lead) => (
-                            <tr 
-                              key={lead.id} 
-                              onClick={() => openLeadDetails(lead)}
-                              className="hover:bg-stone-50/50 transition-colors cursor-pointer"
-                            >
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-stone-500">
-                                {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="font-medium text-stone-900">
-                                  {lead.firstName} {lead.lastName}
-                                  {lead.isDuplicate && (
-                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 uppercase tracking-wider">
-                                      Duplicate
+                        <tbody className="divide-y divide-slate-200 bg-white">
+                          {paginatedLeads.map((lead) => (
+                            <React.Fragment key={lead.id}>
+                              <tr 
+                                onClick={() => openLeadDetails(lead)}
+                                className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                              >
+                                <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                  <input 
+                                    type="checkbox" 
+                                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer"
+                                    checked={selectedLeads.includes(lead.id)}
+                                    onChange={(e) => handleSelectLead(lead.id, e as any)}
+                                  />
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => toggleExpandLead(lead.id, e)}>
+                                  <button className="text-slate-400 hover:text-slate-600 transition-colors">
+                                    {expandedLeads.includes(lead.id) ? (
+                                      <ChevronUp className="w-4 h-4" />
+                                    ) : (
+                                      <ChevronDown className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                  {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="font-medium text-slate-900">
+                                    {lead.firstName} {lead.lastName}
+                                    {lead.isDuplicate && (
+                                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 uppercase tracking-wider">
+                                        Duplicate
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                                    <Phone className="w-3.5 h-3.5" />
+                                    {lead.phone || '-'}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                                    <Mail className="w-3.5 h-3.5" />
+                                    {lead.email || '-'}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  {getSourceBadge(lead.source, lead.subSource)}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex flex-wrap gap-1 max-w-[150px]">
+                                    {lead.tags?.map(tag => (
+                                      <span key={tag} className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-tighter">
+                                        {tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(lead.status)}`}>
+                                    {lead.status}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center gap-2 text-slate-600 text-sm">
+                                    <Home className="w-4 h-4 text-slate-400" />
+                                    {lead.projectProperty || '-'}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  {user?.role === 'client_admin' ? (
+                                    <select
+                                      value={lead.assignedToId || lead.assignedTo || ''}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        handleAssignLead(lead.id, e.target.value);
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                                    >
+                                      <option value="">Unassigned</option>
+                                      {teamMembers.map(member => (
+                                        <option key={member.id} value={member.id}>{member.name}</option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span className="text-sm text-slate-600">
+                                      {lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned'}
                                     </span>
                                   )}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center gap-2 text-sm text-stone-500">
-                                  <Phone className="w-3.5 h-3.5" />
-                                  {lead.phone || '-'}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center gap-2 text-sm text-stone-500">
-                                  <Mail className="w-3.5 h-3.5" />
-                                  {lead.email || '-'}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                {getSourceBadge(lead.source, lead.subSource)}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex flex-wrap gap-1 max-w-[150px]">
-                                  {lead.tags?.map(tag => (
-                                    <span key={tag} className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-stone-100 text-stone-600 border border-stone-200 uppercase tracking-tighter">
-                                      {tag}
-                                    </span>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(lead.status)}`}>
-                                  {lead.status}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center gap-2 text-stone-600 text-sm">
-                                  <Home className="w-4 h-4 text-stone-400" />
-                                  {lead.projectProperty || '-'}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                {user?.role === 'client_admin' ? (
-                                  <select
-                                    value={lead.assignedToId || lead.assignedTo || ''}
-                                    onChange={(e) => {
-                                      e.stopPropagation();
-                                      handleAssignLead(lead.id, e.target.value);
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="text-sm bg-stone-50 border border-stone-200 rounded-lg px-2 py-1 text-stone-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
-                                  >
-                                    <option value="">Unassigned</option>
-                                    {teamMembers.map(member => (
-                                      <option key={member.id} value={member.id}>{member.name}</option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <span className="text-sm text-stone-600">
-                                    {lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned'}
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
+                                </td>
+                              </tr>
+                              {expandedLeads.includes(lead.id) && (
+                                <tr className="bg-slate-50/50 border-b border-slate-200">
+                                  <td colSpan={11} className="px-6 py-4">
+                                    <div className="grid grid-cols-4 gap-4 text-sm">
+                                      {lead.formId && (
+                                        <div>
+                                          <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Form ID</span>
+                                          <span className="text-slate-700 font-mono text-xs">{lead.formId}</span>
+                                        </div>
+                                      )}
+                                      {lead.campaignId && (
+                                        <div>
+                                          <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Campaign ID</span>
+                                          <span className="text-slate-700 font-mono text-xs">{lead.campaignId}</span>
+                                        </div>
+                                      )}
+                                      {lead.adsetId && (
+                                        <div>
+                                          <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Adset ID</span>
+                                          <span className="text-slate-700 font-mono text-xs">{lead.adsetId}</span>
+                                        </div>
+                                      )}
+                                      {lead.adId && (
+                                        <div>
+                                          <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Ad ID</span>
+                                          <span className="text-slate-700 font-mono text-xs">{lead.adId}</span>
+                                        </div>
+                                      )}
+                                      {!lead.formId && !lead.campaignId && !lead.adsetId && !lead.adId && (
+                                        <div className="col-span-4 text-slate-500 italic text-xs">
+                                          No extended marketing data available for this lead.
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
                           ))}
                         </tbody>
                       </table>
                     </div>
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                      <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-slate-50/80">
+                        <div className="text-sm text-slate-500">
+                          Showing <span className="font-medium text-slate-900">{((currentPage - 1) * leadsPerPage) + 1}</span> to <span className="font-medium text-slate-900">{Math.min(currentPage * leadsPerPage, filteredLeadsView.length)}</span> of <span className="font-medium text-slate-900">{filteredLeadsView.length}</span> leads
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                          >
+                            Previous
+                          </button>
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm text-slate-500 px-2">
+                              Page {currentPage} of {totalPages}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   /* Pipeline View */
                   <div className="flex-1 overflow-x-auto pb-4">
                     <div className="flex gap-6 h-full min-w-max">
                       {PIPELINE_STATUSES.map(status => (
-                        <div key={status} className="w-80 flex flex-col bg-stone-100/50 rounded-2xl border border-stone-200/60 overflow-hidden shrink-0">
-                          <div className="p-4 border-b border-stone-200/60 bg-stone-100/80 flex items-center justify-between shrink-0">
-                            <h3 className="font-semibold text-stone-800">{status}</h3>
-                            <span className="bg-white text-stone-500 text-xs font-medium px-2 py-1 rounded-full shadow-sm border border-stone-200">
+                        <div key={status} className="w-80 flex flex-col bg-slate-100/50 rounded-2xl border border-slate-200/60 overflow-hidden shrink-0">
+                          <div className="p-4 border-b border-slate-200/60 bg-slate-100/80 flex items-center justify-between shrink-0">
+                            <h3 className="font-semibold text-slate-800">{status}</h3>
+                            <span className="bg-white text-slate-500 text-xs font-medium px-2 py-1 rounded-full shadow-sm border border-slate-200">
                               {filteredLeadsView.filter(l => l.status === status).length}
                             </span>
                           </div>
@@ -1120,18 +1340,18 @@ export default function ClientDashboard() {
                               <div 
                                 key={lead.id} 
                                 onClick={() => openLeadDetails(lead)}
-                                className="bg-white p-4 rounded-xl shadow-sm border border-stone-200 hover:shadow-md transition-shadow cursor-pointer"
+                                className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow cursor-pointer"
                               >
                                 <div className="flex justify-between items-start mb-3">
-                                  <div className="font-medium text-stone-900 leading-tight">{lead.firstName} {lead.lastName}</div>
+                                  <div className="font-medium text-slate-900 leading-tight">{lead.firstName} {lead.lastName}</div>
                                   {getSourceBadge(lead.source, lead.subSource)}
                                 </div>
                                 <div className="space-y-2 mb-4">
-                                  <div className="flex items-center gap-2 text-xs text-stone-500">
+                                  <div className="flex items-center gap-2 text-xs text-slate-500">
                                     <Phone className="w-3.5 h-3.5 shrink-0" />
                                     <span className="truncate">{lead.phone || 'No phone'}</span>
                                   </div>
-                                  <div className="flex items-center gap-2 text-xs text-stone-500">
+                                  <div className="flex items-center gap-2 text-xs text-slate-500">
                                     <Home className="w-3.5 h-3.5 shrink-0" />
                                     <span className="truncate">{lead.projectProperty || 'No project'}</span>
                                   </div>
@@ -1139,7 +1359,7 @@ export default function ClientDashboard() {
                                 {lead.tags && lead.tags.length > 0 && (
                                   <div className="flex flex-wrap gap-1 mb-4">
                                     {lead.tags.map(tag => (
-                                      <span key={tag} className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-stone-100 text-stone-600 border border-stone-200 uppercase tracking-tighter">
+                                      <span key={tag} className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-tighter">
                                         {tag}
                                       </span>
                                     ))}
@@ -1153,7 +1373,7 @@ export default function ClientDashboard() {
                                       handleStatusChange(lead.id, e.target.value);
                                     }}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="w-full text-xs bg-stone-50 border border-stone-200 rounded-lg px-2 py-1.5 text-stone-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                                    className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
                                   >
                                     {PIPELINE_STATUSES.map(s => (
                                       <option key={s} value={s}>{s}</option>
@@ -1167,7 +1387,7 @@ export default function ClientDashboard() {
                                         handleAssignLead(lead.id, e.target.value);
                                       }}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="w-full text-xs bg-stone-50 border border-stone-200 rounded-lg px-2 py-1.5 text-stone-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
                                     >
                                       <option value="">Unassigned</option>
                                       {teamMembers.map(member => (
@@ -1175,7 +1395,7 @@ export default function ClientDashboard() {
                                       ))}
                                     </select>
                                   ) : (
-                                    <div className="text-xs text-stone-500 px-1">
+                                    <div className="text-xs text-slate-500 px-1">
                                       Agent: {lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned'}
                                     </div>
                                   )}
@@ -1195,11 +1415,11 @@ export default function ClientDashboard() {
                     <button
                       onClick={loadMoreLeads}
                       disabled={loadingMoreLeads}
-                      className="flex items-center gap-2 px-6 py-2.5 bg-white border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loadingMoreLeads ? (
                         <>
-                          <div className="w-4 h-4 border-2 border-stone-200 border-t-stone-600 rounded-full animate-spin" />
+                          <div className="w-4 h-4 border-2 border-slate-200 border-t-slate-600 rounded-full animate-spin" />
                           Loading...
                         </>
                       ) : (
@@ -1219,7 +1439,7 @@ export default function ClientDashboard() {
                   <div className="flex items-center justify-between mb-8">
                     <div>
                       <h2 className="text-2xl font-semibold tracking-tight mb-1">Your Team</h2>
-                      <p className="text-stone-500 text-sm">Manage your sales agents and their access.</p>
+                      <p className="text-slate-500 text-sm">Manage your sales agents and their access.</p>
                     </div>
                     {user?.role === 'client_admin' && (
                       <button
@@ -1232,18 +1452,18 @@ export default function ClientDashboard() {
                     )}
                   </div>
 
-                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     {agents.length === 0 ? (
                       <div className="p-12 text-center">
-                        <Users className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-stone-900 mb-1">No agents found</h3>
-                        <p className="text-stone-500 text-sm">Get started by adding a new agent to your team.</p>
+                        <Users className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-slate-900 mb-1">No agents found</h3>
+                        <p className="text-slate-500 text-sm">Get started by adding a new agent to your team.</p>
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-stone-50 border-b border-stone-200 text-xs uppercase tracking-wider text-stone-500 font-semibold">
+                            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
                               <th className="px-6 py-4">Name</th>
                               <th className="px-6 py-4">Email</th>
                               <th className="px-6 py-4">Role</th>
@@ -1251,9 +1471,9 @@ export default function ClientDashboard() {
                               <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-stone-200">
+                          <tbody className="divide-y divide-slate-200">
                             {agents.map((agent) => (
-                              <tr key={agent.id} className="hover:bg-stone-50/50 transition-colors">
+                              <tr key={agent.id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-6 py-4 whitespace-nowrap">
                                   {inlineEditingAgentId === agent.id ? (
                                     <div className="flex items-center gap-2">
@@ -1261,7 +1481,7 @@ export default function ClientDashboard() {
                                         type="text"
                                         value={inlineEditingName}
                                         onChange={(e) => setInlineEditingName(e.target.value)}
-                                        className="px-2 py-1 text-sm border border-stone-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                        className="px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500"
                                         autoFocus
                                       />
                                       <button
@@ -1272,19 +1492,19 @@ export default function ClientDashboard() {
                                       </button>
                                       <button
                                         onClick={() => setInlineEditingAgentId(null)}
-                                        className="text-stone-500 hover:text-stone-700 font-medium text-xs"
+                                        className="text-slate-500 hover:text-slate-700 font-medium text-xs"
                                       >
                                         Cancel
                                       </button>
                                     </div>
                                   ) : (
-                                    <div className="font-medium text-stone-900">
+                                    <div className="font-medium text-slate-900">
                                       {agent.name}
                                     </div>
                                   )}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="flex items-center gap-2 text-sm text-stone-500">
+                                  <div className="flex items-center gap-2 text-sm text-slate-500">
                                     <Mail className="w-3.5 h-3.5" />
                                     {agent.email}
                                   </div>
@@ -1294,7 +1514,7 @@ export default function ClientDashboard() {
                                     Agent
                                   </span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-stone-500">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                                   <div className="flex items-center gap-2">
                                     <Calendar className="w-4 h-4" />
                                     {agent.createdAt ? new Date(agent.createdAt.toDate()).toLocaleDateString() : 'Just now'}
@@ -1329,20 +1549,20 @@ export default function ClientDashboard() {
                     <div className="flex items-center justify-between mb-6">
                       <div>
                         <h2 className="text-2xl font-semibold tracking-tight mb-1">Lead Auto-Assignment Rules</h2>
-                        <p className="text-stone-500 text-sm">Automatically assign incoming leads to specific agents based on their source.</p>
+                        <p className="text-slate-500 text-sm">Automatically assign incoming leads to specific agents based on their source.</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
-                      <div className="p-6 border-b border-stone-200 bg-stone-50">
-                        <h3 className="text-sm font-semibold text-stone-900 mb-4">Create New Rule</h3>
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                      <div className="p-6 border-b border-slate-200 bg-slate-50">
+                        <h3 className="text-sm font-semibold text-slate-900 mb-4">Create New Rule</h3>
                         <div className="flex flex-col sm:flex-row gap-4 items-end">
                           <div className="flex-1 w-full">
-                            <label className="block text-xs font-medium text-stone-700 mb-1">Lead Source</label>
+                            <label className="block text-xs font-medium text-slate-700 mb-1">Lead Source</label>
                             <select
                               value={newRuleSource}
                               onChange={(e) => setNewRuleSource(e.target.value)}
-                              className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 text-stone-600 bg-white shadow-sm focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                              className="w-full text-sm border border-slate-200 rounded-xl px-3 py-2 text-slate-600 bg-white shadow-sm focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
                             >
                               <option value="">Select a source...</option>
                               {leadSources.map(source => (
@@ -1351,11 +1571,11 @@ export default function ClientDashboard() {
                             </select>
                           </div>
                           <div className="flex-1 w-full">
-                            <label className="block text-xs font-medium text-stone-700 mb-1">Assign To Agent</label>
+                            <label className="block text-xs font-medium text-slate-700 mb-1">Assign To Agent</label>
                             <select
                               value={newRuleAgentId}
                               onChange={(e) => setNewRuleAgentId(e.target.value)}
-                              className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 text-stone-600 bg-white shadow-sm focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                              className="w-full text-sm border border-slate-200 rounded-xl px-3 py-2 text-slate-600 bg-white shadow-sm focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
                             >
                               <option value="">Select an agent...</option>
                               {teamMembers.map(member => (
@@ -1379,31 +1599,31 @@ export default function ClientDashboard() {
                       </div>
 
                       {assignmentRules.length === 0 ? (
-                        <div className="p-8 text-center text-stone-500 text-sm">
+                        <div className="p-8 text-center text-slate-500 text-sm">
                           No auto-assignment rules configured yet.
                         </div>
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full text-left border-collapse">
                             <thead>
-                              <tr className="bg-stone-50 border-b border-stone-200 text-xs uppercase tracking-wider text-stone-500 font-semibold">
+                              <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
                                 <th className="px-6 py-4">Lead Source</th>
                                 <th className="px-6 py-4">Assigned Agent</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-stone-200">
+                            <tbody className="divide-y divide-slate-200">
                               {assignmentRules.map((rule) => (
-                                <tr key={rule.id} className="hover:bg-stone-50/50 transition-colors">
+                                <tr key={rule.id} className="hover:bg-slate-50/50 transition-colors">
                                   <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="font-medium text-stone-900 flex items-center gap-2">
-                                      <Globe className="w-4 h-4 text-stone-400" />
+                                    <div className="font-medium text-slate-900 flex items-center gap-2">
+                                      <Globe className="w-4 h-4 text-slate-400" />
                                       {rule.sourceName}
                                     </div>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="flex items-center gap-2 text-stone-600">
-                                      <UserCircle2 className="w-4 h-4 text-stone-400" />
+                                    <div className="flex items-center gap-2 text-slate-600">
+                                      <UserCircle2 className="w-4 h-4 text-slate-400" />
                                       {rule.agentName}
                                     </div>
                                   </td>
@@ -1432,32 +1652,32 @@ export default function ClientDashboard() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                   <div>
                     <h2 className="text-2xl font-semibold tracking-tight mb-1">Analytics Dashboard</h2>
-                    <p className="text-stone-500 text-sm">Overview of your lead performance and team metrics.</p>
+                    <p className="text-slate-500 text-sm">Overview of your lead performance and team metrics.</p>
                   </div>
                   
                   {/* Filters */}
-                  <div className="flex flex-wrap items-center gap-3 bg-white p-2 rounded-xl border border-stone-200 shadow-sm">
+                  <div className="flex flex-wrap items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex items-center gap-2 px-2">
-                      <Calendar className="w-4 h-4 text-stone-400" />
+                      <Calendar className="w-4 h-4 text-slate-400" />
                       <input 
                         type="date" 
                         value={startDate}
                         onChange={(e) => setStartDate(e.target.value)}
-                        className="text-sm border-none focus:ring-0 text-stone-600 bg-transparent cursor-pointer"
+                        className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent cursor-pointer"
                       />
-                      <span className="text-stone-400">-</span>
+                      <span className="text-slate-400">-</span>
                       <input 
                         type="date" 
                         value={endDate}
                         onChange={(e) => setEndDate(e.target.value)}
-                        className="text-sm border-none focus:ring-0 text-stone-600 bg-transparent cursor-pointer"
+                        className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent cursor-pointer"
                       />
                     </div>
-                    <div className="h-6 w-px bg-stone-200 hidden sm:block"></div>
+                    <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
                     <select 
                       value={leadSourceFilter}
                       onChange={(e) => setLeadSourceFilter(e.target.value)}
-                      className="text-sm border-none focus:ring-0 text-stone-600 bg-transparent cursor-pointer"
+                      className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent cursor-pointer"
                     >
                       <option value="All">All Sources</option>
                       {combinedSources.map(sourceName => (
@@ -1469,60 +1689,60 @@ export default function ClientDashboard() {
 
                 {/* KPI Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-stone-500">Total Leads</h3>
-                      <div className="p-2 bg-stone-50 rounded-lg text-stone-600">
+                      <h3 className="text-sm font-medium text-slate-500">Total Leads</h3>
+                      <div className="p-2 bg-slate-50 rounded-lg text-slate-600">
                         <Users className="w-5 h-5" />
                       </div>
                     </div>
-                    <p className="text-3xl font-semibold text-stone-900">{filteredLeads.length}</p>
+                    <p className="text-3xl font-semibold text-slate-900">{filteredLeads.length}</p>
                   </div>
                   
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-stone-500">New Leads</h3>
+                      <h3 className="text-sm font-medium text-slate-500">New Leads</h3>
                       <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
                         <Zap className="w-5 h-5" />
                       </div>
                     </div>
-                    <p className="text-3xl font-semibold text-stone-900">
+                    <p className="text-3xl font-semibold text-slate-900">
                       {filteredLeads.filter(l => l.status === 'New').length}
                     </p>
                   </div>
 
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-stone-500">Site Visits</h3>
+                      <h3 className="text-sm font-medium text-slate-500">Site Visits</h3>
                       <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
                         <Building2 className="w-5 h-5" />
                       </div>
                     </div>
-                    <p className="text-3xl font-semibold text-stone-900">
+                    <p className="text-3xl font-semibold text-slate-900">
                       {filteredLeads.filter(l => l.status === 'Site Visit').length}
                     </p>
                   </div>
 
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-stone-500">Closed Won</h3>
+                      <h3 className="text-sm font-medium text-slate-500">Closed Won</h3>
                       <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
                         <Check className="w-5 h-5" />
                       </div>
                     </div>
-                    <p className="text-3xl font-semibold text-stone-900">
+                    <p className="text-3xl font-semibold text-slate-900">
                       {filteredLeads.filter(l => l.status === 'Closed Won').length}
                     </p>
                   </div>
 
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-stone-500">Duplicate Leads</h3>
+                      <h3 className="text-sm font-medium text-slate-500">Duplicate Leads</h3>
                       <div className="p-2 bg-red-50 rounded-lg text-red-600">
                         <XCircle className="w-5 h-5" />
                       </div>
                     </div>
-                    <p className="text-3xl font-semibold text-stone-900">
+                    <p className="text-3xl font-semibold text-slate-900">
                       {filteredLeads.filter(l => l.isDuplicate).length}
                     </p>
                   </div>
@@ -1530,8 +1750,8 @@ export default function ClientDashboard() {
 
                 {/* Charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-                    <h3 className="text-lg font-semibold text-stone-900 mb-6">Leads by Status</h3>
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-6">Leads by Status</h3>
                     <div className="h-80">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={dynamicStatusData}>
@@ -1548,8 +1768,8 @@ export default function ClientDashboard() {
                     </div>
                   </div>
 
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-                    <h3 className="text-lg font-semibold text-stone-900 mb-6">Leads by Source</h3>
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-6">Leads by Source</h3>
                     <div className="h-80">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
@@ -1574,7 +1794,7 @@ export default function ClientDashboard() {
                       </ResponsiveContainer>
                       <div className="flex flex-wrap justify-center gap-4 mt-4">
                         {dynamicSourceData.map((source, index) => (
-                          <div key={source.name} className="flex items-center gap-2 text-sm text-stone-600">
+                          <div key={source.name} className="flex items-center gap-2 text-sm text-slate-600">
                             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
                             {source.name}
                           </div>
@@ -1585,14 +1805,14 @@ export default function ClientDashboard() {
                 </div>
 
                 {/* Agent Performance Table */}
-                <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
-                  <div className="px-6 py-5 border-b border-stone-200">
-                    <h3 className="text-lg font-semibold text-stone-900">Agent Performance</h3>
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-5 border-b border-slate-200">
+                    <h3 className="text-lg font-semibold text-slate-900">Agent Performance</h3>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="bg-stone-50 border-b border-stone-200 text-xs uppercase tracking-wider text-stone-500 font-semibold">
+                        <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
                           <th className="px-6 py-4">Agent Name</th>
                           <th className="px-6 py-4">Total Assigned</th>
                           <th className="px-6 py-4">New</th>
@@ -1600,44 +1820,44 @@ export default function ClientDashboard() {
                           <th className="px-6 py-4">Closed Won</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-stone-200">
+                      <tbody className="divide-y divide-slate-200">
                         {teamMembers.map(agent => {
                           const agentLeads = filteredLeads.filter(l => (l.assignedToId || l.assignedTo) === agent.id);
                           return (
-                            <tr key={agent.id} className="hover:bg-stone-50/50 transition-colors">
+                            <tr key={agent.id} className="hover:bg-slate-50/50 transition-colors">
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="font-medium text-stone-900">{agent.name}</div>
+                                <div className="font-medium text-slate-900">{agent.name}</div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-stone-600">
+                              <td className="px-6 py-4 whitespace-nowrap text-slate-600">
                                 {agentLeads.length}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-stone-600">
+                              <td className="px-6 py-4 whitespace-nowrap text-slate-600">
                                 {agentLeads.filter(l => l.status === 'New').length}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-stone-600">
+                              <td className="px-6 py-4 whitespace-nowrap text-slate-600">
                                 {agentLeads.filter(l => ['Contacted', 'Site Visit', 'Negotiation'].includes(l.status)).length}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-stone-600">
+                              <td className="px-6 py-4 whitespace-nowrap text-slate-600">
                                 {agentLeads.filter(l => l.status === 'Closed Won').length}
                               </td>
                             </tr>
                           );
                         })}
                         {/* Unassigned row */}
-                        <tr className="hover:bg-stone-50/50 transition-colors bg-stone-50/30">
+                        <tr className="hover:bg-slate-50/50 transition-colors bg-slate-50/30">
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="font-medium text-stone-500 italic">Unassigned</div>
+                            <div className="font-medium text-slate-500 italic">Unassigned</div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-stone-500">
+                          <td className="px-6 py-4 whitespace-nowrap text-slate-500">
                             {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo)).length}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-stone-500">
+                          <td className="px-6 py-4 whitespace-nowrap text-slate-500">
                             {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && l.status === 'New').length}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-stone-500">
+                          <td className="px-6 py-4 whitespace-nowrap text-slate-500">
                             {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && ['Contacted', 'Site Visit', 'Negotiation'].includes(l.status)).length}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-stone-500">
+                          <td className="px-6 py-4 whitespace-nowrap text-slate-500">
                             {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && l.status === 'Closed Won').length}
                           </td>
                         </tr>
@@ -1651,12 +1871,12 @@ export default function ClientDashboard() {
               <div className="max-w-3xl">
                 <div className="mb-8">
                   <h2 className="text-2xl font-semibold tracking-tight mb-1">External Integrations</h2>
-                  <p className="text-stone-500 text-sm">Connect your Facebook Ads, Google Ads, or Website to capture leads automatically.</p>
+                  <p className="text-slate-500 text-sm">Connect your Facebook Ads, Google Ads, or Website to capture leads automatically.</p>
                 </div>
 
                 <div className="space-y-6">
                   {/* Meta / Facebook Ads Card */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     <div className="p-6 sm:p-8">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex items-center gap-4">
@@ -1665,20 +1885,20 @@ export default function ClientDashboard() {
                           </div>
                           <div>
                             <div className="flex items-center gap-3 mb-1">
-                              <h3 className="text-lg font-semibold text-stone-900">Meta / Facebook Ads</h3>
+                              <h3 className="text-lg font-semibold text-slate-900">Meta / Facebook Ads</h3>
                               {isLoadingLinkedPages ? (
-                                <div className="h-5 w-20 bg-stone-200 rounded-full animate-pulse"></div>
+                                <div className="h-5 w-20 bg-slate-200 rounded-full animate-pulse"></div>
                               ) : linkedPages.length > 0 ? (
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
                                   Connected
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-600">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
                                   Not Connected
                                 </span>
                               )}
                             </div>
-                            <p className="text-stone-500 text-sm">
+                            <p className="text-slate-500 text-sm">
                               Automatically sync leads from your Facebook Lead Ads directly into your CRM.
                             </p>
                           </div>
@@ -1697,14 +1917,14 @@ export default function ClientDashboard() {
                       
                       {/* Linked Pages List */}
                       {linkedPages.length > 0 && (
-                        <div className="mt-6 pt-6 border-t border-stone-100">
-                          <h4 className="text-sm font-semibold text-stone-900 mb-4">Connected Pages</h4>
+                        <div className="mt-6 pt-6 border-t border-slate-100">
+                          <h4 className="text-sm font-semibold text-slate-900 mb-4">Connected Pages</h4>
                           <div className="space-y-3">
                             {linkedPages.map(page => (
-                              <div key={page.id} className="flex items-center justify-between p-3 bg-stone-50 rounded-xl border border-stone-200">
+                              <div key={page.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
                                 <div>
-                                  <p className="text-sm font-medium text-stone-900">{page.pageName}</p>
-                                  <p className="text-xs text-stone-500 font-mono mt-0.5">ID: {page.pageId}</p>
+                                  <p className="text-sm font-medium text-slate-900">{page.pageName}</p>
+                                  <p className="text-xs text-slate-500 font-mono mt-0.5">ID: {page.pageId}</p>
                                 </div>
                                 <button
                                   onClick={() => handleDisconnectPage(page.id)}
@@ -1720,23 +1940,23 @@ export default function ClientDashboard() {
 
                       {/* Available Pages to Link */}
                       {fbPages.length > 0 && (
-                        <div className="mt-6 pt-6 border-t border-stone-100">
-                          <h4 className="text-sm font-semibold text-stone-900 mb-4">Available Pages to Link</h4>
+                        <div className="mt-6 pt-6 border-t border-slate-100">
+                          <h4 className="text-sm font-semibold text-slate-900 mb-4">Available Pages to Link</h4>
                           <div className="space-y-3">
                             {fbPages.map(page => {
                               const isLinked = linkedPages.some(lp => lp.pageId === page.id);
                               return (
-                                <div key={page.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-stone-200">
+                                <div key={page.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200">
                                   <div>
-                                    <p className="text-sm font-medium text-stone-900">{page.name}</p>
-                                    <p className="text-xs text-stone-500 font-mono mt-0.5">ID: {page.id}</p>
+                                    <p className="text-sm font-medium text-slate-900">{page.name}</p>
+                                    <p className="text-xs text-slate-500 font-mono mt-0.5">ID: {page.id}</p>
                                   </div>
                                   <button
                                     onClick={() => handleLinkPage(page)}
                                     disabled={isLinked}
                                     className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
                                       isLinked 
-                                        ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
+                                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                                         : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                                     }`}
                                   >
@@ -1752,25 +1972,25 @@ export default function ClientDashboard() {
                   </div>
 
                   {/* Webhook URL Card */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     <div className="p-6 sm:p-8">
                       <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
                           <Zap className="w-6 h-6" />
                         </div>
                         <div>
-                          <h3 className="text-lg font-semibold text-stone-900">Your Unique Webhook URL</h3>
-                          <p className="text-stone-500 text-sm">Use this URL to send leads from external platforms.</p>
+                          <h3 className="text-lg font-semibold text-slate-900">Your Unique Webhook URL</h3>
+                          <p className="text-slate-500 text-sm">Use this URL to send leads from external platforms.</p>
                         </div>
                       </div>
 
-                      <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 flex items-center justify-between gap-4">
-                        <code className="text-xs text-stone-600 break-all font-mono">
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between gap-4">
+                        <code className="text-xs text-slate-600 break-all font-mono">
                           {webhookUrl}
                         </code>
                         <button
                           onClick={handleCopy}
-                          className="shrink-0 p-2 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                          className="shrink-0 p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
                           title="Copy to clipboard"
                         >
                           {copied ? <Check className="w-5 h-5 text-emerald-600" /> : <Copy className="w-5 h-5" />}
@@ -1779,29 +1999,29 @@ export default function ClientDashboard() {
 
                       <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-stone-900">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                             <Facebook className="w-4 h-4 text-blue-600" />
                             Facebook Ads
                           </div>
-                          <p className="text-xs text-stone-500 leading-relaxed">
+                          <p className="text-xs text-slate-500 leading-relaxed">
                             Connect via Zapier or Pabbly Connect using this webhook URL to capture leads from Facebook Lead Forms.
                           </p>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-stone-900">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                             <Search className="w-4 h-4 text-amber-500" />
                             Google Ads
                           </div>
-                          <p className="text-xs text-stone-500 leading-relaxed">
+                          <p className="text-xs text-slate-500 leading-relaxed">
                             Paste this URL into your Google Ads Lead Form extension settings to receive leads in real-time.
                           </p>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-stone-900">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                             <Globe className="w-4 h-4 text-emerald-600" />
                             Website Forms
                           </div>
-                          <p className="text-xs text-stone-500 leading-relaxed">
+                          <p className="text-xs text-slate-500 leading-relaxed">
                             Send a POST request from your website's contact form directly to this endpoint.
                           </p>
                         </div>
@@ -1810,41 +2030,41 @@ export default function ClientDashboard() {
                   </div>
 
                   {/* Export Leads (Outbound Webhook) Card */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     <div className="p-6 sm:p-8">
                       <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
                           <Globe className="w-6 h-6" />
                         </div>
                         <div>
-                          <h3 className="text-lg font-semibold text-stone-900">Export Leads (Outbound Webhook)</h3>
-                          <p className="text-stone-500 text-sm">Send incoming leads to external tools like Google Sheets via Pabbly or Make.com.</p>
+                          <h3 className="text-lg font-semibold text-slate-900">Export Leads (Outbound Webhook)</h3>
+                          <p className="text-slate-500 text-sm">Send incoming leads to external tools like Google Sheets via Pabbly or Make.com.</p>
                         </div>
                       </div>
 
                       <div className="space-y-4">
                         <div>
-                          <label className="block text-sm font-medium text-stone-700 mb-1">Webhook URL</label>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Webhook URL</label>
                           <input
                             type="url"
                             value={outboundWebhookUrl}
                             onChange={(e) => setOutboundWebhookUrl(e.target.value)}
                             placeholder="https://hook.us1.make.com/..."
-                            className="w-full px-4 py-2 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                           />
                         </div>
                         <div className="flex items-center gap-3">
                           <button
                             onClick={handleSaveOutboundWebhook}
                             disabled={isSavingOutboundWebhook}
-                            className="px-4 py-2 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors disabled:opacity-50"
+                            className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50"
                           >
                             {isSavingOutboundWebhook ? 'Saving...' : 'Save Configuration'}
                           </button>
                           <button
                             onClick={handleTestOutboundWebhook}
                             disabled={isTestingOutboundWebhook || !outboundWebhookUrl}
-                            className="px-4 py-2 bg-stone-100 text-stone-700 text-sm font-medium rounded-xl hover:bg-stone-200 transition-colors disabled:opacity-50"
+                            className="px-4 py-2 bg-slate-100 text-slate-700 text-sm font-medium rounded-xl hover:bg-slate-200 transition-colors disabled:opacity-50"
                           >
                             {isTestingOutboundWebhook ? 'Sending...' : 'Send Test Lead'}
                           </button>
@@ -1854,17 +2074,50 @@ export default function ClientDashboard() {
                   </div>
 
                   {/* Documentation Card */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6 sm:p-8">
-                    <h3 className="text-lg font-semibold text-stone-900 mb-4">Payload Format</h3>
-                    <p className="text-sm text-stone-500 mb-4">Your external source should send a JSON POST request with the following fields:</p>
-                    <div className="bg-stone-900 rounded-xl p-4 overflow-x-auto">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-4">Payload Format</h3>
+                    <p className="text-sm text-slate-500 mb-4">Your external source should send a JSON POST request with the following fields:</p>
+                    <div className="bg-slate-900 rounded-xl p-4 overflow-x-auto relative">
+                      <button
+                        onClick={() => {
+                          const payloadObject = {
+                            "firstName": "Ravi",
+                            "lastName": "Kumar",
+                            "email": "ravi.kumar@example.com",
+                            "phone": "+919876543210",
+                            "project": "Neopolis Luxury Villas",
+                            "source": "WEBSITE",
+                            "subSource": "Contact Us Form",
+                            "message": "I am interested in a 4BHK villa.",
+                            "utm_source": "google",
+                            "utm_medium": "cpc",
+                            "utm_campaign": "summer_monsoon_sale",
+                            "utm_term": "luxury villas in hyderabad",
+                            "utm_content": "banner_ad_v2"
+                          };
+                          navigator.clipboard.writeText(JSON.stringify(payloadObject, null, 2));
+                          setIsCopied(true);
+                          setTimeout(() => setIsCopied(false), 2000);
+                        }}
+                        className="absolute top-3 right-3 bg-slate-700 hover:bg-slate-600 text-white text-xs py-1 px-2 rounded transition-colors"
+                      >
+                        {isCopied ? 'Copied!' : 'Copy'}
+                      </button>
                       <pre className="text-xs text-emerald-400 font-mono">
 {`{
-  "name": "John Doe",
-  "email": "john@example.com",
-  "phone": "+1234567890",
-  "source": "Facebook",
-  "project": "Sunset Villas"
+  "firstName": "Ravi",
+  "lastName": "Kumar",
+  "email": "ravi.kumar@example.com",
+  "phone": "+919876543210",
+  "project": "Neopolis Luxury Villas",
+  "source": "WEBSITE",
+  "subSource": "Contact Us Form",
+  "message": "I am interested in a 4BHK villa.",
+  "utm_source": "google",
+  "utm_medium": "cpc",
+  "utm_campaign": "summer_monsoon_sale",
+  "utm_term": "luxury villas in hyderabad",
+  "utm_content": "banner_ad_v2"
 }`}
                       </pre>
                     </div>
@@ -1891,13 +2144,13 @@ export default function ClientDashboard() {
 
       {/* Add Lead Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
-              <h3 className="text-lg font-semibold text-stone-900">Add New Lead</h3>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h3 className="text-lg font-semibold text-slate-900">Add New Lead</h3>
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="text-stone-400 hover:text-stone-600 transition-colors"
+                className="text-slate-400 hover:text-slate-600 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1906,64 +2159,64 @@ export default function ClientDashboard() {
             <form onSubmit={handleAddLead} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">First Name</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">First Name</label>
                   <input
                     type="text"
                     required
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Last Name</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Last Name</label>
                   <input
                     type="text"
                     required
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
-                    className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Email Address</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Phone Number</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Project / Property</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Project / Property</label>
                 <input
                   type="text"
                   value={projectProperty}
                   onChange={(e) => setProjectProperty(e.target.value)}
-                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
                   placeholder="e.g. Sunset Villas"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Status</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
                 >
                   {PIPELINE_STATUSES.map(s => (
                     <option key={s} value={s}>{s}</option>
@@ -1972,11 +2225,11 @@ export default function ClientDashboard() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Source</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Source</label>
                 <select
                   value={source}
                   onChange={(e) => setSource(e.target.value)}
-                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
                 >
                   {leadSources.length === 0 && <option value="Manual">Manual</option>}
                   {leadSources.map(s => (
@@ -1986,11 +2239,11 @@ export default function ClientDashboard() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Sub-Source</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Sub-Source</label>
                 <select
                   value={subSource}
                   onChange={(e) => setSubSource(e.target.value)}
-                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
                 >
                   <option value="">None</option>
                   {leadSubSources.map(s => (
@@ -2001,11 +2254,11 @@ export default function ClientDashboard() {
 
               {user?.role === 'client_admin' && (
                 <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Assign To</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Assign To</label>
                   <select
                     value={assignedTo}
                     onChange={(e) => setAssignedTo(e.target.value)}
-                    className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
                   >
                     <option value="">Unassigned</option>
                     {teamMembers.map(member => (
@@ -2019,7 +2272,7 @@ export default function ClientDashboard() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-4 py-2 border border-stone-200 text-stone-600 rounded-xl hover:bg-stone-50 transition-colors font-medium text-sm"
+                  className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors font-medium text-sm"
                 >
                   Cancel
                 </button>
@@ -2042,10 +2295,10 @@ export default function ClientDashboard() {
 
       {/* Add Agent Modal */}
       {isAgentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
-              <h3 className="text-lg font-semibold text-stone-900">Add New Agent</h3>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h3 className="text-lg font-semibold text-slate-900">Add New Agent</h3>
               <button 
                 onClick={() => {
                   setIsAgentModalOpen(false);
@@ -2053,7 +2306,7 @@ export default function ClientDashboard() {
                   setAgentEmail('');
                   setAgentPassword('');
                 }}
-                className="text-stone-400 hover:text-stone-600 transition-colors"
+                className="text-slate-400 hover:text-slate-600 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2061,38 +2314,38 @@ export default function ClientDashboard() {
             
             <form onSubmit={handleCreateAgent} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Full Name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
                 <input
                   type="text"
                   required
                   value={agentName}
                   onChange={(e) => setAgentName(e.target.value)}
-                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Email Address</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
                 <input
                   type="email"
                   required
                   value={agentEmail}
                   onChange={(e) => setAgentEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Temporary Password</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password</label>
                 <input
                   type="password"
                   required
                   value={agentPassword}
                   onChange={(e) => setAgentPassword(e.target.value)}
-                  className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
                   minLength={6}
                 />
-                <p className="mt-1 text-xs text-stone-500">Must be at least 6 characters.</p>
+                <p className="mt-1 text-xs text-slate-500">Must be at least 6 characters.</p>
               </div>
 
               <div className="pt-4 flex gap-3">
@@ -2104,7 +2357,7 @@ export default function ClientDashboard() {
                     setAgentEmail('');
                     setAgentPassword('');
                   }}
-                  className="flex-1 px-4 py-2 border border-stone-200 text-stone-600 rounded-xl hover:bg-stone-50 transition-colors font-medium text-sm"
+                  className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors font-medium text-sm"
                 >
                   Cancel
                 </button>
