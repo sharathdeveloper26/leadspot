@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { collection, getDocs, query, doc, updateDoc, where, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, doc, updateDoc, where, addDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { Building2, Mail, Lock, UserPlus, AlertCircle, CheckCircle2, LayoutDashboard, Users, Settings, LogOut, Plus, Calendar, ArrowLeft, Edit2, X, List, Trash2 } from 'lucide-react';
 import { functions, db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -51,6 +51,20 @@ export default function SuperAdminDashboard() {
   const [addingSubSource, setAddingSubSource] = useState(false);
   const [editingSubSourceId, setEditingSubSourceId] = useState<string | null>(null);
   const [editSubSourceName, setEditSubSourceName] = useState('');
+
+  // Edit Client State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
+  const [editCompanyName, setEditCompanyName] = useState('');
+  const [editStatus, setEditStatus] = useState('');
+  const [editAgentLimit, setEditAgentLimit] = useState<number>(2);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Delete Client State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+  const [deleteAssociatedLeads, setDeleteAssociatedLeads] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchClients = async () => {
     setLoadingClients(true);
@@ -261,18 +275,93 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  const handleOpenEditModal = (client: Client) => {
+    setClientToEdit(client);
+    setEditCompanyName(client.name);
+    setEditStatus(client.status || 'ACTIVE');
+    setEditAgentLimit(client.maxAgents || 2);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEditClient = async () => {
+    if (!clientToEdit) return;
+    setIsSavingEdit(true);
+    try {
+      const clientRef = doc(db, 'clients', clientToEdit.id);
+      await updateDoc(clientRef, {
+        name: editCompanyName,
+        status: editStatus,
+        maxAgents: editAgentLimit
+      });
+      
+      setClients(clients.map(c => c.id === clientToEdit.id ? {
+        ...c,
+        name: editCompanyName,
+        status: editStatus,
+        maxAgents: editAgentLimit
+      } : c));
+      
+      setIsEditModalOpen(false);
+      setClientToEdit(null);
+    } catch (error) {
+      console.error("Error updating client:", error);
+      alert("Failed to update client.");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleOpenDeleteModal = (client: Client) => {
+    setClientToDelete(client);
+    setDeleteAssociatedLeads(false);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDeleteClient = async () => {
+    if (!clientToDelete) return;
+    setIsDeleting(true);
+    try {
+      if (deleteAssociatedLeads) {
+        // Delete associated leads
+        const leadsQuery = query(collection(db, 'leads'), where('clientId', '==', clientToDelete.id));
+        const leadsSnapshot = await getDocs(leadsQuery);
+        
+        if (!leadsSnapshot.empty) {
+          const batch = writeBatch(db);
+          leadsSnapshot.forEach((leadDoc) => {
+            batch.delete(leadDoc.ref);
+          });
+          await batch.commit();
+        }
+      }
+
+      // Delete the client document
+      await deleteDoc(doc(db, 'clients', clientToDelete.id));
+      
+      // Update local state
+      setClients(clients.filter(c => c.id !== clientToDelete.id));
+      
+      setIsDeleteModalOpen(false);
+      setClientToDelete(null);
+    } catch (error) {
+      console.error("Error deleting client:", error);
+      alert("Failed to delete client.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-stone-50 flex font-sans text-stone-900">
+    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-stone-200 flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b border-stone-100">
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
+        <div className="h-16 flex items-center px-6 border-b border-slate-100">
           <div className="flex items-center gap-2 text-indigo-600 font-semibold text-lg tracking-tight">
-            <Building2 className="w-6 h-6" />
-            <span>Mintage CRM</span>
+            <img src="/mintage-logo.png" alt="Mintage" className="h-8 w-auto" />
           </div>
         </div>
         
-        <div className="px-4 py-6 text-xs font-semibold text-stone-400 uppercase tracking-wider">
+        <div className="px-4 py-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">
           Super Admin
         </div>
         
@@ -280,7 +369,7 @@ export default function SuperAdminDashboard() {
           <button 
             onClick={() => setActiveTab('clients')}
             className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-              activeTab === 'clients' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
+              activeTab === 'clients' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
             }`}
           >
             <Users className="w-5 h-5" />
@@ -289,26 +378,26 @@ export default function SuperAdminDashboard() {
           <button 
             onClick={() => setActiveTab('lead_sources')}
             className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-              activeTab === 'lead_sources' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
+              activeTab === 'lead_sources' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
             }`}
           >
             <List className="w-5 h-5" />
             Lead Sources
           </button>
-          <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-colors">
+          <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
             <LayoutDashboard className="w-5 h-5" />
             Dashboard
           </a>
-          <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-colors">
+          <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
             <Settings className="w-5 h-5" />
             Settings
           </a>
         </nav>
 
-        <div className="p-4 border-t border-stone-100">
+        <div className="p-4 border-t border-slate-100">
           <button 
             onClick={logout}
-            className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-colors"
+            className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
           >
             <LogOut className="w-5 h-5" />
             Sign Out
@@ -318,7 +407,7 @@ export default function SuperAdminDashboard() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col">
-        <header className="h-16 bg-white border-b border-stone-200 flex items-center px-8">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center px-8">
           <h1 className="text-xl font-semibold tracking-tight">Client Management</h1>
         </header>
 
@@ -331,7 +420,7 @@ export default function SuperAdminDashboard() {
                 <div className="flex items-center justify-between mb-8">
                   <div>
                     <h2 className="text-2xl font-semibold tracking-tight mb-1">Clients</h2>
-                    <p className="text-stone-500 text-sm">Manage your clients and their workspaces.</p>
+                    <p className="text-slate-500 text-sm">Manage your clients and their workspaces.</p>
                   </div>
                   <button
                     onClick={() => {
@@ -346,33 +435,34 @@ export default function SuperAdminDashboard() {
                   </button>
                 </div>
 
-                <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                   {loadingClients ? (
                     <div className="p-12 flex justify-center">
                       <div className="w-8 h-8 border-4 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin" />
                     </div>
                   ) : clients.length === 0 ? (
                     <div className="p-12 text-center">
-                      <Building2 className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-stone-900 mb-1">No clients found</h3>
-                      <p className="text-stone-500 text-sm">Get started by adding your first client.</p>
+                      <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-slate-900 mb-1">No clients found</h3>
+                      <p className="text-slate-500 text-sm">Get started by adding your first client.</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="bg-stone-50 border-b border-stone-200 text-xs uppercase tracking-wider text-stone-500 font-semibold">
+                          <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
                             <th className="px-6 py-4">Company Name</th>
                             <th className="px-6 py-4">Status</th>
                             <th className="px-6 py-4">Agent Limit</th>
                             <th className="px-6 py-4">Created</th>
+                            <th className="px-6 py-4 text-right">Actions</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-stone-200">
+                        <tbody className="divide-y divide-slate-200">
                           {clients.map((client) => (
-                            <tr key={client.id} className="hover:bg-stone-50/50 transition-colors">
+                            <tr key={client.id} className="hover:bg-slate-50/50 transition-colors">
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="font-medium text-stone-900">
+                                <div className="font-medium text-slate-900">
                                   {client.name}
                                 </div>
                               </td>
@@ -389,7 +479,7 @@ export default function SuperAdminDashboard() {
                                       min="1"
                                       value={editLimitValue}
                                       onChange={(e) => setEditLimitValue(parseInt(e.target.value) || 1)}
-                                      className="w-20 px-2 py-1 border border-stone-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                                      className="w-20 px-2 py-1 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
                                     />
                                     <button
                                       onClick={() => handleUpdateLimit(client.id)}
@@ -400,20 +490,20 @@ export default function SuperAdminDashboard() {
                                     </button>
                                     <button
                                       onClick={() => setEditingClient(null)}
-                                      className="p-1 text-stone-400 hover:bg-stone-100 rounded transition-colors"
+                                      className="p-1 text-slate-400 hover:bg-slate-100 rounded transition-colors"
                                     >
                                       <X className="w-4 h-4" />
                                     </button>
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2">
-                                    <span className="text-sm text-stone-600 font-medium">{client.maxAgents || 2}</span>
+                                    <span className="text-sm text-slate-600 font-medium">{client.maxAgents || 2}</span>
                                     <button
                                       onClick={() => {
                                         setEditingClient(client.id);
                                         setEditLimitValue(client.maxAgents || 2);
                                       }}
-                                      className="p-1 text-stone-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
                                       title="Edit Limit"
                                     >
                                       <Edit2 className="w-3.5 h-3.5" />
@@ -421,10 +511,28 @@ export default function SuperAdminDashboard() {
                                   </div>
                                 )}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-stone-500">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                                 <div className="flex items-center gap-2">
                                   <Calendar className="w-4 h-4" />
                                   {client.createdAt ? new Date(client.createdAt.toDate()).toLocaleDateString() : 'Just now'}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => handleOpenEditModal(client)}
+                                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                    title="Edit Client"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenDeleteModal(client)}
+                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Delete Client"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -440,15 +548,15 @@ export default function SuperAdminDashboard() {
               <div className="max-w-5xl mx-auto">
                 <div className="mb-8">
                   <h2 className="text-2xl font-semibold tracking-tight mb-1">Lead Sources Management</h2>
-                  <p className="text-stone-500 text-sm">Manage custom lead sources for specific clients.</p>
+                  <p className="text-slate-500 text-sm">Manage custom lead sources for specific clients.</p>
                 </div>
 
-                <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6 mb-8">
-                  <label className="block text-sm font-medium text-stone-700 mb-2">Select Client</label>
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-8">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Select Client</label>
                   <select
                     value={selectedClientId}
                     onChange={(e) => setSelectedClientId(e.target.value)}
-                    className="w-full md:w-1/2 px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm bg-white"
+                    className="w-full md:w-1/2 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm bg-white"
                   >
                     <option value="">-- Select a Client --</option>
                     {clients.map(client => (
@@ -458,9 +566,9 @@ export default function SuperAdminDashboard() {
                 </div>
 
                 {selectedClientId && (
-                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
-                    <div className="p-6 border-b border-stone-100 bg-stone-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <h3 className="text-lg font-semibold text-stone-900">Client Lead Sources</h3>
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <h3 className="text-lg font-semibold text-slate-900">Client Lead Sources</h3>
                       <form onSubmit={handleAddSource} className="flex items-center gap-3">
                         <input
                           type="text"
@@ -468,7 +576,7 @@ export default function SuperAdminDashboard() {
                           value={newSourceName}
                           onChange={(e) => setNewSourceName(e.target.value)}
                           placeholder="New Source Name"
-                          className="px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
+                          className="px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
                         />
                         <button
                           type="submit"
@@ -493,22 +601,22 @@ export default function SuperAdminDashboard() {
                       </div>
                     ) : leadSources.length === 0 ? (
                       <div className="p-12 text-center">
-                        <List className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-stone-900 mb-1">No lead sources found</h3>
-                        <p className="text-stone-500 text-sm">Add a custom lead source for this client to get started.</p>
+                        <List className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-slate-900 mb-1">No lead sources found</h3>
+                        <p className="text-slate-500 text-sm">Add a custom lead source for this client to get started.</p>
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-stone-50 border-b border-stone-200 text-xs uppercase tracking-wider text-stone-500 font-semibold">
+                            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
                               <th className="px-6 py-4">Source Name</th>
                               <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-stone-200">
+                          <tbody className="divide-y divide-slate-200">
                             {leadSources.map((source) => (
-                              <tr key={source.id} className="hover:bg-stone-50/50 transition-colors">
+                              <tr key={source.id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-6 py-4 whitespace-nowrap">
                                   {editingSourceId === source.id ? (
                                     <div className="flex items-center gap-2">
@@ -516,7 +624,7 @@ export default function SuperAdminDashboard() {
                                         type="text"
                                         value={editSourceName}
                                         onChange={(e) => setEditSourceName(e.target.value)}
-                                        className="px-2 py-1 border border-stone-200 rounded text-sm focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                                        className="px-2 py-1 border border-slate-200 rounded text-sm focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
                                         autoFocus
                                       />
                                       <button
@@ -527,13 +635,13 @@ export default function SuperAdminDashboard() {
                                       </button>
                                       <button
                                         onClick={() => setEditingSourceId(null)}
-                                        className="p-1 text-stone-400 hover:bg-stone-100 rounded transition-colors"
+                                        className="p-1 text-slate-400 hover:bg-slate-100 rounded transition-colors"
                                       >
                                         <X className="w-4 h-4" />
                                       </button>
                                     </div>
                                   ) : (
-                                    <div className="font-medium text-stone-900">
+                                    <div className="font-medium text-slate-900">
                                       {source.name}
                                     </div>
                                   )}
@@ -545,14 +653,14 @@ export default function SuperAdminDashboard() {
                                         setEditingSourceId(source.id);
                                         setEditSourceName(source.name);
                                       }}
-                                      className="p-2 text-stone-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                       title="Edit Source"
                                     >
                                       <Edit2 className="w-4 h-4" />
                                     </button>
                                     <button
                                       onClick={() => handleDeleteSource(source.id)}
-                                      className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                       title="Delete Source"
                                     >
                                       <Trash2 className="w-4 h-4" />
@@ -569,9 +677,9 @@ export default function SuperAdminDashboard() {
                 )}
 
                 {selectedClientId && (
-                  <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden mt-8">
-                    <div className="p-6 border-b border-stone-100 bg-stone-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <h3 className="text-lg font-semibold text-stone-900">Client Lead Sub-Sources</h3>
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mt-8">
+                    <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <h3 className="text-lg font-semibold text-slate-900">Client Lead Sub-Sources</h3>
                       <form onSubmit={handleAddSubSource} className="flex items-center gap-3">
                         <input
                           type="text"
@@ -579,7 +687,7 @@ export default function SuperAdminDashboard() {
                           value={newSubSourceName}
                           onChange={(e) => setNewSubSourceName(e.target.value)}
                           placeholder="New Sub-Source Name"
-                          className="px-3 py-2 border border-stone-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
+                          className="px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
                         />
                         <button
                           type="submit"
@@ -604,22 +712,22 @@ export default function SuperAdminDashboard() {
                       </div>
                     ) : leadSubSources.length === 0 ? (
                       <div className="p-12 text-center">
-                        <List className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-stone-900 mb-1">No lead sub-sources found</h3>
-                        <p className="text-stone-500 text-sm">Add a custom lead sub-source for this client to get started.</p>
+                        <List className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-slate-900 mb-1">No lead sub-sources found</h3>
+                        <p className="text-slate-500 text-sm">Add a custom lead sub-source for this client to get started.</p>
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-stone-50 border-b border-stone-200 text-xs uppercase tracking-wider text-stone-500 font-semibold">
+                            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
                               <th className="px-6 py-4">Sub-Source Name</th>
                               <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-stone-200">
+                          <tbody className="divide-y divide-slate-200">
                             {leadSubSources.map((source) => (
-                              <tr key={source.id} className="hover:bg-stone-50/50 transition-colors">
+                              <tr key={source.id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-6 py-4 whitespace-nowrap">
                                   {editingSubSourceId === source.id ? (
                                     <div className="flex items-center gap-2">
@@ -627,7 +735,7 @@ export default function SuperAdminDashboard() {
                                         type="text"
                                         value={editSubSourceName}
                                         onChange={(e) => setEditSubSourceName(e.target.value)}
-                                        className="px-2 py-1 border border-stone-200 rounded text-sm focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                                        className="px-2 py-1 border border-slate-200 rounded text-sm focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
                                         autoFocus
                                       />
                                       <button
@@ -638,13 +746,13 @@ export default function SuperAdminDashboard() {
                                       </button>
                                       <button
                                         onClick={() => setEditingSubSourceId(null)}
-                                        className="p-1 text-stone-400 hover:bg-stone-100 rounded transition-colors"
+                                        className="p-1 text-slate-400 hover:bg-slate-100 rounded transition-colors"
                                       >
                                         <X className="w-4 h-4" />
                                       </button>
                                     </div>
                                   ) : (
-                                    <span className="text-sm font-medium text-stone-900">{source.name}</span>
+                                    <span className="text-sm font-medium text-slate-900">{source.name}</span>
                                   )}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right">
@@ -654,14 +762,14 @@ export default function SuperAdminDashboard() {
                                         setEditingSubSourceId(source.id);
                                         setEditSubSourceName(source.name);
                                       }}
-                                      className="p-2 text-stone-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                       title="Edit Sub-Source"
                                     >
                                       <Edit2 className="w-4 h-4" />
                                     </button>
                                     <button
                                       onClick={() => handleDeleteSubSource(source.id)}
-                                      className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                       title="Delete Sub-Source"
                                     >
                                       <Trash2 className="w-4 h-4" />
@@ -683,35 +791,35 @@ export default function SuperAdminDashboard() {
                 <div className="mb-8 flex items-center gap-4">
                   <button 
                     onClick={() => setActiveTab('clients')}
-                    className="p-2 text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-lg transition-colors"
+                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                   >
                     <ArrowLeft className="w-5 h-5" />
                   </button>
                   <div>
                     <h2 className="text-2xl font-semibold tracking-tight mb-1">Onboard New Client</h2>
-                    <p className="text-stone-500 text-sm">Create a new client workspace and assign a Client Admin.</p>
+                    <p className="text-slate-500 text-sm">Create a new client workspace and assign a Client Admin.</p>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                   <div className="p-6 sm:p-8">
                     <form onSubmit={handleRegisterClient} className="space-y-5">
                       
                       {/* Company Name */}
                       <div>
-                        <label className="block text-sm font-medium text-stone-700 mb-1.5">
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
                           Company Name
                         </label>
                         <div className="relative">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Building2 className="h-5 w-5 text-stone-400" />
+                            <Building2 className="h-5 w-5 text-slate-400" />
                           </div>
                           <input
                             type="text"
                             required
                             value={companyName}
                             onChange={(e) => setCompanyName(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2.5 border border-stone-200 rounded-xl focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
+                            className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
                             placeholder="Acme Corp"
                           />
                         </div>
@@ -719,19 +827,19 @@ export default function SuperAdminDashboard() {
 
                       {/* Admin Email */}
                       <div>
-                        <label className="block text-sm font-medium text-stone-700 mb-1.5">
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
                           Client Admin Email
                         </label>
                         <div className="relative">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Mail className="h-5 w-5 text-stone-400" />
+                            <Mail className="h-5 w-5 text-slate-400" />
                           </div>
                           <input
                             type="email"
                             required
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2.5 border border-stone-200 rounded-xl focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
+                            className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
                             placeholder="admin@acmecorp.com"
                           />
                         </div>
@@ -739,12 +847,12 @@ export default function SuperAdminDashboard() {
 
                       {/* Admin Password */}
                       <div>
-                        <label className="block text-sm font-medium text-stone-700 mb-1.5">
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
                           Temporary Password
                         </label>
                         <div className="relative">
                           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Lock className="h-5 w-5 text-stone-400" />
+                            <Lock className="h-5 w-5 text-slate-400" />
                           </div>
                           <input
                             type="password"
@@ -752,11 +860,11 @@ export default function SuperAdminDashboard() {
                             minLength={6}
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2.5 border border-stone-200 rounded-xl focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
+                            className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
                             placeholder="••••••••"
                           />
                         </div>
-                        <p className="mt-1.5 text-xs text-stone-500">Must be at least 6 characters long.</p>
+                        <p className="mt-1.5 text-xs text-slate-500">Must be at least 6 characters long.</p>
                       </div>
 
                       {/* Status Messages */}
@@ -799,6 +907,137 @@ export default function SuperAdminDashboard() {
 
           </div>
         </div>
+
+        {/* Edit Client Modal */}
+        {isEditModalOpen && clientToEdit && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 sm:p-6">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col">
+              <div className="flex justify-between items-center p-6 border-b border-slate-200 shrink-0">
+                <h3 className="text-lg font-semibold text-slate-900">Edit Client</h3>
+                <button
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-500 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Company Name</label>
+                  <input
+                    type="text"
+                    value={editCompanyName}
+                    onChange={(e) => setEditCompanyName(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm bg-white"
+                  >
+                    <option value="ACTIVE">Active</option>
+                    <option value="INACTIVE">Inactive</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Agent Limit</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={editAgentLimit}
+                    onChange={(e) => setEditAgentLimit(parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
+                  />
+                </div>
+              </div>
+              <div className="p-6 border-t border-slate-200 flex justify-end gap-3 shrink-0 bg-slate-50 rounded-b-xl">
+                <button
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEditClient}
+                  disabled={isSavingEdit || !editCompanyName.trim()}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 transition-colors disabled:opacity-50"
+                >
+                  {isSavingEdit ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    'Save Changes'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Client Modal */}
+        {isDeleteModalOpen && clientToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 sm:p-6">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col">
+              <div className="flex justify-between items-center p-6 border-b border-slate-200 shrink-0">
+                <h3 className="text-lg font-semibold text-red-600 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" />
+                  Delete Client
+                </h3>
+                <button
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-500 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                <p className="text-slate-700 text-sm">
+                  Are you sure you want to delete <span className="font-semibold">{clientToDelete.name}</span>? This action cannot be undone.
+                </p>
+                <div className="flex items-start gap-3 mt-4 p-4 bg-red-50 border border-red-100 rounded-lg">
+                  <div className="flex items-center h-5">
+                    <input
+                      id="delete-leads"
+                      type="checkbox"
+                      checked={deleteAssociatedLeads}
+                      onChange={(e) => setDeleteAssociatedLeads(e.target.checked)}
+                      className="w-4 h-4 text-red-600 bg-white border-red-300 rounded focus:ring-red-600 focus:ring-2"
+                    />
+                  </div>
+                  <div className="text-sm">
+                    <label htmlFor="delete-leads" className="font-medium text-red-800">
+                      Also delete all leads associated with this client.
+                    </label>
+                    <p className="text-red-600 mt-1">
+                      If checked, all lead data for this client will be permanently removed.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-slate-200 flex justify-end gap-3 shrink-0 bg-slate-50 rounded-b-xl">
+                <button
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmDeleteClient}
+                  disabled={isDeleting}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 transition-colors disabled:opacity-50"
+                >
+                  {isDeleting ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    'Confirm Delete'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
