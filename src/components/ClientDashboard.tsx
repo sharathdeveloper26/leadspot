@@ -68,18 +68,14 @@ export default function ClientDashboard() {
   const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
 
-  // 👇 NEW FACEBOOK STATES 👇
   const [fbUserToken, setFbUserToken] = useState("");
   const [isLinking, setIsLinking] = useState(false);
 
-  // Combined leads for display
   const leads = useMemo(() => {
     const combined = [...realTimeLeads, ...olderLeads];
-    // Remove duplicates by ID
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
   }, [realTimeLeads, olderLeads]);
 
-  // Lead Form State
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -90,41 +86,34 @@ export default function ClientDashboard() {
   const [subSource, setSubSource] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
 
-  // Agent Form State
   const [agentName, setAgentName] = useState('');
   const [agentEmail, setAgentEmail] = useState('');
   const [agentPassword, setAgentPassword] = useState('');
   const [inlineEditingAgentId, setInlineEditingAgentId] = useState<string | null>(null);
   const [inlineEditingName, setInlineEditingName] = useState('');
 
-  // Report Filters
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [leadSourceFilter, setLeadSourceFilter] = useState('All');
 
-  // Leads View Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All');
   const [leadsStartDate, setLeadsStartDate] = useState('');
   const [leadsEndDate, setLeadsEndDate] = useState('');
 
-  // Pagination & Table State
   const [currentPage, setCurrentPage] = useState(1);
   const leadsPerPage = 10;
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [expandedLeads, setExpandedLeads] = useState<string[]>([]);
 
-  // Facebook Integration State
   const [fbPages, setFbPages] = useState<any[]>([]);
   const [linkedPages, setLinkedPages] = useState<any[]>([]);
   const [isLoadingLinkedPages, setIsLoadingLinkedPages] = useState(true);
   const [isLoadingFb, setIsLoadingFb] = useState(false);
 
-  // Lead Sources State
   const [leadSources, setLeadSources] = useState<{id: string, name: string}[]>([]);
   const [leadSubSources, setLeadSubSources] = useState<{id: string, name: string}[]>([]);
 
-  // Assignment Rules State
   const [assignmentRules, setAssignmentRules] = useState<{id: string, sourceName: string, agentId: string, agentName: string}[]>([]);
   const [newRuleSource, setNewRuleSource] = useState('');
   const [newRuleAgentId, setNewRuleAgentId] = useState('');
@@ -143,33 +132,23 @@ export default function ClientDashboard() {
 
   const webhookUrl = `https://us-central1-mintage-crm.cloudfunctions.net/incomingLeadWebhook?clientId=${user?.clientId}`;
 
-  // Idle Timeout Logic
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
-
     const resetTimer = () => {
       clearTimeout(timeoutId);
-      // 15 minutes = 900,000 ms
       timeoutId = setTimeout(() => {
         alert('Session expired due to inactivity');
         logout();
       }, 900000);
     };
-
-    // Initialize the timer
     resetTimer();
-
-    // Event listeners for user activity
     const events = ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'];
-    
     const handleActivity = () => {
       resetTimer();
     };
-
     events.forEach(event => {
       window.addEventListener(event, handleActivity, { passive: true });
     });
-
     return () => {
       clearTimeout(timeoutId);
       events.forEach(event => {
@@ -213,7 +192,6 @@ export default function ClientDashboard() {
 
   const loadMoreLeads = async () => {
     if (!user?.clientId || !lastVisibleLead || loadingMoreLeads || !hasMoreLeads) return;
-    
     setLoadingMoreLeads(true);
     try {
       const q = query(
@@ -349,7 +327,6 @@ export default function ClientDashboard() {
     try {
       const agent = teamMembers.find(m => m.id === newRuleAgentId);
       if (!agent) return;
-
       const docRef = await addDoc(collection(db, 'lead_assignment_rules'), {
         clientId: user.clientId,
         sourceName: newRuleSource,
@@ -357,7 +334,6 @@ export default function ClientDashboard() {
         agentName: agent.name,
         createdAt: serverTimestamp()
       });
-
       setAssignmentRules([...assignmentRules, {
         id: docRef.id,
         sourceName: newRuleSource,
@@ -375,15 +351,10 @@ export default function ClientDashboard() {
   };
 
   const handleDeleteRule = async (ruleId: string) => {
-    if (!ruleId) {
-      console.error("No ruleId provided to delete");
-      return;
-    }
+    if (!ruleId) return;
     try {
-      console.log("Deleting rule with ID:", ruleId);
       await deleteDoc(doc(db, 'lead_assignment_rules', ruleId));
       setAssignmentRules(prevRules => prevRules.filter(r => r.id !== ruleId));
-      console.log("Rule deleted successfully");
     } catch (error) {
       console.error("Error deleting assignment rule:", error);
       alert("Failed to delete rule. Check console for details.");
@@ -469,17 +440,9 @@ export default function ClientDashboard() {
     setAddingAgent(true);
     try {
       const createAgentFn = httpsCallable(functions, 'createAgent');
-      await createAgentFn({
-        email: agentEmail,
-        password: agentPassword,
-        name: agentName
-      });
-      
-      setAgentName('');
-      setAgentEmail('');
-      setAgentPassword('');
+      await createAgentFn({ email: agentEmail, password: agentPassword, name: agentName });
+      setAgentName(''); setAgentEmail(''); setAgentPassword('');
       setIsAgentModalOpen(false);
-      
       await fetchAgents();
       alert("Agent created successfully.");
     } catch (error: any) {
@@ -491,7 +454,6 @@ export default function ClientDashboard() {
   };
 
   const handleEditAgent = async (agent: Agent) => {
-    console.log('Button clicked!', agent.id);
     setInlineEditingAgentId(agent.id);
     setInlineEditingName(agent.name);
   };
@@ -501,7 +463,6 @@ export default function ClientDashboard() {
       setInlineEditingAgentId(null);
       return;
     }
-
     try {
       const updateAgentFn = httpsCallable(functions, 'updateAgent');
       await updateAgentFn({ agentId, name: inlineEditingName.trim() });
@@ -515,7 +476,6 @@ export default function ClientDashboard() {
   };
 
   const handleDeleteAgent = async (agentId: string) => {
-    console.log('Button clicked!', agentId);
     try {
       const deleteAgentFn = httpsCallable(functions, 'deleteAgent');
       await deleteAgentFn({ agentId });
@@ -529,13 +489,11 @@ export default function ClientDashboard() {
 
   const handleStatusChange = async (leadId: string, newStatus: string) => {
     try {
-      // Optimistic update
       setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus } : lead));
       setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus } : lead));
       await updateDoc(doc(db, 'leads', leadId), { status: newStatus });
     } catch (error) {
       console.error("Error updating status:", error);
-      // Revert on error
     }
   };
 
@@ -543,25 +501,9 @@ export default function ClientDashboard() {
     try {
       const assignedUser = teamMembers.find(m => m.id === agentId);
       const assignedToName = assignedUser ? assignedUser.name : '';
-      
-      setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { 
-        ...lead, 
-        assignedTo: agentId,
-        assignedToId: agentId,
-        assignedToName: assignedToName
-      } : lead));
-      setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { 
-        ...lead, 
-        assignedTo: agentId,
-        assignedToId: agentId,
-        assignedToName: assignedToName
-      } : lead));
-      
-      await updateDoc(doc(db, 'leads', leadId), { 
-        assignedTo: agentId,
-        assignedToId: agentId,
-        assignedToName: assignedToName
-      });
+      setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, assignedTo: agentId, assignedToId: agentId, assignedToName: assignedToName } : lead));
+      setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, assignedTo: agentId, assignedToId: agentId, assignedToName: assignedToName } : lead));
+      await updateDoc(doc(db, 'leads', leadId), { assignedTo: agentId, assignedToId: agentId, assignedToName: assignedToName });
     } catch (error) {
       console.error("Error assigning lead:", error);
     }
@@ -570,12 +512,7 @@ export default function ClientDashboard() {
   useEffect(() => {
     if (window.FB) return;
     window.fbAsyncInit = function() {
-      window.FB.init({
-        appId      : '1439047481212574',
-        cookie     : true,
-        xfbml      : true,
-        version    : 'v19.0'
-      });
+      window.FB.init({ appId: '1439047481212574', cookie: true, xfbml: true, version: 'v19.0' });
     };
     (function(d, s, id){
        var js, fjs = d.getElementsByTagName(s)[0];
@@ -590,13 +527,11 @@ export default function ClientDashboard() {
      }(document, 'script', 'facebook-jssdk'));
   }, []);
 
-  // 👇 SECURE FACEBOOK LOGIC 👇
   const handleConnectFacebook = () => {
     setIsLoadingFb(true);
     window.FB.login((response: any) => {
       if (response.authResponse) {
         setFbUserToken(response.authResponse.accessToken); 
-        
         window.FB.api('/me/accounts', (apiResponse: any) => {
           if (apiResponse && !apiResponse.error) {
             setFbPages(apiResponse.data || []);
@@ -616,34 +551,19 @@ export default function ClientDashboard() {
   const handleLinkPage = async (page: any) => {
     if (!user?.clientId || !fbUserToken) return;
     setIsLinking(true);
-    
     try {
-      const q = query(
-        collection(db, 'facebook_integrations'),
-        where('pageId', '==', page.id)
-      );
+      const q = query(collection(db, 'facebook_integrations'), where('pageId', '==', page.id));
       const querySnapshot = await getDocs(q);
-      
       let isConnectedToOtherClient = false;
       querySnapshot.forEach((docSnap) => {
-        if (docSnap.data().clientId !== user.clientId) {
-          isConnectedToOtherClient = true;
-        }
+        if (docSnap.data().clientId !== user.clientId) isConnectedToOtherClient = true;
       });
-  
       if (isConnectedToOtherClient) {
         alert('Error: This Facebook Page is already connected to another client workspace.');
-        setIsLinking(false);
-        return;
+        setIsLinking(false); return;
       }
-  
       const linkFn = httpsCallable(functions, 'secureLinkFacebookPage');
-      await linkFn({
-        shortLivedUserToken: fbUserToken,
-        pageId: page.id,
-        pageName: page.name
-      });
-      
+      await linkFn({ shortLivedUserToken: fbUserToken, pageId: page.id, pageName: page.name });
       fetchLinkedPages();
       setFbPages([]); 
     } catch (error) {
@@ -653,7 +573,6 @@ export default function ClientDashboard() {
       setIsLinking(false);
     }
   };
-  // 👆 SECURE FACEBOOK LOGIC 👆
 
   const handleDisconnectPage = async (pageId: string) => {
     if (!user?.clientId) return;
@@ -677,11 +596,7 @@ export default function ClientDashboard() {
     setIsSavingOutboundWebhook(true);
     try {
       const docRef = doc(db, 'outbound_integrations', user.clientId);
-      await setDoc(docRef, {
-        clientId: user.clientId,
-        webhookUrl: outboundWebhookUrl,
-        updatedAt: serverTimestamp()
-      });
+      await setDoc(docRef, { clientId: user.clientId, webhookUrl: outboundWebhookUrl, updatedAt: serverTimestamp() });
       alert('Outbound webhook configuration saved successfully.');
     } catch (error) {
       console.error('Error saving outbound webhook:', error);
@@ -692,36 +607,18 @@ export default function ClientDashboard() {
   };
 
   const handleTestOutboundWebhook = async () => {
-    if (!outboundWebhookUrl) {
-      alert('Please enter a webhook URL first.');
-      return;
-    }
+    if (!outboundWebhookUrl) { alert('Please enter a webhook URL first.'); return; }
     setIsTestingOutboundWebhook(true);
     try {
       const testPayload = {
-        id: 'test-lead-123',
-        name: 'John Doe',
-        email: 'john.doe@example.com',
-        phone: '+1234567890',
-        source: 'Test Webhook',
-        status: 'new',
-        createdAt: new Date().toISOString(),
-        clientId: user?.clientId
+        id: 'test-lead-123', name: 'John Doe', email: 'john.doe@example.com', phone: '+1234567890',
+        source: 'Test Webhook', status: 'new', createdAt: new Date().toISOString(), clientId: user?.clientId
       };
-
       const response = await fetch(outboundWebhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(testPayload),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(testPayload),
       });
-
-      if (response.ok) {
-        alert('Test lead sent successfully!');
-      } else {
-        alert(`Failed to send test lead. Server responded with status: ${response.status}`);
-      }
+      if (response.ok) { alert('Test lead sent successfully!'); } 
+      else { alert(`Failed to send test lead. Server responded with status: ${response.status}`); }
     } catch (error) {
       console.error('Error sending test lead:', error);
       alert('Failed to send test lead. Please check the URL and try again.');
@@ -730,53 +627,40 @@ export default function ClientDashboard() {
     }
   };
 
-  // Filtered Leads for Reports
   const filteredLeads = leads.filter(lead => {
     let matches = true;
-    
     if (leadSourceFilter !== 'All') {
       const source = lead.source || '';
-      if (!source.toLowerCase().includes(leadSourceFilter.toLowerCase())) {
-        matches = false;
-      }
+      if (!source.toLowerCase().includes(leadSourceFilter.toLowerCase())) matches = false;
     }
-    
     if (startDate) {
       const leadDate = lead.createdAt?.toDate();
       if (leadDate && leadDate < new Date(startDate)) matches = false;
     }
     if (endDate) {
       const leadDate = lead.createdAt?.toDate();
-      // Add 1 day to end date to include the whole day
       const end = new Date(endDate);
       end.setDate(end.getDate() + 1);
       if (leadDate && leadDate >= end) matches = false;
     }
-    
     return matches;
   });
 
-  // Calculate dynamic source data for PieChart
   const sourceDataMap = new Map<string, number>();
   filteredLeads.forEach(lead => {
     const source = lead.source || 'Manual';
     sourceDataMap.set(source, (sourceDataMap.get(source) || 0) + 1);
   });
-  const dynamicSourceData = Array.from(sourceDataMap.entries())
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
+  const dynamicSourceData = Array.from(sourceDataMap.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
-  const PIE_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16'];
+  const PIE_COLORS = ['#10b981', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef', '#ec4899', '#f43f5e', '#f97316', '#f59e0b', '#84cc16'];
 
-  // Calculate dynamic status data for BarChart
   const statusDataMap = new Map<string, number>();
   filteredLeads.forEach(lead => {
     const status = lead.status || 'New';
     statusDataMap.set(status, (statusDataMap.get(status) || 0) + 1);
   });
-  const dynamicStatusData = Array.from(statusDataMap.entries())
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => {
+  const dynamicStatusData = Array.from(statusDataMap.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => {
       const indexA = PIPELINE_STATUSES.indexOf(a.name);
       const indexB = PIPELINE_STATUSES.indexOf(b.name);
       if (indexA !== -1 && indexB !== -1) return indexA - indexB;
@@ -788,22 +672,15 @@ export default function ClientDashboard() {
   const getSourceBadge = (source?: string, subSource?: string) => {
     const s = source?.toLowerCase() || 'manual';
     let icon = <Globe className="w-3 h-3" />;
-    let colorClass = "bg-slate-100 text-slate-600";
+    let colorClass = "bg-slate-100 text-slate-600 border-slate-200";
     let label = source || 'Manual';
 
-    if (s.includes('facebook')) {
-      icon = <Facebook className="w-3 h-3" />;
-      colorClass = "bg-blue-100 text-blue-700";
-    } else if (s.includes('google')) {
-      icon = <Search className="w-3 h-3" />;
-      colorClass = "bg-amber-100 text-amber-700";
-    } else if (s.includes('website')) {
-      icon = <Globe className="w-3 h-3" />;
-      colorClass = "bg-emerald-100 text-emerald-700";
-    }
+    if (s.includes('facebook')) { icon = <Facebook className="w-3 h-3" />; colorClass = "bg-blue-50 text-blue-700 border-blue-200"; } 
+    else if (s.includes('google')) { icon = <Search className="w-3 h-3" />; colorClass = "bg-amber-50 text-amber-700 border-amber-200"; } 
+    else if (s.includes('website')) { icon = <Globe className="w-3 h-3" />; colorClass = "bg-emerald-50 text-emerald-700 border-emerald-200"; }
 
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${colorClass}`}>
+      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${colorClass}`}>
         {icon} {label} {subSource ? `/ ${subSource}` : ''}
       </span>
     );
@@ -811,84 +688,53 @@ export default function ClientDashboard() {
 
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
-      case 'New': return 'bg-emerald-100 text-emerald-700';
-      case 'Attempted Contact': return 'bg-blue-50 text-blue-600';
-      case 'Connected / Warm': return 'bg-blue-100 text-blue-700';
-      case 'Site Visit Scheduled': return 'bg-purple-50 text-purple-600';
-      case 'Site Visit Completed': return 'bg-purple-100 text-purple-700';
-      case 'Negotiation': return 'bg-amber-100 text-amber-700';
-      case 'Closed Won': return 'bg-slate-800 text-white';
-      case 'Closed Lost': return 'bg-red-100 text-red-700';
-      case 'Junk / Invalid': return 'bg-slate-200 text-slate-600';
-      default: return 'bg-slate-100 text-slate-700';
+      case 'New': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Attempted Contact': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Connected / Warm': return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'Site Visit Scheduled': return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'Site Visit Completed': return 'bg-purple-100 text-purple-800 border-purple-300';
+      case 'Negotiation': return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'Closed Won': return 'bg-slate-900 text-white border-slate-700 shadow-md';
+      case 'Closed Lost': return 'bg-red-50 text-red-700 border-red-200';
+      case 'Junk / Invalid': return 'bg-slate-100 text-slate-600 border-slate-200';
+      default: return 'bg-slate-50 text-slate-700 border-slate-200';
     }
   };
 
-  // Filtered Leads for Main View
   const filteredLeadsView = leads.filter(lead => {
     let matches = true;
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       const fullName = `${lead.firstName} ${lead.lastName}`.toLowerCase();
-      if (!fullName.includes(query) && 
-          !lead.email?.toLowerCase().includes(query) && 
-          !lead.phone?.toLowerCase().includes(query)) {
-        matches = false;
-      }
+      if (!fullName.includes(query) && !lead.email?.toLowerCase().includes(query) && !lead.phone?.toLowerCase().includes(query)) matches = false;
     }
-    if (leadsViewSourceFilter !== 'All') {
-      if (lead.source !== leadsViewSourceFilter) {
-        matches = false;
-      }
-    }
-    
-    // Date Range Filter
+    if (leadsViewSourceFilter !== 'All') { if (lead.source !== leadsViewSourceFilter) matches = false; }
     if (leadsStartDate || leadsEndDate) {
       const leadDate = lead.createdAt ? lead.createdAt.toDate() : new Date();
-      // Reset time for comparison
       leadDate.setHours(0, 0, 0, 0);
-      
-      if (leadsStartDate) {
-        const start = new Date(leadsStartDate);
-        start.setHours(0, 0, 0, 0);
-        if (leadDate < start) matches = false;
-      }
-      if (leadsEndDate) {
-        const end = new Date(leadsEndDate);
-        end.setHours(23, 59, 59, 999);
-        if (leadDate > end) matches = false;
-      }
+      if (leadsStartDate) { const start = new Date(leadsStartDate); start.setHours(0, 0, 0, 0); if (leadDate < start) matches = false; }
+      if (leadsEndDate) { const end = new Date(leadsEndDate); end.setHours(23, 59, 59, 999); if (leadDate > end) matches = false; }
     }
-    
     return matches;
   });
 
-  // Pagination & Bulk Delete Logic
   const totalPages = Math.ceil(filteredLeadsView.length / leadsPerPage);
   const paginatedLeads = filteredLeadsView.slice((currentPage - 1) * leadsPerPage, currentPage * leadsPerPage);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) {
-      setSelectedLeads(paginatedLeads.map(l => l.id));
-    } else {
-      setSelectedLeads([]);
-    }
+    if (e.target.checked) { setSelectedLeads(paginatedLeads.map(l => l.id)); } 
+    else { setSelectedLeads([]); }
   };
 
   const handleSelectLead = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setSelectedLeads(prev => 
-      prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]
-    );
+    setSelectedLeads(prev => prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]);
   };
 
   const handleDeleteSelected = async () => {
     if (!window.confirm(`Are you sure you want to delete ${selectedLeads.length} selected leads?`)) return;
-    
     try {
-      for (const id of selectedLeads) {
-        await deleteDoc(doc(db, 'leads', id));
-      }
+      for (const id of selectedLeads) { await deleteDoc(doc(db, 'leads', id)); }
       setSelectedLeads([]);
       setOlderLeads(prev => prev.filter(l => !selectedLeads.includes(l.id)));
     } catch (error) {
@@ -899,49 +745,52 @@ export default function ClientDashboard() {
 
   const toggleExpandLead = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setExpandedLeads(prev => 
-      prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]
-    );
+    setExpandedLeads(prev => prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900">
-      {/* Mobile Header Bar */}
-      <div className="md:hidden flex items-center justify-between bg-white border-b border-slate-200 p-4 shrink-0">
+    // ✨ UI UPGRADE: Added soft background gradient and relative positioning for mesh blobs
+    <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
+      
+      {/* ✨ UI UPGRADE: Pinterest-style background mesh gradient blobs */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-emerald-100/40 to-teal-50/40 blur-3xl opacity-70 mix-blend-multiply" />
+        <div className="absolute top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-gradient-to-br from-blue-100/40 to-indigo-50/40 blur-3xl opacity-70 mix-blend-multiply" />
+        <div className="absolute -bottom-[20%] left-[20%] w-[60%] h-[60%] rounded-full bg-gradient-to-tr from-purple-100/30 to-pink-50/30 blur-3xl opacity-70 mix-blend-multiply" />
+      </div>
+
+      <div className="md:hidden relative z-20 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-white p-4 shrink-0 shadow-sm">
         <img src="/mintage-logo.png" alt="Mintage" className="h-10 w-auto" />
         <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
           <Menu className="w-6 h-6" />
         </button>
       </div>
 
-      {/* Sidebar Overlay (Mobile) */}
       {isMobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-slate-900/50 z-40 md:hidden"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
+        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
       )}
 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100">
-          <div className="flex items-center gap-2 text-emerald-600 font-semibold text-lg tracking-tight">
-            <img src="/mintage-logo.png" alt="Mintage" className="h-8 w-auto" />
+      {/* ✨ UI UPGRADE: Sidebar converted to frosted glassmorphism */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white/70 backdrop-blur-2xl border-r border-white flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="h-16 flex items-center justify-between px-6 border-b border-white/60">
+          <div className="flex items-center gap-2 text-emerald-600 font-bold text-lg tracking-tight">
+            <img src="/mintage-logo.png" alt="Mintage" className="h-8 w-auto drop-shadow-sm" />
           </div>
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
           </button>
         </div>
         
-        <div className="px-4 py-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+        <div className="px-5 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
           Workspace
         </div>
         
-        <nav className="flex-1 px-3 space-y-1">
+        <nav className="flex-1 px-3 space-y-1.5">
+          {/* ✨ UI UPGRADE: Active states use sleek gradients and soft text colors */}
           <button 
             onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-              activeTab === 'leads' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl w-full text-left transition-all duration-200 ${
+              activeTab === 'leads' ? 'bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-700 font-bold border-l-4 border-emerald-500 rounded-l-none' : 'text-slate-600 hover:bg-white/60 hover:text-slate-900 hover:shadow-sm'
             }`}
           >
             <Users className="w-5 h-5" />
@@ -951,8 +800,8 @@ export default function ClientDashboard() {
             <>
               <button 
                 onClick={() => { setActiveTab('team'); setIsMobileMenuOpen(false); }}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                  activeTab === 'team' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl w-full text-left transition-all duration-200 ${
+                  activeTab === 'team' ? 'bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-700 font-bold border-l-4 border-emerald-500 rounded-l-none' : 'text-slate-600 hover:bg-white/60 hover:text-slate-900 hover:shadow-sm'
                 }`}
               >
                 <UserCog className="w-5 h-5" />
@@ -960,8 +809,8 @@ export default function ClientDashboard() {
               </button>
               <button 
                 onClick={() => { setActiveTab('integrations'); setIsMobileMenuOpen(false); }}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-                  activeTab === 'integrations' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl w-full text-left transition-all duration-200 ${
+                  activeTab === 'integrations' ? 'bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-700 font-bold border-l-4 border-emerald-500 rounded-l-none' : 'text-slate-600 hover:bg-white/60 hover:text-slate-900 hover:shadow-sm'
                 }`}
               >
                 <Link2 className="w-5 h-5" />
@@ -971,8 +820,8 @@ export default function ClientDashboard() {
           )}
           <button 
             onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-              activeTab === 'reports' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl w-full text-left transition-all duration-200 ${
+              activeTab === 'reports' ? 'bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-700 font-bold border-l-4 border-emerald-500 rounded-l-none' : 'text-slate-600 hover:bg-white/60 hover:text-slate-900 hover:shadow-sm'
             }`}
           >
             <LayoutDashboard className="w-5 h-5" />
@@ -980,10 +829,10 @@ export default function ClientDashboard() {
           </button>
         </nav>
 
-        <div className="p-4 border-t border-slate-100">
+        <div className="p-4 border-t border-white/60">
           <button 
             onClick={logout}
-            className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+            className="flex items-center gap-3 px-4 py-2.5 w-full rounded-xl text-slate-600 hover:bg-white/60 hover:text-red-600 hover:shadow-sm transition-all duration-200"
           >
             <LogOut className="w-5 h-5" />
             Sign Out
@@ -992,31 +841,35 @@ export default function ClientDashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex">
-          <h1 className="text-xl font-semibold tracking-tight">
+      <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0">
+        
+        {/* ✨ UI UPGRADE: Header frosted glass */}
+        <header className="h-16 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+          <h1 className="text-xl font-bold tracking-tight text-slate-800">
             {activeTab === 'leads' ? 'Leads Management' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Dashboard' : 'Integrations'}
           </h1>
-          <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
-            <UserCircle2 className="w-4 h-4" />
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-white px-4 py-1.5 rounded-full shadow-sm">
+            <UserCircle2 className="w-4 h-4 text-emerald-600" />
             {user?.email}
           </div>
         </header>
 
-        <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-auto">
+        <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-auto custom-scrollbar">
           <div className="max-w-7xl mx-auto h-full flex flex-col min-w-[800px] md:min-w-0">
             
             {activeTab === 'leads' ? (
               <>
                 {/* Header Actions */}
-                <div className="flex justify-between items-center mb-6 shrink-0">
+                <div className="flex justify-between items-center mb-8 shrink-0">
                   <div>
-                    <h2 className="text-2xl font-semibold tracking-tight mb-1">Your Leads</h2>
-                    <p className="text-slate-500 text-sm">Manage and track your prospective customers.</p>
+                    {/* ✨ UI UPGRADE: Gradient Text Header */}
+                    <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Your Leads</h2>
+                    <p className="text-slate-500 text-sm font-medium">Manage and track your prospective customers.</p>
                   </div>
+                  {/* ✨ UI UPGRADE: Gradient Button with hover lift and colored shadow */}
                   <button
                     onClick={() => setIsModalOpen(true)}
-                    className="flex items-center gap-2 py-2.5 px-6 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-600 transition-colors whitespace-nowrap"
+                    className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-emerald-500/25 text-sm font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all hover:-translate-y-0.5 whitespace-nowrap border border-emerald-400/50"
                   >
                     <Plus className="w-4 h-4" />
                     Add New Lead
@@ -1024,55 +877,56 @@ export default function ClientDashboard() {
                 </div>
 
                 {/* Filters & Controls */}
-                <div className="flex flex-wrap items-center gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm mb-6 shrink-0">
-                  <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 h-10">
+                {/* ✨ UI UPGRADE: Glassmorphism Control Bar */}
+                <div className="flex flex-wrap items-center gap-4 bg-white/60 backdrop-blur-xl p-3 rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-8 shrink-0">
+                  <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-3 py-1.5 h-10 shadow-sm">
                     <input
                       type="date"
                       value={leadsStartDate}
                       onChange={(e) => setLeadsStartDate(e.target.value)}
-                      className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent outline-none"
+                      className="text-sm font-medium border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer"
                     />
-                    <span className="text-slate-400 text-sm">to</span>
+                    <span className="text-slate-300 text-sm font-light">|</span>
                     <input
                       type="date"
                       value={leadsEndDate}
                       onChange={(e) => setLeadsEndDate(e.target.value)}
-                      className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent outline-none"
+                      className="text-sm font-medium border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer"
                     />
                     {(leadsStartDate || leadsEndDate) && (
                       <button 
                         onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); }}
-                        className="ml-2 text-xs font-medium text-slate-500 hover:text-slate-700 bg-slate-200 hover:bg-slate-300 px-2 py-1 rounded-md transition-colors"
+                        className="ml-2 text-xs font-bold text-slate-500 hover:text-red-600 bg-slate-100 hover:bg-red-50 px-2.5 py-1 rounded-lg transition-colors"
                       >
                         Clear
                       </button>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 h-10 flex-1 min-w-[200px]">
+                  <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-4 py-1.5 h-10 flex-1 min-w-[200px] shadow-sm focus-within:ring-2 focus-within:ring-emerald-500/20 transition-all">
                     <Search className="w-4 h-4 text-slate-400 shrink-0" />
                     <input
                       type="text"
-                      placeholder="Search leads..."
+                      placeholder="Search by name, email, or phone..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent w-full outline-none"
+                      className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent w-full outline-none placeholder:font-normal"
                     />
                   </div>
                   <select
                     value={leadsViewSourceFilter}
                     onChange={(e) => setLeadsViewSourceFilter(e.target.value)}
-                    className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 h-10 text-slate-600 bg-slate-50 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                    className="text-sm font-medium border border-slate-100 rounded-xl px-4 py-1.5 h-10 text-slate-600 bg-white/80 shadow-sm focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer"
                   >
                     <option value="All">All Sources</option>
                     {combinedSources.map(sourceName => (
                       <option key={sourceName} value={sourceName}>{sourceName}</option>
                     ))}
                   </select>
-                  <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-1 h-10">
+                  <div className="flex items-center bg-white/80 border border-slate-100 rounded-xl p-1 h-10 shadow-sm">
                     <button
                       onClick={() => setViewMode('pipeline')}
-                      className={`flex items-center gap-2 px-3 py-1 rounded-md text-sm font-medium transition-colors h-full ${
-                        viewMode === 'pipeline' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition-all h-full ${
+                        viewMode === 'pipeline' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'
                       }`}
                     >
                       <KanbanSquare className="w-4 h-4" />
@@ -1080,8 +934,8 @@ export default function ClientDashboard() {
                     </button>
                     <button
                       onClick={() => setViewMode('table')}
-                      className={`flex items-center gap-2 px-3 py-1 rounded-md text-sm font-medium transition-colors h-full ${
-                        viewMode === 'table' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition-all h-full ${
+                        viewMode === 'table' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'
                       }`}
                     >
                       <List className="w-4 h-4" />
@@ -1092,72 +946,74 @@ export default function ClientDashboard() {
 
                 {loading ? (
                   <div className="p-12 flex justify-center">
-                    <div className="w-8 h-8 border-4 border-emerald-600/20 border-t-emerald-600 rounded-full animate-spin" />
+                    <div className="w-10 h-10 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
                   </div>
                 ) : leads.length === 0 ? (
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
-                    <Users className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-slate-900 mb-1">No leads found</h3>
-                    <p className="text-slate-500 text-sm">Get started by adding a new lead.</p>
+                  <div className="bg-white/60 backdrop-blur-xl rounded-3xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-16 text-center flex flex-col items-center">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
+                      <Users className="w-10 h-10 text-slate-300" />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-800 mb-2">No leads found</h3>
+                    <p className="text-slate-500 text-sm max-w-sm">Your pipeline is empty. Get started by adding a new lead manually or checking your integrations.</p>
                   </div>
                 ) : viewMode === 'table' ? (
                   /* Table View */
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden shrink-0">
+                  // ✨ UI UPGRADE: Glassmorphism Table Container
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden shrink-0">
                     {selectedLeads.length > 0 && (
-                      <div className="bg-red-50 px-6 py-3 border-b border-red-100 flex items-center justify-between">
-                        <span className="text-sm font-medium text-red-800">
+                      <div className="bg-red-50/90 backdrop-blur-md px-6 py-3 border-b border-red-100 flex items-center justify-between">
+                        <span className="text-sm font-bold text-red-800">
                           {selectedLeads.length} lead{selectedLeads.length > 1 ? 's' : ''} selected
                         </span>
                         <button
                           onClick={handleDeleteSelected}
-                          className="flex items-center gap-2 py-1.5 px-3 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                          className="flex items-center gap-2 py-1.5 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-red-600/20"
                         >
                           <Trash2 className="w-4 h-4" />
                           Delete Selected
                         </button>
                       </div>
                     )}
-                    <div className="overflow-x-auto max-h-[calc(100vh-280px)]">
+                    <div className="overflow-x-auto max-h-[calc(100vh-320px)] custom-scrollbar">
                       <table className="w-full text-left border-collapse relative">
-                        <thead className="sticky top-0 z-10 bg-slate-50 shadow-sm">
-                          <tr className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                            <th className="px-6 py-4 w-10 bg-slate-50">
+                        <thead className="sticky top-0 z-10 bg-slate-100/80 backdrop-blur-xl shadow-sm">
+                          <tr className="text-xs uppercase tracking-wider text-slate-500 font-bold border-b border-slate-200/60">
+                            <th className="px-6 py-4 w-10">
                               <input 
                                 type="checkbox" 
-                                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer"
+                                className="rounded-md border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer w-4 h-4"
                                 checked={paginatedLeads.length > 0 && selectedLeads.length === paginatedLeads.length}
                                 onChange={handleSelectAll}
                               />
                             </th>
-                            <th className="px-6 py-4 w-10 bg-slate-50"></th>
-                            <th className="px-6 py-4 bg-slate-50">Date</th>
-                            <th className="px-6 py-4 bg-slate-50">Name</th>
-                            <th className="px-6 py-4 bg-slate-50">Phone</th>
-                            <th className="px-6 py-4 bg-slate-50">Email</th>
-                            <th className="px-6 py-4 bg-slate-50">Source</th>
-                            <th className="px-6 py-4 bg-slate-50">Tags</th>
-                            <th className="px-6 py-4 bg-slate-50">Status</th>
-                            <th className="px-6 py-4 bg-slate-50">Project / Property</th>
-                            <th className="px-6 py-4 bg-slate-50">Assigned To</th>
+                            <th className="px-6 py-4 w-10"></th>
+                            <th className="px-6 py-4">Date</th>
+                            <th className="px-6 py-4">Name</th>
+                            <th className="px-6 py-4">Contact</th>
+                            <th className="px-6 py-4">Source</th>
+                            <th className="px-6 py-4">Tags</th>
+                            <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4">Project</th>
+                            <th className="px-6 py-4">Assignee</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200 bg-white">
+                        <tbody className="divide-y divide-slate-100/60 bg-transparent">
                           {paginatedLeads.map((lead) => (
                             <React.Fragment key={lead.id}>
                               <tr 
                                 onClick={() => openLeadDetails(lead)}
-                                className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                                className="hover:bg-white/60 transition-colors cursor-pointer group"
                               >
-                                <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                <td className="px-6 py-5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                   <input 
                                     type="checkbox" 
-                                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer"
+                                    className="rounded-md border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer w-4 h-4"
                                     checked={selectedLeads.includes(lead.id)}
                                     onChange={(e) => handleSelectLead(lead.id, e as any)}
                                   />
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => toggleExpandLead(lead.id, e)}>
-                                  <button className="text-slate-400 hover:text-slate-600 transition-colors">
+                                <td className="px-6 py-5 whitespace-nowrap" onClick={(e) => toggleExpandLead(lead.id, e)}>
+                                  <button className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
                                     {expandedLeads.includes(lead.id) ? (
                                       <ChevronUp className="w-4 h-4" />
                                     ) : (
@@ -1165,55 +1021,49 @@ export default function ClientDashboard() {
                                     )}
                                   </button>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                <td className="px-6 py-5 whitespace-nowrap text-sm font-medium text-slate-500">
                                   {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="font-medium text-slate-900">
+                                <td className="px-6 py-5 whitespace-nowrap">
+                                  <div className="font-bold text-slate-800">
                                     {lead.firstName} {lead.lastName}
                                     {lead.isDuplicate && (
-                                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 uppercase tracking-wider">
+                                      <span className="ml-2.5 inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold bg-red-100 text-red-700 uppercase tracking-widest">
                                         Duplicate
                                       </span>
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <Phone className="w-3.5 h-3.5" />
-                                    {lead.phone || '-'}
+                                <td className="px-6 py-5 whitespace-nowrap">
+                                  <div className="flex flex-col gap-1 text-sm text-slate-600 font-medium">
+                                    <div className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-slate-400" />{lead.phone || '-'}</div>
+                                    {lead.email && <div className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-slate-400" />{lead.email}</div>}
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <Mail className="w-3.5 h-3.5" />
-                                    {lead.email || '-'}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
+                                <td className="px-6 py-5 whitespace-nowrap">
                                   {getSourceBadge(lead.source, lead.subSource)}
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="flex flex-wrap gap-1 max-w-[150px]">
+                                <td className="px-6 py-5 whitespace-nowrap">
+                                  <div className="flex flex-wrap gap-1.5 max-w-[160px]">
                                     {lead.tags?.map(tag => (
-                                      <span key={tag} className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-tighter">
+                                      <span key={tag} className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white text-slate-600 border border-slate-200 shadow-sm uppercase tracking-wider">
                                         {tag}
                                       </span>
                                     ))}
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(lead.status)}`}>
+                                <td className="px-6 py-5 whitespace-nowrap">
+                                  <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${getStatusBadgeClass(lead.status)}`}>
                                     {lead.status}
                                   </span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="flex items-center gap-2 text-slate-600 text-sm">
+                                <td className="px-6 py-5 whitespace-nowrap">
+                                  <div className="flex items-center gap-2 text-slate-700 text-sm font-medium">
                                     <Home className="w-4 h-4 text-slate-400" />
                                     {lead.projectProperty || '-'}
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
+                                <td className="px-6 py-5 whitespace-nowrap">
                                   {user?.role === 'client_admin' ? (
                                     <select
                                       value={lead.assignedToId || lead.assignedTo || ''}
@@ -1222,7 +1072,7 @@ export default function ClientDashboard() {
                                         handleAssignLead(lead.id, e.target.value);
                                       }}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                                      className="text-sm font-medium bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-slate-700 focus:ring-2 focus:ring-emerald-500/20 outline-none shadow-sm cursor-pointer"
                                     >
                                       <option value="">Unassigned</option>
                                       {teamMembers.map(member => (
@@ -1230,42 +1080,42 @@ export default function ClientDashboard() {
                                       ))}
                                     </select>
                                   ) : (
-                                    <span className="text-sm text-slate-600">
+                                    <span className="text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl">
                                       {lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned'}
                                     </span>
                                   )}
                                 </td>
                               </tr>
                               {expandedLeads.includes(lead.id) && (
-                                <tr className="bg-slate-50/50 border-b border-slate-200">
-                                  <td colSpan={11} className="px-6 py-4">
-                                    <div className="grid grid-cols-4 gap-4 text-sm">
+                                <tr className="bg-slate-50/50 backdrop-blur-sm border-b border-slate-200/50">
+                                  <td colSpan={10} className="px-6 py-5">
+                                    <div className="grid grid-cols-4 gap-6 text-sm">
                                       {lead.formId && (
                                         <div>
-                                          <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Form ID</span>
-                                          <span className="text-slate-700 font-mono text-xs">{lead.formId}</span>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Form ID</span>
+                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.formId}</span>
                                         </div>
                                       )}
                                       {lead.campaignId && (
                                         <div>
-                                          <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Campaign ID</span>
-                                          <span className="text-slate-700 font-mono text-xs">{lead.campaignId}</span>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Campaign ID</span>
+                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.campaignId}</span>
                                         </div>
                                       )}
                                       {lead.adsetId && (
                                         <div>
-                                          <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Adset ID</span>
-                                          <span className="text-slate-700 font-mono text-xs">{lead.adsetId}</span>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Adset ID</span>
+                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.adsetId}</span>
                                         </div>
                                       )}
                                       {lead.adId && (
                                         <div>
-                                          <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Ad ID</span>
-                                          <span className="text-slate-700 font-mono text-xs">{lead.adId}</span>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ad ID</span>
+                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.adId}</span>
                                         </div>
                                       )}
                                       {!lead.formId && !lead.campaignId && !lead.adsetId && !lead.adId && (
-                                        <div className="col-span-4 text-slate-500 italic text-xs">
+                                        <div className="col-span-4 text-slate-400 font-medium italic text-xs">
                                           No extended marketing data available for this lead.
                                         </div>
                                       )}
@@ -1280,27 +1130,27 @@ export default function ClientDashboard() {
                     </div>
                     {/* Pagination Controls */}
                     {totalPages > 1 && (
-                      <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-slate-50/80">
-                        <div className="text-sm text-slate-500">
-                          Showing <span className="font-medium text-slate-900">{((currentPage - 1) * leadsPerPage) + 1}</span> to <span className="font-medium text-slate-900">{Math.min(currentPage * leadsPerPage, filteredLeadsView.length)}</span> of <span className="font-medium text-slate-900">{filteredLeadsView.length}</span> leads
+                      <div className="px-6 py-4 border-t border-slate-100 bg-white/50 backdrop-blur-md flex items-center justify-between">
+                        <div className="text-sm font-medium text-slate-500">
+                          Showing <span className="font-bold text-slate-900">{((currentPage - 1) * leadsPerPage) + 1}</span> to <span className="font-bold text-slate-900">{Math.min(currentPage * leadsPerPage, filteredLeadsView.length)}</span> of <span className="font-bold text-slate-900">{filteredLeadsView.length}</span> leads
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
                           <button
                             onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                             disabled={currentPage === 1}
-                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                            className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 hover:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                           >
                             Previous
                           </button>
                           <div className="flex items-center gap-1">
-                            <span className="text-sm text-slate-500 px-2">
-                              Page {currentPage} of {totalPages}
+                            <span className="text-sm font-bold text-slate-600 px-2 bg-white border border-slate-200 py-1.5 rounded-lg shadow-sm">
+                              {currentPage} / {totalPages}
                             </span>
                           </div>
                           <button
                             onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                             disabled={currentPage === totalPages}
-                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                            className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 hover:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                           >
                             Next
                           </button>
@@ -1310,77 +1160,81 @@ export default function ClientDashboard() {
                   </div>
                 ) : (
                   /* Pipeline View */
-                  <div className="flex-1 overflow-x-auto pb-4">
-                    <div className="flex gap-6 h-full min-w-max">
+                  <div className="flex-1 overflow-x-auto pb-6 custom-scrollbar">
+                    <div className="flex gap-6 h-full min-w-max px-1 pt-1">
                       {PIPELINE_STATUSES.map(status => (
-                        <div key={status} className="w-80 flex flex-col bg-slate-100/50 rounded-2xl border border-slate-200/60 overflow-hidden shrink-0">
-                          <div className="p-4 border-b border-slate-200/60 bg-slate-100/80 flex items-center justify-between shrink-0">
-                            <h3 className="font-semibold text-slate-800">{status}</h3>
-                            <span className="bg-white text-slate-500 text-xs font-medium px-2 py-1 rounded-full shadow-sm border border-slate-200">
+                        // ✨ UI UPGRADE: Glass Pipeline Columns
+                        <div key={status} className="w-[340px] flex flex-col bg-white/40 backdrop-blur-xl rounded-3xl border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.03)] overflow-hidden shrink-0">
+                          <div className="p-5 border-b border-white/60 bg-white/40 flex items-center justify-between shrink-0">
+                            <h3 className="font-extrabold text-slate-800 text-sm tracking-wide">{status}</h3>
+                            <span className="bg-white/80 text-slate-600 text-xs font-bold px-2.5 py-1 rounded-lg shadow-sm border border-slate-100">
                               {filteredLeadsView.filter(l => l.status === status).length}
                             </span>
                           </div>
-                          <div className="flex-1 p-3 overflow-y-auto space-y-3">
+                          <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
                             {filteredLeadsView.filter(l => l.status === status).map(lead => (
+                              // ✨ UI UPGRADE: Glass Lead Cards with hover lifts
                               <div 
                                 key={lead.id} 
                                 onClick={() => openLeadDetails(lead)}
-                                className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow cursor-pointer"
+                                className="bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-[0_8px_20px_rgb(0,0,0,0.06)] hover:-translate-y-1 transition-all duration-300 cursor-pointer relative group"
                               >
-                                <div className="flex justify-between items-start mb-3">
-                                  <div className="font-medium text-slate-900 leading-tight">{lead.firstName} {lead.lastName}</div>
+                                <div className="flex justify-between items-start mb-4">
+                                  <div className="font-bold text-slate-900 text-base leading-tight pr-2">{lead.firstName} {lead.lastName}</div>
                                   {getSourceBadge(lead.source, lead.subSource)}
                                 </div>
-                                {/* 👇 NEW APOLLO ENRICHMENT UI STARTS HERE 👇 */}
+                                
                                 {((lead.designation && lead.designation !== "Unknown") || (lead.location && lead.location !== "Unknown")) && (
-                                  <div className="mb-3 text-sm text-gray-600 space-y-1">
+                                  <div className="mb-4 text-xs font-medium text-slate-500 space-y-1.5 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
                                     {lead.designation && lead.designation !== "Unknown" && (
                                       <div className="flex items-center gap-2">
-                                        💼 <span>{lead.designation}</span>
+                                        <span className="text-[10px]">💼</span> <span className="truncate">{lead.designation}</span>
                                       </div>
                                     )}
                                     {lead.location && lead.location !== "Unknown" && (
                                       <div className="flex items-center gap-2">
-                                        📍 <span>{lead.location}</span>
+                                        <span className="text-[10px]">📍</span> <span className="truncate">{lead.location}</span>
                                       </div>
                                     )}
                                   </div>
                                 )}
 
                                 {lead.linkedin && (
-                                  <div className="mb-3">
+                                  <div className="mb-4">
                                     <a 
                                       href={lead.linkedin} 
                                       target="_blank" 
                                       rel="noopener noreferrer"
-                                      className="text-xs text-blue-500 hover:text-blue-700 underline flex items-center gap-1 w-fit"
+                                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 w-fit"
                                       onClick={(e) => e.stopPropagation()} 
                                     >
                                       🔗 View LinkedIn
                                     </a>
                                   </div>
                                 )}
-                                {/* 👆 NEW APOLLO ENRICHMENT UI ENDS HERE 👆 */}
-                                <div className="space-y-2 mb-4">
-                                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                                    <Phone className="w-3.5 h-3.5 shrink-0" />
+                                
+                                <div className="space-y-2 mb-5">
+                                  <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
+                                    <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Phone className="w-3.5 h-3.5 shrink-0" /></div>
                                     <span className="truncate">{lead.phone || 'No phone'}</span>
                                   </div>
-                                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                                    <Home className="w-3.5 h-3.5 shrink-0" />
+                                  <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
+                                    <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Home className="w-3.5 h-3.5 shrink-0" /></div>
                                     <span className="truncate">{lead.projectProperty || 'No project'}</span>
                                   </div>
                                 </div>
+
                                 {lead.tags && lead.tags.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mb-4">
+                                  <div className="flex flex-wrap gap-1.5 mb-5">
                                     {lead.tags.map(tag => (
-                                      <span key={tag} className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-tighter">
+                                      <span key={tag} className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider">
                                         {tag}
                                       </span>
                                     ))}
                                   </div>
                                 )}
-                                <div className="flex flex-col gap-2">
+                                
+                                <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
                                   <select
                                     value={lead.status}
                                     onChange={(e) => {
@@ -1388,7 +1242,7 @@ export default function ClientDashboard() {
                                       handleStatusChange(lead.id, e.target.value);
                                     }}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                                    className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none cursor-pointer hover:bg-white transition-colors"
                                   >
                                     {PIPELINE_STATUSES.map(s => (
                                       <option key={s} value={s}>{s}</option>
@@ -1402,7 +1256,7 @@ export default function ClientDashboard() {
                                         handleAssignLead(lead.id, e.target.value);
                                       }}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                                      className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none cursor-pointer hover:bg-white transition-colors"
                                     >
                                       <option value="">Unassigned</option>
                                       {teamMembers.map(member => (
@@ -1410,7 +1264,7 @@ export default function ClientDashboard() {
                                       ))}
                                     </select>
                                   ) : (
-                                    <div className="text-xs text-slate-500 px-1">
+                                    <div className="text-[11px] font-bold text-slate-500 px-1 text-center bg-slate-50 py-1.5 rounded-xl border border-slate-100">
                                       Agent: {lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned'}
                                     </div>
                                   )}
@@ -1424,22 +1278,21 @@ export default function ClientDashboard() {
                   </div>
                 )}
 
-                {/* Load More Button */}
                 {hasMoreLeads && leads.length > 0 && (
                   <div className="mt-6 flex justify-center pb-8">
                     <button
                       onClick={loadMoreLeads}
                       disabled={loadingMoreLeads}
-                      className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex items-center gap-2 px-8 py-3 bg-white/80 backdrop-blur-md border border-white rounded-2xl text-sm font-bold text-slate-700 hover:bg-white hover:-translate-y-0.5 hover:shadow-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                     >
                       {loadingMoreLeads ? (
                         <>
-                          <div className="w-4 h-4 border-2 border-slate-200 border-t-slate-600 rounded-full animate-spin" />
+                          <div className="w-4 h-4 border-2 border-slate-300 border-t-emerald-500 rounded-full animate-spin" />
                           Loading...
                         </>
                       ) : (
                         <>
-                          <Search className="w-4 h-4" />
+                          <Search className="w-4 h-4 text-emerald-500" />
                           Load More Leads
                         </>
                       )}
@@ -1453,13 +1306,13 @@ export default function ClientDashboard() {
                 <div>
                   <div className="flex items-center justify-between mb-8">
                     <div>
-                      <h2 className="text-2xl font-semibold tracking-tight mb-1">Your Team</h2>
-                      <p className="text-slate-500 text-sm">Manage your sales agents and their access.</p>
+                      <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Your Team</h2>
+                      <p className="text-slate-500 text-sm font-medium">Manage your sales agents and their access.</p>
                     </div>
                     {user?.role === 'client_admin' && (
                       <button
                         onClick={() => setIsAgentModalOpen(true)}
-                        className="flex items-center gap-2 py-2 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-600 transition-colors"
+                        className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-emerald-500/25 text-sm font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 transition-all hover:-translate-y-0.5 border border-emerald-400/50"
                       >
                         <UserPlus className="w-4 h-4" />
                         Add New Agent
@@ -1467,18 +1320,20 @@ export default function ClientDashboard() {
                     )}
                   </div>
 
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden">
                     {agents.length === 0 ? (
-                      <div className="p-12 text-center">
-                        <Users className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-slate-900 mb-1">No agents found</h3>
+                      <div className="p-16 text-center flex flex-col items-center">
+                        <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
+                          <Users className="w-10 h-10 text-slate-300" />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 mb-2">No agents found</h3>
                         <p className="text-slate-500 text-sm">Get started by adding a new agent to your team.</p>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto custom-scrollbar">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
+                            <tr className="bg-slate-100/80 border-b border-slate-200/60 text-xs uppercase tracking-wider text-slate-500 font-bold">
                               <th className="px-6 py-4">Name</th>
                               <th className="px-6 py-4">Email</th>
                               <th className="px-6 py-4">Role</th>
@@ -1486,65 +1341,65 @@ export default function ClientDashboard() {
                               <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-200">
+                          <tbody className="divide-y divide-slate-100/60">
                             {agents.map((agent) => (
-                              <tr key={agent.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 whitespace-nowrap">
+                              <tr key={agent.id} className="hover:bg-white/60 transition-colors group">
+                                <td className="px-6 py-5 whitespace-nowrap">
                                   {inlineEditingAgentId === agent.id ? (
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl shadow-sm border border-slate-200">
                                       <input
                                         type="text"
                                         value={inlineEditingName}
                                         onChange={(e) => setInlineEditingName(e.target.value)}
-                                        className="px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                        className="px-3 py-1.5 text-sm font-medium border-none rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none w-48"
                                         autoFocus
                                       />
                                       <button
                                         onClick={() => handleSaveInlineEdit(agent.id)}
-                                        className="text-emerald-600 hover:text-emerald-700 font-medium text-xs"
+                                        className="text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors"
                                       >
                                         Save
                                       </button>
                                       <button
                                         onClick={() => setInlineEditingAgentId(null)}
-                                        className="text-slate-500 hover:text-slate-700 font-medium text-xs"
+                                        className="text-slate-500 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors"
                                       >
                                         Cancel
                                       </button>
                                     </div>
                                   ) : (
-                                    <div className="font-medium text-slate-900">
+                                    <div className="font-bold text-slate-800">
                                       {agent.name}
                                     </div>
                                   )}
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                                    <Mail className="w-3.5 h-3.5" />
+                                <td className="px-6 py-5 whitespace-nowrap">
+                                  <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                                    <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Mail className="w-3.5 h-3.5" /></div>
                                     {agent.email}
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                <td className="px-6 py-5 whitespace-nowrap">
+                                  <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-widest">
                                     Agent
                                   </span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                <td className="px-6 py-5 whitespace-nowrap text-sm font-medium text-slate-500">
                                   <div className="flex items-center gap-2">
-                                    <Calendar className="w-4 h-4" />
+                                    <Calendar className="w-4 h-4 text-slate-400" />
                                     {agent.createdAt ? new Date(agent.createdAt.toDate()).toLocaleDateString() : 'Just now'}
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <td className="px-6 py-5 whitespace-nowrap text-right text-sm font-medium">
                                   <button
                                     onClick={() => handleEditAgent(agent)}
-                                    className="text-indigo-600 hover:text-indigo-900 mr-4"
+                                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors mr-2"
                                   >
                                     <Edit2 className="w-4 h-4" />
                                   </button>
                                   <button
                                     onClick={() => handleDeleteAgent(agent.id)}
-                                    className="text-red-600 hover:text-red-900"
+                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
@@ -1561,23 +1416,23 @@ export default function ClientDashboard() {
                 {/* Lead Auto-Assignment Rules */}
                 {user?.role === 'client_admin' && (
                   <div>
-                    <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center justify-between mb-6 mt-12">
                       <div>
-                        <h2 className="text-2xl font-semibold tracking-tight mb-1">Lead Auto-Assignment Rules</h2>
-                        <p className="text-slate-500 text-sm">Automatically assign incoming leads to specific agents based on their source.</p>
+                        <h2 className="text-2xl font-bold text-slate-800 tracking-tight mb-1">Auto-Assignment Rules</h2>
+                        <p className="text-slate-500 text-sm font-medium">Automatically route incoming leads based on their source.</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                      <div className="p-6 border-b border-slate-200 bg-slate-50">
-                        <h3 className="text-sm font-semibold text-slate-900 mb-4">Create New Rule</h3>
+                    <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden">
+                      <div className="p-6 border-b border-white/80 bg-white/40">
+                        <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Create New Rule</h3>
                         <div className="flex flex-col sm:flex-row gap-4 items-end">
                           <div className="flex-1 w-full">
-                            <label className="block text-xs font-medium text-slate-700 mb-1">Lead Source</label>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Lead Source</label>
                             <select
                               value={newRuleSource}
                               onChange={(e) => setNewRuleSource(e.target.value)}
-                              className="w-full text-sm border border-slate-200 rounded-xl px-3 py-2 text-slate-600 bg-white shadow-sm focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                              className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all cursor-pointer"
                             >
                               <option value="">Select a source...</option>
                               {leadSources.map(source => (
@@ -1586,11 +1441,11 @@ export default function ClientDashboard() {
                             </select>
                           </div>
                           <div className="flex-1 w-full">
-                            <label className="block text-xs font-medium text-slate-700 mb-1">Assign To Agent</label>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Assign To Agent</label>
                             <select
                               value={newRuleAgentId}
                               onChange={(e) => setNewRuleAgentId(e.target.value)}
-                              className="w-full text-sm border border-slate-200 rounded-xl px-3 py-2 text-slate-600 bg-white shadow-sm focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 outline-none"
+                              className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all cursor-pointer"
                             >
                               <option value="">Select an agent...</option>
                               {teamMembers.map(member => (
@@ -1601,7 +1456,7 @@ export default function ClientDashboard() {
                           <button
                             onClick={handleAddAssignmentRule}
                             disabled={!newRuleSource || !newRuleAgentId || addingRule}
-                            className="w-full sm:w-auto flex items-center justify-center gap-2 py-2 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-slate-900/10 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                           >
                             {addingRule ? (
                               <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
@@ -1614,38 +1469,38 @@ export default function ClientDashboard() {
                       </div>
 
                       {assignmentRules.length === 0 ? (
-                        <div className="p-8 text-center text-slate-500 text-sm">
+                        <div className="p-10 text-center text-slate-400 text-sm font-medium">
                           No auto-assignment rules configured yet.
                         </div>
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full text-left border-collapse">
                             <thead>
-                              <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
+                              <tr className="bg-slate-50/50 border-b border-slate-200/60 text-xs uppercase tracking-wider text-slate-500 font-bold">
                                 <th className="px-6 py-4">Lead Source</th>
                                 <th className="px-6 py-4">Assigned Agent</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-slate-100/60">
                               {assignmentRules.map((rule) => (
-                                <tr key={rule.id} className="hover:bg-slate-50/50 transition-colors">
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="font-medium text-slate-900 flex items-center gap-2">
-                                      <Globe className="w-4 h-4 text-slate-400" />
+                                <tr key={rule.id} className="hover:bg-white/60 transition-colors">
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    <div className="font-bold text-slate-800 flex items-center gap-3">
+                                      <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Globe className="w-4 h-4" /></div>
                                       {rule.sourceName}
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="flex items-center gap-2 text-slate-600">
-                                      <UserCircle2 className="w-4 h-4 text-slate-400" />
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    <div className="flex items-center gap-3 text-sm font-medium text-slate-600">
+                                      <div className="p-1.5 bg-indigo-50 rounded-md text-indigo-400"><UserCircle2 className="w-4 h-4" /></div>
                                       {rule.agentName}
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                                  <td className="px-6 py-5 whitespace-nowrap text-right">
                                     <button
                                       onClick={() => handleDeleteRule(rule.id)}
-                                      className="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50 transition-colors"
+                                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                       title="Delete Rule"
                                     >
                                       <Trash2 className="w-4 h-4" />
@@ -1666,33 +1521,33 @@ export default function ClientDashboard() {
               <div className="max-w-7xl mx-auto space-y-8">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                   <div>
-                    <h2 className="text-2xl font-semibold tracking-tight mb-1">Analytics Dashboard</h2>
-                    <p className="text-slate-500 text-sm">Overview of your lead performance and team metrics.</p>
+                    <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Analytics Dashboard</h2>
+                    <p className="text-slate-500 text-sm font-medium">Overview of your lead performance and team metrics.</p>
                   </div>
                   
                   {/* Filters */}
-                  <div className="flex flex-wrap items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-2 px-2">
-                      <Calendar className="w-4 h-4 text-slate-400" />
+                  <div className="flex flex-wrap items-center gap-4 bg-white/70 backdrop-blur-xl p-2.5 rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+                    <div className="flex items-center gap-2 px-3 bg-white border border-slate-100 rounded-xl py-1.5 shadow-sm">
+                      <Calendar className="w-4 h-4 text-emerald-500" />
                       <input 
                         type="date" 
                         value={startDate}
                         onChange={(e) => setStartDate(e.target.value)}
-                        className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent cursor-pointer"
+                        className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
                       />
-                      <span className="text-slate-400">-</span>
+                      <span className="text-slate-300 font-light">|</span>
                       <input 
                         type="date" 
                         value={endDate}
                         onChange={(e) => setEndDate(e.target.value)}
-                        className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent cursor-pointer"
+                        className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
                       />
                     </div>
-                    <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
+                    <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
                     <select 
                       value={leadSourceFilter}
                       onChange={(e) => setLeadSourceFilter(e.target.value)}
-                      className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent cursor-pointer"
+                      className="text-sm font-bold border border-slate-100 rounded-xl px-4 py-2 bg-white shadow-sm focus:ring-2 focus:ring-emerald-500/20 text-slate-700 cursor-pointer outline-none transition-all"
                     >
                       <option value="All">All Sources</option>
                       {combinedSources.map(sourceName => (
@@ -1704,113 +1559,110 @@ export default function ClientDashboard() {
 
                 {/* KPI Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-slate-500">Total Leads</h3>
-                      <div className="p-2 bg-slate-50 rounded-lg text-slate-600">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Total Leads</h3>
+                      <div className="p-2.5 bg-blue-50 rounded-xl text-blue-500 shadow-inner">
                         <Users className="w-5 h-5" />
                       </div>
                     </div>
-                    <p className="text-3xl font-semibold text-slate-900">{filteredLeads.length}</p>
+                    <p className="text-4xl font-black text-slate-800">{filteredLeads.length}</p>
                   </div>
                   
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-slate-500">New Leads</h3>
-                      <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">New Leads</h3>
+                      <div className="p-2.5 bg-emerald-50 rounded-xl text-emerald-500 shadow-inner">
                         <Zap className="w-5 h-5" />
                       </div>
                     </div>
-                    <p className="text-3xl font-semibold text-slate-900">
+                    <p className="text-4xl font-black text-slate-800">
                       {filteredLeads.filter(l => l.status === 'New').length}
                     </p>
                   </div>
 
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-slate-500">Site Visits</h3>
-                      <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Site Visits</h3>
+                      <div className="p-2.5 bg-purple-50 rounded-xl text-purple-500 shadow-inner">
                         <Building2 className="w-5 h-5" />
                       </div>
                     </div>
-                    <p className="text-3xl font-semibold text-slate-900">
-                      {filteredLeads.filter(l => l.status === 'Site Visit').length}
+                    <p className="text-4xl font-black text-slate-800">
+                      {filteredLeads.filter(l => l.status === 'Site Visit Scheduled' || l.status === 'Site Visit Completed').length}
                     </p>
                   </div>
 
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-slate-500">Closed Won</h3>
-                      <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Closed Won</h3>
+                      <div className="p-2.5 bg-amber-50 rounded-xl text-amber-500 shadow-inner">
                         <Check className="w-5 h-5" />
                       </div>
                     </div>
-                    <p className="text-3xl font-semibold text-slate-900">
+                    <p className="text-4xl font-black text-slate-800">
                       {filteredLeads.filter(l => l.status === 'Closed Won').length}
-                    </p>
-                  </div>
-
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-medium text-slate-500">Duplicate Leads</h3>
-                      <div className="p-2 bg-red-50 rounded-lg text-red-600">
-                        <XCircle className="w-5 h-5" />
-                      </div>
-                    </div>
-                    <p className="text-3xl font-semibold text-slate-900">
-                      {filteredLeads.filter(l => l.isDuplicate).length}
                     </p>
                   </div>
                 </div>
 
                 {/* Charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h3 className="text-lg font-semibold text-slate-900 mb-6">Leads by Status</h3>
-                    <div className="h-80">
+                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white">
+                    <h3 className="text-lg font-bold text-slate-800 mb-8">Leads by Status</h3>
+                    <div className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={dynamicStatusData}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dy={10} />
-                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dx={-10} />
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} dy={10} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} dx={-10} />
                           <Tooltip 
-                            cursor={{ fill: '#f3f4f6' }}
-                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                            cursor={{ fill: '#f8fafc' }}
+                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgb(0 0 0 / 0.1)', padding: '12px 16px', fontWeight: 600 }}
                           />
-                          <Bar dataKey="count" fill="#059669" radius={[4, 4, 0, 0]} maxBarSize={50} />
+                          <Bar dataKey="count" fill="url(#colorUv)" radius={[6, 6, 0, 0]} maxBarSize={45}>
+                            {/* SVG Gradient definition for the bars */}
+                            <defs>
+                              <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#10b981" stopOpacity={1}/>
+                                <stop offset="95%" stopColor="#059669" stopOpacity={0.8}/>
+                              </linearGradient>
+                            </defs>
+                          </Bar>
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
                   </div>
 
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <h3 className="text-lg font-semibold text-slate-900 mb-6">Leads by Source</h3>
-                    <div className="h-80">
+                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white">
+                    <h3 className="text-lg font-bold text-slate-800 mb-8">Leads by Source</h3>
+                    <div className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
                             data={dynamicSourceData}
                             cx="50%"
-                            cy="50%"
-                            innerRadius={80}
-                            outerRadius={120}
-                            paddingAngle={2}
+                            cy="45%"
+                            innerRadius={85}
+                            outerRadius={125}
+                            paddingAngle={3}
                             dataKey="value"
                             nameKey="name"
+                            stroke="none"
                           >
                             {dynamicSourceData.map((entry, index) => (
                               <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                             ))}
                           </Pie>
                           <Tooltip 
-                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgb(0 0 0 / 0.1)', fontWeight: 600 }}
                           />
                         </PieChart>
                       </ResponsiveContainer>
-                      <div className="flex flex-wrap justify-center gap-4 mt-4">
+                      <div className="flex flex-wrap justify-center gap-x-5 gap-y-3 mt-4">
                         {dynamicSourceData.map((source, index) => (
-                          <div key={source.name} className="flex items-center gap-2 text-sm text-slate-600">
-                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
+                          <div key={source.name} className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                            <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
                             {source.name}
                           </div>
                         ))}
@@ -1820,59 +1672,64 @@ export default function ClientDashboard() {
                 </div>
 
                 {/* Agent Performance Table */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                  <div className="px-6 py-5 border-b border-slate-200">
-                    <h3 className="text-lg font-semibold text-slate-900">Agent Performance</h3>
+                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden">
+                  <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40">
+                    <h3 className="text-lg font-bold text-slate-800">Agent Performance</h3>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                          <th className="px-6 py-4">Agent Name</th>
-                          <th className="px-6 py-4">Total Assigned</th>
-                          <th className="px-6 py-4">New</th>
-                          <th className="px-6 py-4">In Progress</th>
-                          <th className="px-6 py-4">Closed Won</th>
+                        <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                          <th className="px-8 py-5">Agent Name</th>
+                          <th className="px-8 py-5">Total Assigned</th>
+                          <th className="px-8 py-5">New</th>
+                          <th className="px-8 py-5">In Progress</th>
+                          <th className="px-8 py-5">Closed Won</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200">
+                      <tbody className="divide-y divide-slate-100/60">
                         {teamMembers.map(agent => {
                           const agentLeads = filteredLeads.filter(l => (l.assignedToId || l.assignedTo) === agent.id);
                           return (
-                            <tr key={agent.id} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="font-medium text-slate-900">{agent.name}</div>
+                            <tr key={agent.id} className="hover:bg-white/60 transition-colors">
+                              <td className="px-8 py-5 whitespace-nowrap">
+                                <div className="font-bold text-slate-800 flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 border border-white shadow-sm flex items-center justify-center text-indigo-700 text-xs font-black">
+                                    {agent.name.charAt(0).toUpperCase()}
+                                  </div>
+                                  {agent.name}
+                                </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-slate-600">
+                              <td className="px-8 py-5 whitespace-nowrap font-bold text-slate-600">
                                 {agentLeads.length}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-slate-600">
+                              <td className="px-8 py-5 whitespace-nowrap font-medium text-emerald-600">
                                 {agentLeads.filter(l => l.status === 'New').length}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-slate-600">
+                              <td className="px-8 py-5 whitespace-nowrap font-medium text-blue-600">
                                 {agentLeads.filter(l => ['Contacted', 'Site Visit', 'Negotiation'].includes(l.status)).length}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-slate-600">
+                              <td className="px-8 py-5 whitespace-nowrap font-bold text-amber-500">
                                 {agentLeads.filter(l => l.status === 'Closed Won').length}
                               </td>
                             </tr>
                           );
                         })}
                         {/* Unassigned row */}
-                        <tr className="hover:bg-slate-50/50 transition-colors bg-slate-50/30">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="font-medium text-slate-500 italic">Unassigned</div>
+                        <tr className="bg-slate-50/30">
+                          <td className="px-8 py-5 whitespace-nowrap">
+                            <div className="font-bold text-slate-400 italic">Unassigned Leads</div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                          <td className="px-8 py-5 whitespace-nowrap font-bold text-slate-400">
                             {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo)).length}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                          <td className="px-8 py-5 whitespace-nowrap font-medium text-slate-400">
                             {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && l.status === 'New').length}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                          <td className="px-8 py-5 whitespace-nowrap font-medium text-slate-400">
                             {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && ['Contacted', 'Site Visit', 'Negotiation'].includes(l.status)).length}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                          <td className="px-8 py-5 whitespace-nowrap font-medium text-slate-400">
                             {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && l.status === 'Closed Won').length}
                           </td>
                         </tr>
@@ -1883,37 +1740,37 @@ export default function ClientDashboard() {
               </div>
             ) : (
               /* Integrations View */
-              <div className="max-w-3xl">
+              <div className="max-w-4xl mx-auto space-y-8">
                 <div className="mb-8">
-                  <h2 className="text-2xl font-semibold tracking-tight mb-1">External Integrations</h2>
-                  <p className="text-slate-500 text-sm">Connect your Facebook Ads, Google Ads, or Website to capture leads automatically.</p>
+                  <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">External Integrations</h2>
+                  <p className="text-slate-500 text-sm font-medium">Connect your Facebook Ads, Google Ads, or Website to capture leads automatically.</p>
                 </div>
 
                 <div className="space-y-6">
                   {/* Meta / Facebook Ads Card */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="p-6 sm:p-8">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                          <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
+                    <div className="p-8">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+                        <div className="flex items-center gap-5">
+                          <div className="p-4 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl text-white shadow-lg shadow-blue-500/30">
                             <Facebook className="w-8 h-8" />
                           </div>
                           <div>
                             <div className="flex items-center gap-3 mb-1">
-                              <h3 className="text-lg font-semibold text-slate-900">Meta / Facebook Ads</h3>
+                              <h3 className="text-xl font-bold text-slate-900 tracking-tight">Meta / Facebook Ads</h3>
                               {isLoadingLinkedPages ? (
-                                <div className="h-5 w-20 bg-slate-200 rounded-full animate-pulse"></div>
+                                <div className="h-6 w-24 bg-slate-200 rounded-lg animate-pulse"></div>
                               ) : linkedPages.length > 0 ? (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200 uppercase tracking-widest">
                                   Connected
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                                <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-500 border border-slate-200 uppercase tracking-widest">
                                   Not Connected
                                 </span>
                               )}
                             </div>
-                            <p className="text-slate-500 text-sm">
+                            <p className="text-slate-500 text-sm font-medium">
                               Automatically sync leads from your Facebook Lead Ads directly into your CRM.
                             </p>
                           </div>
@@ -1923,7 +1780,7 @@ export default function ClientDashboard() {
                           <button
                             onClick={handleConnectFacebook}
                             disabled={isLoadingFb}
-                            className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-xl text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+                            className="px-6 py-3 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-sm font-bold transition-all shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none"
                           >
                             {isLoadingFb ? 'Connecting...' : 'Connect Facebook'}
                           </button>
@@ -1932,18 +1789,21 @@ export default function ClientDashboard() {
                       
                       {/* Linked Pages List */}
                       {linkedPages.length > 0 && (
-                        <div className="mt-6 pt-6 border-t border-slate-100">
-                          <h4 className="text-sm font-semibold text-slate-900 mb-4">Connected Pages</h4>
-                          <div className="space-y-3">
+                        <div className="mt-8 pt-8 border-t border-slate-200/60">
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Connected Pages</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {linkedPages.map(page => (
-                              <div key={page.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-                                <div>
-                                  <p className="text-sm font-medium text-slate-900">{page.pageName}</p>
-                                  <p className="text-xs text-slate-500 font-mono mt-0.5">ID: {page.pageId}</p>
+                              <div key={page.id} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-blue-50 rounded-lg text-blue-500"><Globe className="w-5 h-5"/></div>
+                                  <div>
+                                    <p className="text-sm font-bold text-slate-800">{page.pageName}</p>
+                                    <p className="text-[10px] text-slate-400 font-mono mt-0.5 uppercase tracking-wider">ID: {page.pageId}</p>
+                                  </div>
                                 </div>
                                 <button
                                   onClick={() => handleDisconnectPage(page.id)}
-                                  className="text-xs font-medium text-red-600 hover:text-red-700 px-3 py-1.5 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                                  className="text-[11px] font-bold text-red-600 hover:text-white px-3 py-1.5 bg-red-50 hover:bg-red-500 rounded-lg transition-colors border border-red-100 hover:border-red-500"
                                 >
                                   Disconnect
                                 </button>
@@ -1953,26 +1813,29 @@ export default function ClientDashboard() {
                         </div>
                       )}
 
-                      {/* Available Pages to Link (Now completely hidden if ANY page is linked!) */}
+                      {/* Available Pages to Link */}
                       {fbPages.length > 0 && linkedPages.length === 0 && (
-                        <div className="mt-6 pt-6 border-t border-slate-100">
-                          <h4 className="text-sm font-semibold text-slate-900 mb-4">Available Pages to Link</h4>
-                          <div className="space-y-3">
+                        <div className="mt-8 pt-8 border-t border-slate-200/60">
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Available Pages to Link</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {fbPages.map(page => {
                               const isLinked = linkedPages.some(lp => lp.pageId === page.id);
                               return (
-                                <div key={page.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200">
-                                  <div>
-                                    <p className="text-sm font-medium text-slate-900">{page.name}</p>
-                                    <p className="text-xs text-slate-500 font-mono mt-0.5">ID: {page.id}</p>
+                                <div key={page.id} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                                  <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-slate-50 rounded-lg text-slate-400"><Facebook className="w-5 h-5"/></div>
+                                    <div>
+                                      <p className="text-sm font-bold text-slate-800">{page.name}</p>
+                                      <p className="text-[10px] text-slate-400 font-mono mt-0.5 uppercase tracking-wider">ID: {page.id}</p>
+                                    </div>
                                   </div>
                                   <button
                                     onClick={() => handleLinkPage(page)}
                                     disabled={isLinked || isLinking}
-                                    className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+                                    className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-all ${
                                       isLinked || isLinking 
-                                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                        : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                        ? 'bg-slate-50 text-slate-400 cursor-not-allowed'
+                                        : 'bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-100 hover:border-blue-600 shadow-sm'
                                     }`}
                                   >
                                     {isLinking ? 'Securing...' : isLinked ? 'Linked' : 'Link Page'}
@@ -1987,56 +1850,57 @@ export default function ClientDashboard() {
                   </div>
 
                   {/* Webhook URL Card */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="p-6 sm:p-8">
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
+                    <div className="p-8">
+                      <div className="flex items-center gap-4 mb-8">
+                        <div className="p-3 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl text-white shadow-lg shadow-emerald-500/30">
                           <Zap className="w-6 h-6" />
                         </div>
                         <div>
-                          <h3 className="text-lg font-semibold text-slate-900">Your Unique Webhook URL</h3>
-                          <p className="text-slate-500 text-sm">Use this URL to send leads from external platforms.</p>
+                          <h3 className="text-xl font-bold text-slate-900 tracking-tight">Your Unique Webhook URL</h3>
+                          <p className="text-slate-500 text-sm font-medium mt-1">Use this endpoint to send leads from any external platform.</p>
                         </div>
                       </div>
 
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between gap-4">
-                        <code className="text-xs text-slate-600 break-all font-mono">
+                      <div className="bg-slate-900 rounded-2xl p-5 flex items-center justify-between gap-4 shadow-inner relative overflow-hidden group">
+                        <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <code className="text-sm text-emerald-400 break-all font-mono font-medium relative z-10">
                           {webhookUrl}
                         </code>
                         <button
                           onClick={handleCopy}
-                          className="shrink-0 p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                          className="shrink-0 p-2.5 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-all shadow-sm relative z-10 border border-slate-700"
                           title="Copy to clipboard"
                         >
-                          {copied ? <Check className="w-5 h-5 text-emerald-600" /> : <Copy className="w-5 h-5" />}
+                          {copied ? <Check className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
                         </button>
                       </div>
 
-                      <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-8 pt-8 border-t border-slate-200/60">
                         <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                            <Facebook className="w-4 h-4 text-blue-600" />
+                          <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                            <Facebook className="w-4 h-4 text-blue-500" />
                             Facebook Ads
                           </div>
-                          <p className="text-xs text-slate-500 leading-relaxed">
+                          <p className="text-xs text-slate-500 leading-relaxed font-medium">
                             Connect via Zapier or Pabbly Connect using this webhook URL to capture leads from Facebook Lead Forms.
                           </p>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                          <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
                             <Search className="w-4 h-4 text-amber-500" />
                             Google Ads
                           </div>
-                          <p className="text-xs text-slate-500 leading-relaxed">
+                          <p className="text-xs text-slate-500 leading-relaxed font-medium">
                             Paste this URL into your Google Ads Lead Form extension settings to receive leads in real-time.
                           </p>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                            <Globe className="w-4 h-4 text-emerald-600" />
+                          <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                            <Globe className="w-4 h-4 text-emerald-500" />
                             Website Forms
                           </div>
-                          <p className="text-xs text-slate-500 leading-relaxed">
+                          <p className="text-xs text-slate-500 leading-relaxed font-medium">
                             Send a POST request from your website's contact form directly to this endpoint.
                           </p>
                         </div>
@@ -2045,54 +1909,56 @@ export default function ClientDashboard() {
                   </div>
 
                   {/* Export Leads (Outbound Webhook) Card */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="p-6 sm:p-8">
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
-                          <Globe className="w-6 h-6" />
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
+                    <div className="p-8">
+                      <div className="flex items-center gap-4 mb-8">
+                        <div className="p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-500/30">
+                          <Link2 className="w-6 h-6" />
                         </div>
                         <div>
-                          <h3 className="text-lg font-semibold text-slate-900">Export Leads (Outbound Webhook)</h3>
-                          <p className="text-slate-500 text-sm">Send incoming leads to external tools like Google Sheets via Pabbly or Make.com.</p>
+                          <h3 className="text-xl font-bold text-slate-900 tracking-tight">Export Leads (Outbound Webhook)</h3>
+                          <p className="text-slate-500 text-sm font-medium mt-1">Send incoming leads to external tools like Google Sheets via Pabbly or Make.com.</p>
                         </div>
                       </div>
 
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-1">Webhook URL</label>
-                          <input
-                            type="url"
-                            value={outboundWebhookUrl}
-                            onChange={(e) => setOutboundWebhookUrl(e.target.value)}
-                            placeholder="https://hook.us1.make.com/..."
-                            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
-                          />
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={handleSaveOutboundWebhook}
-                            disabled={isSavingOutboundWebhook}
-                            className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50"
-                          >
-                            {isSavingOutboundWebhook ? 'Saving...' : 'Save Configuration'}
-                          </button>
-                          <button
-                            onClick={handleTestOutboundWebhook}
-                            disabled={isTestingOutboundWebhook || !outboundWebhookUrl}
-                            className="px-4 py-2 bg-slate-100 text-slate-700 text-sm font-medium rounded-xl hover:bg-slate-200 transition-colors disabled:opacity-50"
-                          >
-                            {isTestingOutboundWebhook ? 'Sending...' : 'Send Test Lead'}
-                          </button>
+                      <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
+                        <div className="space-y-5">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">Webhook URL</label>
+                            <input
+                              type="url"
+                              value={outboundWebhookUrl}
+                              onChange={(e) => setOutboundWebhookUrl(e.target.value)}
+                              placeholder="https://hook.us1.make.com/..."
+                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm"
+                            />
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <button
+                              onClick={handleSaveOutboundWebhook}
+                              disabled={isSavingOutboundWebhook}
+                              className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-500/20 disabled:opacity-50"
+                            >
+                              {isSavingOutboundWebhook ? 'Saving...' : 'Save Configuration'}
+                            </button>
+                            <button
+                              onClick={handleTestOutboundWebhook}
+                              disabled={isTestingOutboundWebhook || !outboundWebhookUrl}
+                              className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm disabled:opacity-50"
+                            >
+                              {isTestingOutboundWebhook ? 'Sending...' : 'Send Test Lead'}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
 
                   {/* Documentation Card */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
-                    <h3 className="text-lg font-semibold text-slate-900 mb-4">Payload Format</h3>
-                    <p className="text-sm text-slate-500 mb-4">Your external source should send a JSON POST request with the following fields:</p>
-                    <div className="bg-slate-900 rounded-xl p-4 overflow-x-auto relative">
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden p-8">
+                    <h3 className="text-xl font-bold text-slate-900 tracking-tight mb-3">Payload Format</h3>
+                    <p className="text-sm font-medium text-slate-500 mb-6">Your external source should send a JSON POST request with the following fields:</p>
+                    <div className="bg-[#0f172a] rounded-2xl p-6 overflow-x-auto relative shadow-inner border border-slate-800">
                       <button
                         onClick={() => {
                           const payloadObject = {
@@ -2103,22 +1969,17 @@ export default function ClientDashboard() {
                             "project": "Neopolis Luxury Villas",
                             "source": "WEBSITE",
                             "subSource": "Contact Us Form",
-                            "message": "I am interested in a 4BHK villa.",
-                            "utm_source": "google",
-                            "utm_medium": "cpc",
-                            "utm_campaign": "summer_monsoon_sale",
-                            "utm_term": "luxury villas in hyderabad",
-                            "utm_content": "banner_ad_v2"
+                            "message": "I am interested in a 4BHK villa."
                           };
                           navigator.clipboard.writeText(JSON.stringify(payloadObject, null, 2));
                           setIsCopied(true);
                           setTimeout(() => setIsCopied(false), 2000);
                         }}
-                        className="absolute top-3 right-3 bg-slate-700 hover:bg-slate-600 text-white text-xs py-1 px-2 rounded transition-colors"
+                        className="absolute top-4 right-4 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-[11px] font-bold py-1.5 px-3 rounded-lg transition-colors shadow-sm"
                       >
-                        {isCopied ? 'Copied!' : 'Copy'}
+                        {isCopied ? 'Copied!' : 'Copy JSON'}
                       </button>
-                      <pre className="text-xs text-emerald-400 font-mono">
+                      <pre className="text-sm text-emerald-400 font-mono leading-relaxed">
 {`{
   "firstName": "Ravi",
   "lastName": "Kumar",
@@ -2127,12 +1988,7 @@ export default function ClientDashboard() {
   "project": "Neopolis Luxury Villas",
   "source": "WEBSITE",
   "subSource": "Contact Us Form",
-  "message": "I am interested in a 4BHK villa.",
-  "utm_source": "google",
-  "utm_medium": "cpc",
-  "utm_campaign": "summer_monsoon_sale",
-  "utm_term": "luxury villas in hyderabad",
-  "utm_content": "banner_ad_v2"
+  "message": "I am interested in a 4BHK villa."
 }`}
                       </pre>
                     </div>
@@ -2145,7 +2001,7 @@ export default function ClientDashboard() {
         </div>
       </main>
 
-      {/* Modals */}
+      {/* Modals stay above the glass backdrop */}
       <LeadDetailsModal 
         lead={selectedLead}
         isOpen={isLeadModalOpen}
@@ -2159,163 +2015,165 @@ export default function ClientDashboard() {
 
       {/* Add Lead Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 sm:p-6">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center p-6 border-b border-slate-200 shrink-0">
-              <h3 className="text-lg font-semibold text-slate-900">Add New Lead</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 sm:p-6 transition-all">
+          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-2xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-300">
+            <div className="flex justify-between items-center p-6 border-b border-slate-200/60 shrink-0">
+              <h3 className="text-xl font-extrabold text-slate-800">Add New Lead</h3>
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            <form id="add-lead-form" onSubmit={handleAddLead} className="p-6 overflow-y-auto flex-1 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <form id="add-lead-form" onSubmit={handleAddLead} className="p-8 overflow-y-auto flex-1 space-y-5 custom-scrollbar">
+              <div className="grid grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">First Name</label>
+                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">First Name</label>
                   <input
                     type="text"
                     required
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Last Name</label>
+                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Last Name</label>
                   <input
                     type="text"
                     required
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Email Address</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Phone Number</label>
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Project / Property</label>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Project / Property</label>
                 <input
                   type="text"
                   value={projectProperty}
                   onChange={(e) => setProjectProperty(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
                   placeholder="e.g. Sunset Villas"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
-                >
-                  {PIPELINE_STATUSES.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Source</label>
-                <select
-                  value={source}
-                  onChange={(e) => setSource(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
-                >
-                  {leadSources.length === 0 && <option value="Manual">Manual</option>}
-                  {leadSources.map(s => (
-                    <option key={s.id} value={s.name}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Sub-Source</label>
-                <select
-                  value={subSource}
-                  onChange={(e) => setSubSource(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
-                >
-                  <option value="">None</option>
-                  {leadSubSources.map(s => (
-                    <option key={s.id} value={s.name}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {user?.role === 'client_admin' && (
+              <div className="grid grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Assign To</label>
+                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Status</label>
                   <select
-                    value={assignedTo}
-                    onChange={(e) => setAssignedTo(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm bg-white"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none cursor-pointer"
                   >
-                    <option value="">Unassigned</option>
-                    {teamMembers.map(member => (
-                      <option key={member.id} value={member.id}>{member.name}</option>
+                    {PIPELINE_STATUSES.map(s => (
+                      <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
                 </div>
-              )}
-
-              </form>
-
-              <div className="p-6 border-t border-slate-200 flex justify-end gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors font-medium text-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  form="add-lead-form"
-                  disabled={addingLead}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-medium text-sm disabled:opacity-50 flex justify-center items-center"
-                >
-                  {addingLead ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    'Save Lead'
-                  )}
-                </button>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Source</label>
+                  <select
+                    value={source}
+                    onChange={(e) => setSource(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none cursor-pointer"
+                  >
+                    {leadSources.length === 0 && <option value="Manual">Manual</option>}
+                    {leadSources.map(s => (
+                      <option key={s.id} value={s.name}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Sub-Source</label>
+                  <select
+                    value={subSource}
+                    onChange={(e) => setSubSource(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none cursor-pointer"
+                  >
+                    <option value="">None</option>
+                    {leadSubSources.map(s => (
+                      <option key={s.id} value={s.name}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {user?.role === 'client_admin' && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Assign To</label>
+                    <select
+                      value={assignedTo}
+                      onChange={(e) => setAssignedTo(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none cursor-pointer"
+                    >
+                      <option value="">Unassigned</option>
+                      {teamMembers.map(member => (
+                        <option key={member.id} value={member.id}>{member.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </form>
+
+            <div className="p-6 border-t border-slate-200/60 flex justify-end gap-3 bg-slate-50/50 rounded-b-3xl shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="add-lead-form"
+                disabled={addingLead}
+                className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 text-white rounded-xl hover:from-emerald-500 hover:to-teal-400 transition-all font-bold text-sm shadow-lg shadow-emerald-500/25 disabled:opacity-50 flex justify-center items-center min-w-[120px]"
+              >
+                {addingLead ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  'Save Lead'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Add Agent Modal */}
       {isAgentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h3 className="text-lg font-semibold text-slate-900">Add New Agent</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md transition-all">
+          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-200/60">
+              <h3 className="text-xl font-extrabold text-slate-800">Add New Agent</h3>
               <button 
                 onClick={() => {
                   setIsAgentModalOpen(false);
@@ -2323,49 +2181,49 @@ export default function ClientDashboard() {
                   setAgentEmail('');
                   setAgentPassword('');
                 }}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            <form onSubmit={handleCreateAgent} className="p-6 space-y-4">
+            <form onSubmit={handleCreateAgent} className="p-8 space-y-5">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Full Name</label>
                 <input
                   type="text"
                   required
                   value={agentName}
                   onChange={(e) => setAgentName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Email Address</label>
                 <input
                   type="email"
                   required
                   value={agentEmail}
                   onChange={(e) => setAgentEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password</label>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Temporary Password</label>
                 <input
                   type="password"
                   required
                   value={agentPassword}
                   onChange={(e) => setAgentPassword(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-colors sm:text-sm"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
                   minLength={6}
                 />
-                <p className="mt-1 text-xs text-slate-500">Must be at least 6 characters.</p>
+                <p className="mt-2 text-[11px] font-medium text-slate-400">Must be at least 6 characters long.</p>
               </div>
 
-              <div className="pt-4 flex gap-3">
+              <div className="pt-6 flex gap-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -2374,14 +2232,14 @@ export default function ClientDashboard() {
                     setAgentEmail('');
                     setAgentPassword('');
                   }}
-                  className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors font-medium text-sm"
+                  className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={addingAgent}
-                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-medium text-sm disabled:opacity-50 flex justify-center items-center"
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 text-white rounded-xl hover:from-emerald-500 hover:to-teal-400 transition-all font-bold text-sm shadow-lg shadow-emerald-500/25 disabled:opacity-50 flex justify-center items-center"
                 >
                   {addingAgent ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -2395,6 +2253,23 @@ export default function ClientDashboard() {
         </div>
       )}
 
+      {/* Internal CSS for custom scrollbars to match the premium theme */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(148, 163, 184, 0.3);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(148, 163, 184, 0.5);
+        }
+      `}</style>
     </div>
   );
 }
