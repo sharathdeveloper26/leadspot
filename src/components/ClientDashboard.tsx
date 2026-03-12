@@ -14,14 +14,6 @@ interface Agent {
   email: string;
   role: string;
   createdAt: any;
-  designation?: string;
-  location?: string;
-  linkedin?: string;
-  formId?: string;
-  adId?: string;
-  adName?: string;
-  campaignId?: string;
-  campaignName?: string;
 }
 
 const PIPELINE_STATUSES = [
@@ -1096,26 +1088,61 @@ export default function ClientDashboard() {
                                   )}
                                 </td>
                               </tr>
+                              
+                              {/* 👇 FULLY UPGRADED EXPANDED ROW DATA 👇 */}
                               {expandedLeads.includes(lead.id) && (
                                 <tr className="bg-slate-50/50 backdrop-blur-sm border-b border-slate-200/50">
                                   <td colSpan={10} className="px-6 py-5">
-                                    <div className="grid grid-cols-4 gap-6 text-sm">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 text-sm bg-white/60 p-4 rounded-xl border border-white">
+                                      
+                                      {/* Apollo Enrichment Data */}
+                                      {(lead.designation && lead.designation !== "Unknown") && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Designation</span>
+                                          <span className="text-slate-700 font-medium flex items-center gap-1.5">💼 {lead.designation}</span>
+                                        </div>
+                                      )}
+                                      {(lead.location && lead.location !== "Unknown") && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Location</span>
+                                          <span className="text-slate-700 font-medium flex items-center gap-1.5">📍 {lead.location}</span>
+                                        </div>
+                                      )}
+                                      {lead.linkedin && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">LinkedIn</span>
+                                          <a href={lead.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline text-xs font-bold flex items-center gap-1">🔗 View Profile</a>
+                                        </div>
+                                      )}
+
+                                      {/* Truecaller Verified Data */}
+                                      {(lead.truecallerName && lead.truecallerName !== "Unknown") && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Truecaller Record</span>
+                                          <span className="text-blue-700 font-bold bg-blue-100 px-2 py-0.5 rounded flex items-center gap-1.5 w-fit">
+                                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/><path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/></svg>
+                                            {lead.truecallerName}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Facebook Meta Marketing Data */}
+                                      {lead.adName && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ad Name</span>
+                                          <span className="text-slate-700 font-medium">{lead.adName}</span>
+                                        </div>
+                                      )}
+                                      {lead.campaignName && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Campaign Name</span>
+                                          <span className="text-slate-700 font-medium">{lead.campaignName}</span>
+                                        </div>
+                                      )}
                                       {lead.formId && (
                                         <div>
                                           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Form ID</span>
                                           <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.formId}</span>
-                                        </div>
-                                      )}
-                                      {lead.campaignId && (
-                                        <div>
-                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Campaign ID</span>
-                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.campaignId}</span>
-                                        </div>
-                                      )}
-                                      {lead.adsetId && (
-                                        <div>
-                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Adset ID</span>
-                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.adsetId}</span>
                                         </div>
                                       )}
                                       {lead.adId && (
@@ -1124,15 +1151,25 @@ export default function ClientDashboard() {
                                           <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.adId}</span>
                                         </div>
                                       )}
-                                      {!lead.formId && !lead.campaignId && !lead.adsetId && !lead.adId && (
-                                        <div className="col-span-4 text-slate-400 font-medium italic text-xs">
-                                          No extended marketing data available for this lead.
+                                      {lead.campaignId && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Campaign ID</span>
+                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.campaignId}</span>
+                                        </div>
+                                      )}
+
+                                      {/* Empty State Fallback */}
+                                      {!lead.designation && !lead.adName && !lead.formId && !lead.campaignId && !lead.adId && !lead.truecallerName && (
+                                        <div className="col-span-4 text-slate-400 font-medium italic text-xs py-2">
+                                          No extended marketing or enrichment data available for this lead.
                                         </div>
                                       )}
                                     </div>
                                   </td>
                                 </tr>
                               )}
+                              {/* 👆 EXPANDED ROW END 👆 */}
+
                             </React.Fragment>
                           ))}
                         </tbody>
@@ -1227,6 +1264,19 @@ export default function ClientDashboard() {
                                   <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
                                     <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Phone className="w-3.5 h-3.5 shrink-0" /></div>
                                     <span className="truncate">{lead.phone || 'No phone'}</span>
+                                    
+                                    {/* 👇 TRUECALLER VERIFIED BADGE (Pipeline Card) 👇 */}
+                                    {lead.truecallerName && lead.truecallerName !== "Unknown" && (
+                                      <span className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 shrink-0">
+                                        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+                                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/>
+                                          <path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/>
+                                        </svg>
+                                        Verified
+                                      </span>
+                                    )}
+                                    {/* 👆 TRUECALLER VERIFIED BADGE 👆 */}
+
                                   </div>
                                   <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
                                     <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Home className="w-3.5 h-3.5 shrink-0" /></div>
