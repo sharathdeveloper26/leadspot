@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
+exports.secureLinkFacebookPage = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
@@ -317,6 +317,50 @@ exports.registerNewClient = (0, https_1.onCall)(async (request) => {
     catch (error) {
         console.error("Error registering new client:", error);
         throw new https_1.HttpsError("internal", error.message || "Failed to register new client.");
+    }
+});
+exports.secureLinkFacebookPage = (0, https_1.onCall)(async (request) => {
+    if (!request.auth)
+        throw new https_1.HttpsError("unauthenticated", "Must be logged in.");
+    const clientId = request.auth.token.clientId;
+    const { shortLivedUserToken, pageId, pageName } = request.data;
+    if (!clientId || !shortLivedUserToken || !pageId) {
+        throw new https_1.HttpsError("invalid-argument", "Missing required fields.");
+    }
+    const APP_ID = '1439047481212574';
+    const APP_SECRET = 'c8ea2e55436a18ecb2ca51ccdeac0937'; // <-- PASTE YOUR SECRET HERE
+    try {
+        // 1. Exchange short-lived user token for a long-lived user token
+        const exchangeUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${shortLivedUserToken}`;
+        const exchangeRes = await axios_1.default.get(exchangeUrl);
+        const longLivedUserToken = exchangeRes.data.access_token;
+        // 2. Fetch the PERMANENT Page Access Token using the long-lived user token
+        const pagesUrl = `https://graph.facebook.com/v19.0/me/accounts?access_token=${longLivedUserToken}`;
+        const pagesRes = await axios_1.default.get(pagesUrl);
+        const pageData = pagesRes.data.data.find((p) => p.id === pageId);
+        if (!pageData) {
+            throw new Error("Could not find the requested page. Check permissions.");
+        }
+        const permanentPageToken = pageData.access_token;
+        // 3. Subscribe the page to your app's webhook securely
+        await axios_1.default.post(`https://graph.facebook.com/v19.0/${pageId}/subscribed_apps`, new URLSearchParams({
+            subscribed_fields: 'leadgen',
+            access_token: permanentPageToken
+        }).toString(), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+        // 4. Save the PERMANENT token to Firestore
+        await db.collection('facebook_integrations').doc(clientId).set({
+            clientId: clientId,
+            pageId: pageId,
+            pageName: pageName,
+            pageAccessToken: permanentPageToken,
+            status: 'active',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return { success: true, message: "Page securely linked with permanent token." };
+    }
+    catch (error) {
+        console.error("Token Exchange Error:", error.response ? error.response.data : error.message);
+        throw new https_1.HttpsError("internal", "Failed to secure Facebook connection.");
     }
 });
 //# sourceMappingURL=index.js.map

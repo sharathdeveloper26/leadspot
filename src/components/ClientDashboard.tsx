@@ -68,6 +68,10 @@ export default function ClientDashboard() {
   const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
 
+  // 👇 NEW FACEBOOK STATES 👇
+  const [fbUserToken, setFbUserToken] = useState("");
+  const [isLinking, setIsLinking] = useState(false);
+
   // Combined leads for display
   const leads = useMemo(() => {
     const combined = [...realTimeLeads, ...olderLeads];
@@ -586,53 +590,16 @@ export default function ClientDashboard() {
      }(document, 'script', 'facebook-jssdk'));
   }, []);
 
+  // 👇 SECURE FACEBOOK LOGIC 👇
   const handleConnectFacebook = () => {
     setIsLoadingFb(true);
     window.FB.login((response: any) => {
       if (response.authResponse) {
-        window.FB.api('/me/accounts', async (apiResponse: any) => {
+        setFbUserToken(response.authResponse.accessToken); 
+        
+        window.FB.api('/me/accounts', (apiResponse: any) => {
           if (apiResponse && !apiResponse.error) {
-            const pages = apiResponse.data || [];
-            setFbPages(pages);
-            
-            // Explicit Save Logic: When the Meta SDK successfully returns the Page token and details
-            if (pages.length > 0 && user?.clientId) {
-              const page = pages[0];
-              try {
-                // Subscribe the page to the app's webhook
-                const subscribeResponse = await fetch(`https://graph.facebook.com/v19.0/${page.id}/subscribed_apps`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                  },
-                  body: new URLSearchParams({
-                    subscribed_fields: 'leadgen',
-                    access_token: page.access_token,
-                  }),
-                });
-                
-                const subscribeData = await subscribeResponse.json();
-                
-                if (subscribeData.success) {
-                  const pageRef = doc(db, 'facebook_integrations', user.clientId);
-                  await setDoc(pageRef, {
-                    clientId: user.clientId,
-                    pageId: page.id,
-                    pageName: page.name,
-                    pageAccessToken: page.access_token,
-                    status: 'active',
-                    createdAt: serverTimestamp()
-                  });
-                  console.log('Successfully saved Facebook integration');
-                  fetchLinkedPages();
-                } else {
-                  console.error('Failed to subscribe page:', subscribeData);
-                  alert('Failed to subscribe Facebook Page to webhook.');
-                }
-              } catch (saveError) {
-                console.error('Firebase rejected the save or subscription failed:', saveError);
-              }
-            }
+            setFbPages(apiResponse.data || []);
           } else {
             console.error('Error fetching pages:', apiResponse.error);
             alert('Failed to fetch Facebook Pages.');
@@ -647,9 +614,10 @@ export default function ClientDashboard() {
   };
 
   const handleLinkPage = async (page: any) => {
-    if (!user?.clientId) return;
+    if (!user?.clientId || !fbUserToken) return;
+    setIsLinking(true);
+    
     try {
-      // Page Exclusivity Check
       const q = query(
         collection(db, 'facebook_integrations'),
         where('pageId', '==', page.id)
@@ -658,60 +626,34 @@ export default function ClientDashboard() {
       
       let isConnectedToOtherClient = false;
       querySnapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data.clientId !== user.clientId) {
+        if (docSnap.data().clientId !== user.clientId) {
           isConnectedToOtherClient = true;
         }
       });
-
+  
       if (isConnectedToOtherClient) {
         alert('Error: This Facebook Page is already connected to another client workspace.');
+        setIsLinking(false);
         return;
       }
-
-      // Subscribe the page to the app's webhook
-      const subscribeResponse = await fetch(`https://graph.facebook.com/v19.0/${page.id}/subscribed_apps`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          subscribed_fields: 'leadgen',
-          access_token: page.access_token,
-        }),
+  
+      const linkFn = httpsCallable(functions, 'secureLinkFacebookPage');
+      await linkFn({
+        shortLivedUserToken: fbUserToken,
+        pageId: page.id,
+        pageName: page.name
       });
       
-      const subscribeData = await subscribeResponse.json();
-      
-      if (!subscribeData.success) {
-        console.error('Failed to subscribe page:', subscribeData);
-        alert('Failed to subscribe Facebook Page to webhook.');
-        return;
-      }
-
-      // Strict Document ID Isolation
-      const pageRef = doc(db, 'facebook_integrations', user.clientId);
-      
-      try {
-        await setDoc(pageRef, {
-          clientId: user.clientId,
-          pageId: page.id,
-          pageName: page.name,
-          pageAccessToken: page.access_token,
-          status: 'active',
-          createdAt: serverTimestamp()
-        });
-      } catch (saveError) {
-        console.error("Firebase rejected the save:", saveError);
-        throw saveError;
-      }
-      
       fetchLinkedPages();
+      setFbPages([]); 
     } catch (error) {
       console.error('Error linking page:', error);
-      alert('Failed to link page.');
+      alert('Failed to securely link page.');
+    } finally {
+      setIsLinking(false);
     }
   };
+  // 👆 SECURE FACEBOOK LOGIC 👆
 
   const handleDisconnectPage = async (pageId: string) => {
     if (!user?.clientId) return;
@@ -2011,8 +1953,8 @@ export default function ClientDashboard() {
                         </div>
                       )}
 
-                      {/* Available Pages to Link */}
-                      {fbPages.length > 0 && (
+                      {/* Available Pages to Link (Now completely hidden if ANY page is linked!) */}
+                      {fbPages.length > 0 && linkedPages.length === 0 && (
                         <div className="mt-6 pt-6 border-t border-slate-100">
                           <h4 className="text-sm font-semibold text-slate-900 mb-4">Available Pages to Link</h4>
                           <div className="space-y-3">
@@ -2026,14 +1968,14 @@ export default function ClientDashboard() {
                                   </div>
                                   <button
                                     onClick={() => handleLinkPage(page)}
-                                    disabled={isLinked}
+                                    disabled={isLinked || isLinking}
                                     className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                                      isLinked 
+                                      isLinked || isLinking 
                                         ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                                         : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                                     }`}
                                   >
-                                    {isLinked ? 'Linked' : 'Link Page'}
+                                    {isLinking ? 'Securing...' : isLinked ? 'Linked' : 'Link Page'}
                                   </button>
                                 </div>
                               );
@@ -2456,4 +2398,3 @@ export default function ClientDashboard() {
     </div>
   );
 }
-
