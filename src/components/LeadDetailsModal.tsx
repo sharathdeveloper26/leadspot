@@ -29,6 +29,14 @@ export interface Lead {
   notes?: LeadNote[];
   tags?: string[];
   [key: string]: any; // For advanced tracking parameters
+  designation?: string;
+  location?: string;
+  linkedin?: string;
+  formId?: string;
+  adId?: string;
+  adName?: string;
+  campaignId?: string;
+  campaignName?: string;
 }
 
 interface LeadDetailsModalProps {
@@ -225,6 +233,7 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${colorClass}`}>
         {icon} {label} {subSource ? `/ ${subSource}` : ''}
       </span>
+      
     );
   };
 
@@ -262,11 +271,15 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
     return `${datePart} at ${timePart}`;
   };
 
-  // Extract advanced tracking params (any keys starting with utm_ or other non-standard fields)
-  const standardFields = ['id', 'firstName', 'lastName', 'email', 'phone', 'projectProperty', 'status', 'source', 'subSource', 'assignedTo', 'assignedToId', 'assignedToName', 'isDuplicate', 'createdAt', 'notes', 'clientId', 'tags'];
+  // Add the new fields to standardFields so they don't show up in the ugly raw JSON table
+  const standardFields = [
+    'id', 'firstName', 'lastName', 'email', 'phone', 'projectProperty', 'status', 
+    'source', 'subSource', 'assignedTo', 'assignedToId', 'assignedToName', 
+    'isDuplicate', 'createdAt', 'notes', 'clientId', 'tags',
+    'designation', 'location', 'linkedin', 'formId', 'adId', 'adName', 'campaignId', 'campaignName'
+  ];
   const advancedParams = Object.keys(lead).filter(key => !standardFields.includes(key));
 
-  // Sort notes chronologically (oldest first, or newest first depending on preference. Let's do newest first for timeline)
   const sortedNotes = [...(lead.notes || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   return (
@@ -311,7 +324,35 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                   <h1 className="text-3xl font-bold text-stone-900 tracking-tight">
                     {lead.firstName} {lead.lastName}
                   </h1>
-                  <div className="mt-2 flex items-center gap-4 text-sm text-stone-500">
+                  
+                  {/* 👇 APOLLO ENRICHMENT UI (Designation & Location) 👇 */}
+                  {((lead.designation && lead.designation !== "Unknown") || (lead.location && lead.location !== "Unknown") || lead.linkedin) && (
+                    <div className="mt-2.5 flex flex-wrap items-center gap-4 text-sm text-stone-600 font-medium bg-stone-50 px-3 py-1.5 rounded-lg w-fit border border-stone-200">
+                      {lead.designation && lead.designation !== "Unknown" && (
+                        <div className="flex items-center gap-1.5">
+                          💼 <span>{lead.designation}</span>
+                        </div>
+                      )}
+                      {lead.location && lead.location !== "Unknown" && (
+                        <div className="flex items-center gap-1.5">
+                          📍 <span>{lead.location}</span>
+                        </div>
+                      )}
+                      {lead.linkedin && (
+                        <a 
+                          href={lead.linkedin} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 px-2 py-0.5 rounded-md"
+                        >
+                          🔗 LinkedIn
+                        </a>
+                      )}
+                    </div>
+                  )}
+                  {/* 👆 APOLLO ENRICHMENT UI END 👆 */}
+
+                  <div className="mt-3 flex items-center gap-4 text-sm text-stone-500">
                     <div className="flex items-center gap-1.5">
                       <Calendar className="w-4 h-4" />
                       Created {formatDate(lead.createdAt)}
@@ -435,6 +476,45 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                   </button>
                 </form>
               </div>
+
+              {/* 👇 NEW META CAMPAIGN TRACKING DATA 👇 */}
+              {(lead.adName || lead.campaignName || lead.formId || lead.adId) && (
+                <div className="mt-8">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Facebook className="w-4 h-4 text-blue-600" />
+                    <h3 className="text-sm font-semibold text-stone-900 uppercase tracking-wider">Marketing Attribution</h3>
+                  </div>
+                  <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {lead.adName && (
+                        <div>
+                          <span className="block text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-wider">Ad Name</span>
+                          <span className="text-sm text-stone-900 font-medium">{lead.adName}</span>
+                        </div>
+                      )}
+                      {lead.campaignName && (
+                        <div>
+                          <span className="block text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-wider">Campaign Name</span>
+                          <span className="text-sm text-stone-900 font-medium">{lead.campaignName}</span>
+                        </div>
+                      )}
+                      {lead.formId && (
+                        <div>
+                          <span className="block text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-wider">Form ID</span>
+                          <span className="text-xs font-mono text-stone-600 bg-stone-200 px-1.5 py-0.5 rounded">{lead.formId}</span>
+                        </div>
+                      )}
+                      {lead.adId && (
+                        <div>
+                          <span className="block text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-wider">Ad ID</span>
+                          <span className="text-xs font-mono text-stone-600 bg-stone-200 px-1.5 py-0.5 rounded">{lead.adId}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* 👆 END META CAMPAIGN TRACKING DATA 👆 */}
 
               {/* Advanced Tracking Parameters */}
               {advancedParams.length > 0 && (

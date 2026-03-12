@@ -49,21 +49,37 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
 
         const integrationData = integrationQuery.docs[0].data();
         clientId = integrationData.clientId;
-        const pageAccessToken = integrationData.pageAccessToken;
+        
+        // NEW: Token Safety Check (Checks for both naming conventions)
+        const pageAccessToken = integrationData.pageAccessToken || integrationData.accessToken; 
 
-        // Fetch actual lead details (Name, Email, Phone) from Meta Graph API
+        if (!pageAccessToken) {
+          console.error(`CRITICAL ERROR: No access token found in database for Page ID: ${pageId}`);
+          res.status(400).send("Missing Access Token in Database");
+          return;
+        }
+
+        // Fetch actual lead details AND Campaign Tracking Data from Meta Graph API
         const fbResponse = await axios.get(
-          `https://graph.facebook.com/v19.0/${leadgenId}?access_token=${pageAccessToken}`
+          `https://graph.facebook.com/v19.0/${leadgenId}?fields=field_data,form_id,ad_id,ad_name,campaign_id,campaign_name&access_token=${pageAccessToken}`
         );
         
-        const fbFields = fbResponse.data.field_data;
+        const fbData = fbResponse.data;
+        const fbFields = fbData.field_data;
         
         leadData = {
           name: fbFields.find((f: any) => f.name === "full_name")?.values[0] || "FB Lead",
           email: fbFields.find((f: any) => f.name === "email")?.values[0] || "",
           phone: fbFields.find((f: any) => f.name === "phone_number")?.values[0] || "",
           source: "Facebook",
-          project: "Facebook Ad Campaign"
+          project: fbData.campaign_name || "Facebook Ad Campaign", // Maps Project to Campaign Name dynamically!
+          
+          // New Campaign Tracking Info
+          formId: fbData.form_id || "",
+          adId: fbData.ad_id || "",
+          adName: fbData.ad_name || "Unknown Ad",
+          campaignId: fbData.campaign_id || "",
+          campaignName: fbData.campaign_name || "Unknown Campaign"
         };
       } else {
         // Fallback: Use your existing manual webhook logic (for Pabbly/Zapier/Direct)
@@ -74,7 +90,12 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
           email: data.email,
           phone: data.phone,
           source: data.source || "Webhook",
-          project: data.project || "General Inquiry"
+          project: data.project || "General Inquiry",
+          formId: "",
+          adId: "",
+          adName: "",
+          campaignId: "",
+          campaignName: ""
         };
       }
 
@@ -82,6 +103,33 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
         res.status(400).send("Error: clientId is required.");
         return;
       }
+
+      // --- 🚀 START NEW APOLLO ENRICHMENT LOGIC 🚀 ---
+      let designation = "Unknown";
+      let location = "Unknown";
+      let linkedinUrl = "";
+
+      if (leadData.email) {
+          try {
+              const apolloResponse = await axios.post('https://api.apollo.io/v1/people/match', {
+                  api_key: 'vWaMRrj2mpju0d1hVAN6RQ', // Your Apollo Master Key
+                  email: leadData.email,
+                  name: leadData.name
+              }, {
+                  headers: { 'Content-Type': 'application/json' }
+              });
+
+              if (apolloResponse.data && apolloResponse.data.person) {
+                  const person = apolloResponse.data.person;
+                  designation = person.title || "Unknown";
+                  location = person.city ? `${person.city}, ${person.state || ''}` : "Unknown";
+                  linkedinUrl = person.linkedin_url || "";
+              }
+          } catch (enrichmentError: any) {
+              console.error("Apollo API Miss:", enrichmentError.response ? enrichmentError.response.data : enrichmentError.message);
+          }
+      }
+      // --- 🚀 END NEW APOLLO ENRICHMENT LOGIC 🚀 ---
 
       // --- START ASSIGNMENT LOGIC (Existing) ---
       let assignedToId = null;
@@ -105,11 +153,24 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
         email: leadData.email || "",
         phone: leadData.phone || "",
         source: leadData.source,
-        projectProperty: leadData.project,
+        projectProperty: leadData.project, 
         status: "New",
         assignedTo: assignedToId,
         assignedToId: assignedToId,
         assignedToName: assignedToName,
+        
+        // 👇 NEW: APOLLO ENRICHMENT DATA 👇
+        designation: designation,
+        location: location,
+        linkedin: linkedinUrl,
+        
+        // 👇 NEW: META CAMPAIGN TRACKING DATA 👇
+        formId: leadData.formId,
+        adId: leadData.adId,
+        adName: leadData.adName,
+        campaignId: leadData.campaignId,
+        campaignName: leadData.campaignName,
+
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       };
 
@@ -119,7 +180,11 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
       res.status(200).json({ success: true, message: "Event processed", received: finalLead });
 
     } catch (error: any) {
-      console.error("Webhook Processing Error:", error);
+      if (error.response && error.response.data) {
+        console.error("META GRAPH API REJECTED THE REQUEST. Reason:", JSON.stringify(error.response.data));
+      } else {
+        console.error("Webhook Processing Error:", error.message || error);
+      }
       res.status(500).send("Internal Server Error");
     }
     return;

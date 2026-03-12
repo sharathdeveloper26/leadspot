@@ -14,6 +14,14 @@ interface Agent {
   email: string;
   role: string;
   createdAt: any;
+  designation?: string;
+  location?: string;
+  linkedin?: string;
+  formId?: string;
+  adId?: string;
+  adName?: string;
+  campaignId?: string;
+  campaignName?: string;
 }
 
 const PIPELINE_STATUSES = [
@@ -1381,6 +1389,36 @@ export default function ClientDashboard() {
                                   <div className="font-medium text-slate-900 leading-tight">{lead.firstName} {lead.lastName}</div>
                                   {getSourceBadge(lead.source, lead.subSource)}
                                 </div>
+                                {/* 👇 NEW APOLLO ENRICHMENT UI STARTS HERE 👇 */}
+                                {((lead.designation && lead.designation !== "Unknown") || (lead.location && lead.location !== "Unknown")) && (
+                                  <div className="mb-3 text-sm text-gray-600 space-y-1">
+                                    {lead.designation && lead.designation !== "Unknown" && (
+                                      <div className="flex items-center gap-2">
+                                        💼 <span>{lead.designation}</span>
+                                      </div>
+                                    )}
+                                    {lead.location && lead.location !== "Unknown" && (
+                                      <div className="flex items-center gap-2">
+                                        📍 <span>{lead.location}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {lead.linkedin && (
+                                  <div className="mb-3">
+                                    <a 
+                                      href={lead.linkedin} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-blue-500 hover:text-blue-700 underline flex items-center gap-1 w-fit"
+                                      onClick={(e) => e.stopPropagation()} 
+                                    >
+                                      🔗 View LinkedIn
+                                    </a>
+                                  </div>
+                                )}
+                                {/* 👆 NEW APOLLO ENRICHMENT UI ENDS HERE 👆 */}
                                 <div className="space-y-2 mb-4">
                                   <div className="flex items-center gap-2 text-xs text-slate-500">
                                     <Phone className="w-3.5 h-3.5 shrink-0" />

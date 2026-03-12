@@ -45,16 +45,29 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                 }
                 const integrationData = integrationQuery.docs[0].data();
                 clientId = integrationData.clientId;
-                const pageAccessToken = integrationData.pageAccessToken;
-                // Fetch actual lead details (Name, Email, Phone) from Meta Graph API
-                const fbResponse = await axios_1.default.get(`https://graph.facebook.com/v19.0/${leadgenId}?access_token=${pageAccessToken}`);
-                const fbFields = fbResponse.data.field_data;
+                // NEW: Token Safety Check (Checks for both naming conventions)
+                const pageAccessToken = integrationData.pageAccessToken || integrationData.accessToken;
+                if (!pageAccessToken) {
+                    console.error(`CRITICAL ERROR: No access token found in database for Page ID: ${pageId}`);
+                    res.status(400).send("Missing Access Token in Database");
+                    return;
+                }
+                // Fetch actual lead details AND Campaign Tracking Data from Meta Graph API
+                const fbResponse = await axios_1.default.get(`https://graph.facebook.com/v19.0/${leadgenId}?fields=field_data,form_id,ad_id,ad_name,campaign_id,campaign_name&access_token=${pageAccessToken}`);
+                const fbData = fbResponse.data;
+                const fbFields = fbData.field_data;
                 leadData = {
                     name: ((_f = fbFields.find((f) => f.name === "full_name")) === null || _f === void 0 ? void 0 : _f.values[0]) || "FB Lead",
                     email: ((_g = fbFields.find((f) => f.name === "email")) === null || _g === void 0 ? void 0 : _g.values[0]) || "",
                     phone: ((_h = fbFields.find((f) => f.name === "phone_number")) === null || _h === void 0 ? void 0 : _h.values[0]) || "",
                     source: "Facebook",
-                    project: "Facebook Ad Campaign"
+                    project: fbData.campaign_name || "Facebook Ad Campaign", // Maps Project to Campaign Name dynamically!
+                    // New Campaign Tracking Info
+                    formId: fbData.form_id || "",
+                    adId: fbData.ad_id || "",
+                    adName: fbData.ad_name || "Unknown Ad",
+                    campaignId: fbData.campaign_id || "",
+                    campaignName: fbData.campaign_name || "Unknown Campaign"
                 };
             }
             else {
@@ -66,13 +79,43 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                     email: data.email,
                     phone: data.phone,
                     source: data.source || "Webhook",
-                    project: data.project || "General Inquiry"
+                    project: data.project || "General Inquiry",
+                    formId: "",
+                    adId: "",
+                    adName: "",
+                    campaignId: "",
+                    campaignName: ""
                 };
             }
             if (!clientId) {
                 res.status(400).send("Error: clientId is required.");
                 return;
             }
+            // --- 🚀 START NEW APOLLO ENRICHMENT LOGIC 🚀 ---
+            let designation = "Unknown";
+            let location = "Unknown";
+            let linkedinUrl = "";
+            if (leadData.email) {
+                try {
+                    const apolloResponse = await axios_1.default.post('https://api.apollo.io/v1/people/match', {
+                        api_key: 'vWaMRrj2mpju0d1hVAN6RQ', // Your Apollo Master Key
+                        email: leadData.email,
+                        name: leadData.name
+                    }, {
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (apolloResponse.data && apolloResponse.data.person) {
+                        const person = apolloResponse.data.person;
+                        designation = person.title || "Unknown";
+                        location = person.city ? `${person.city}, ${person.state || ''}` : "Unknown";
+                        linkedinUrl = person.linkedin_url || "";
+                    }
+                }
+                catch (enrichmentError) {
+                    console.error("Apollo API Miss:", enrichmentError.response ? enrichmentError.response.data : enrichmentError.message);
+                }
+            }
+            // --- 🚀 END NEW APOLLO ENRICHMENT LOGIC 🚀 ---
             // --- START ASSIGNMENT LOGIC (Existing) ---
             let assignedToId = null;
             let assignedToName = null;
@@ -97,6 +140,16 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                 assignedTo: assignedToId,
                 assignedToId: assignedToId,
                 assignedToName: assignedToName,
+                // 👇 NEW: APOLLO ENRICHMENT DATA 👇
+                designation: designation,
+                location: location,
+                linkedin: linkedinUrl,
+                // 👇 NEW: META CAMPAIGN TRACKING DATA 👇
+                formId: leadData.formId,
+                adId: leadData.adId,
+                adName: leadData.adName,
+                campaignId: leadData.campaignId,
+                campaignName: leadData.campaignName,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             };
             await db.collection("leads").add(finalLead);
@@ -104,7 +157,12 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
             res.status(200).json({ success: true, message: "Event processed", received: finalLead });
         }
         catch (error) {
-            console.error("Webhook Processing Error:", error);
+            if (error.response && error.response.data) {
+                console.error("META GRAPH API REJECTED THE REQUEST. Reason:", JSON.stringify(error.response.data));
+            }
+            else {
+                console.error("Webhook Processing Error:", error.message || error);
+            }
             res.status(500).send("Internal Server Error");
         }
         return;
