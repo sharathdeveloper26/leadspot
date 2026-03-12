@@ -749,7 +749,6 @@ export default function ClientDashboard() {
   };
 
   return (
-    // ✨ UI UPGRADE: Added soft background gradient and relative positioning for mesh blobs
     <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
       
       {/* ✨ UI UPGRADE: Pinterest-style background mesh gradient blobs */}
@@ -770,9 +769,11 @@ export default function ClientDashboard() {
         <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
       )}
 
-      {/* ✨ UI UPGRADE: Sidebar converted to frosted glassmorphism */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white/70 backdrop-blur-2xl border-r border-white flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="h-16 flex items-center justify-between px-6 border-b border-white/60">
+      {/* ✨ UI UPGRADE: Sidebar converted to frosted glassmorphism with its own subtle vertical gradient */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-white/90 via-emerald-50/40 to-slate-50/80 backdrop-blur-2xl border-r border-white/80 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-[8px_0_30px_rgba(0,0,0,0.03)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        
+        {/* ✨ UI UPGRADE: Taller, more breathable header area for the logo */}
+        <div className="h-20 flex items-center justify-between px-6 border-b border-slate-100/50 bg-white/40">
           <div className="flex items-center gap-2 text-emerald-600 font-bold text-lg tracking-tight">
             <img src="/mintage-logo.png" alt="Mintage" className="h-8 w-auto drop-shadow-sm" />
           </div>
@@ -781,16 +782,19 @@ export default function ClientDashboard() {
           </button>
         </div>
         
-        <div className="px-5 py-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+        {/* ✨ UI UPGRADE: Gradient Text for Workspace label */}
+        <div className="px-6 py-6 text-[11px] font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-400 to-slate-500 uppercase tracking-[0.2em]">
           Workspace
         </div>
         
-        <nav className="flex-1 px-3 space-y-1.5">
-          {/* ✨ UI UPGRADE: Active states use sleek gradients and soft text colors */}
+        <nav className="flex-1 px-4 space-y-1.5">
+          {/* ✨ UI UPGRADE: Active states use sleek gradients, soft text colors, and subtle inner borders */}
           <button 
             onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }}
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl w-full text-left transition-all duration-200 ${
-              activeTab === 'leads' ? 'bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-700 font-bold border-l-4 border-emerald-500 rounded-l-none' : 'text-slate-600 hover:bg-white/60 hover:text-slate-900 hover:shadow-sm'
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
+              activeTab === 'leads' 
+                ? 'bg-gradient-to-r from-emerald-500/15 to-transparent text-emerald-800 font-bold border-l-4 border-emerald-500 rounded-l-none shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]' 
+                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-emerald-700 hover:shadow-sm'
             }`}
           >
             <Users className="w-5 h-5" />
@@ -800,8 +804,10 @@ export default function ClientDashboard() {
             <>
               <button 
                 onClick={() => { setActiveTab('team'); setIsMobileMenuOpen(false); }}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl w-full text-left transition-all duration-200 ${
-                  activeTab === 'team' ? 'bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-700 font-bold border-l-4 border-emerald-500 rounded-l-none' : 'text-slate-600 hover:bg-white/60 hover:text-slate-900 hover:shadow-sm'
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
+                  activeTab === 'team' 
+                    ? 'bg-gradient-to-r from-emerald-500/15 to-transparent text-emerald-800 font-bold border-l-4 border-emerald-500 rounded-l-none shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]' 
+                    : 'text-slate-600 font-medium hover:bg-white/60 hover:text-emerald-700 hover:shadow-sm'
                 }`}
               >
                 <UserCog className="w-5 h-5" />
@@ -809,8 +815,10 @@ export default function ClientDashboard() {
               </button>
               <button 
                 onClick={() => { setActiveTab('integrations'); setIsMobileMenuOpen(false); }}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl w-full text-left transition-all duration-200 ${
-                  activeTab === 'integrations' ? 'bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-700 font-bold border-l-4 border-emerald-500 rounded-l-none' : 'text-slate-600 hover:bg-white/60 hover:text-slate-900 hover:shadow-sm'
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
+                  activeTab === 'integrations' 
+                    ? 'bg-gradient-to-r from-emerald-500/15 to-transparent text-emerald-800 font-bold border-l-4 border-emerald-500 rounded-l-none shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]' 
+                    : 'text-slate-600 font-medium hover:bg-white/60 hover:text-emerald-700 hover:shadow-sm'
                 }`}
               >
                 <Link2 className="w-5 h-5" />
@@ -820,8 +828,10 @@ export default function ClientDashboard() {
           )}
           <button 
             onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl w-full text-left transition-all duration-200 ${
-              activeTab === 'reports' ? 'bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-700 font-bold border-l-4 border-emerald-500 rounded-l-none' : 'text-slate-600 hover:bg-white/60 hover:text-slate-900 hover:shadow-sm'
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
+              activeTab === 'reports' 
+                ? 'bg-gradient-to-r from-emerald-500/15 to-transparent text-emerald-800 font-bold border-l-4 border-emerald-500 rounded-l-none shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]' 
+                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-emerald-700 hover:shadow-sm'
             }`}
           >
             <LayoutDashboard className="w-5 h-5" />
@@ -829,10 +839,10 @@ export default function ClientDashboard() {
           </button>
         </nav>
 
-        <div className="p-4 border-t border-white/60">
+        <div className="p-5 border-t border-slate-100/50 bg-white/20">
           <button 
             onClick={logout}
-            className="flex items-center gap-3 px-4 py-2.5 w-full rounded-xl text-slate-600 hover:bg-white/60 hover:text-red-600 hover:shadow-sm transition-all duration-200"
+            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-600 font-medium hover:bg-red-50/80 hover:text-red-600 hover:shadow-sm transition-all duration-200"
           >
             <LogOut className="w-5 h-5" />
             Sign Out
@@ -844,11 +854,11 @@ export default function ClientDashboard() {
       <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         
         {/* ✨ UI UPGRADE: Header frosted glass */}
-        <header className="h-16 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+        <header className="h-20 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
           <h1 className="text-xl font-bold tracking-tight text-slate-800">
             {activeTab === 'leads' ? 'Leads Management' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Dashboard' : 'Integrations'}
           </h1>
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-white px-4 py-1.5 rounded-full shadow-sm">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-white px-4 py-2 rounded-full shadow-sm">
             <UserCircle2 className="w-4 h-4 text-emerald-600" />
             {user?.email}
           </div>
