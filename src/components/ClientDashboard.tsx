@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle, ChevronDown, ChevronUp, Menu } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle, ChevronDown, ChevronUp, Menu, Download } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 import AddLeadModal from './AddLeadModal';
@@ -14,6 +14,14 @@ interface Agent {
   email: string;
   role: string;
   createdAt: any;
+  designation?: string;
+  location?: string;
+  linkedin?: string;
+  formId?: string;
+  adId?: string;
+  adName?: string;
+  campaignId?: string;
+  campaignName?: string;
 }
 
 const PIPELINE_STATUSES = [
@@ -637,6 +645,66 @@ export default function ClientDashboard() {
     }
     return matches;
   });
+
+  // 👇 NEW EXPORT TO CSV LOGIC 👇
+  const handleExportCSV = () => {
+    if (filteredLeads.length === 0) {
+      alert("No leads found for the selected filters.");
+      return;
+    }
+
+    const headers = [
+      "Date", "First Name", "Last Name", "Email", "Phone", 
+      "Project/Property", "Status", "Source", "Sub-Source", 
+      "Assigned To", "Tags", "Designation", "Location", "LinkedIn",
+      "Truecaller Name", "Ad Name", "Campaign Name", "Form ID"
+    ];
+
+    const csvRows = filteredLeads.map(lead => {
+      const dateStr = lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString() : 'N/A';
+      const assignedName = lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned';
+      const tags = lead.tags ? lead.tags.join(' | ') : '';
+      
+      const escapeCSV = (val: any) => {
+         if (val === null || val === undefined) return '""';
+         const str = String(val);
+         return `"${str.replace(/"/g, '""')}"`;
+      };
+
+      return [
+        escapeCSV(dateStr),
+        escapeCSV(lead.firstName),
+        escapeCSV(lead.lastName),
+        escapeCSV(lead.email),
+        escapeCSV(lead.phone),
+        escapeCSV(lead.projectProperty),
+        escapeCSV(lead.status),
+        escapeCSV(lead.source),
+        escapeCSV(lead.subSource),
+        escapeCSV(assignedName),
+        escapeCSV(tags),
+        escapeCSV(lead.designation),
+        escapeCSV(lead.location),
+        escapeCSV(lead.linkedin),
+        escapeCSV(lead.truecallerName),
+        escapeCSV(lead.adName),
+        escapeCSV(lead.campaignName),
+        escapeCSV(lead.formId)
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...csvRows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `leads_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  // 👆 END EXPORT TO CSV LOGIC 👆
 
   const sourceDataMap = new Map<string, number>();
   filteredLeads.forEach(lead => {
@@ -1585,35 +1653,47 @@ export default function ClientDashboard() {
                     <p className="text-slate-500 text-sm font-medium">Overview of your lead performance and team metrics.</p>
                   </div>
                   
-                  {/* Filters */}
-                  <div className="flex flex-wrap items-center gap-4 bg-white/70 backdrop-blur-xl p-2.5 rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-                    <div className="flex items-center gap-2 px-3 bg-white border border-slate-100 rounded-xl py-1.5 shadow-sm">
-                      <Calendar className="w-4 h-4 text-emerald-500" />
-                      <input 
-                        type="date" 
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
-                      />
-                      <span className="text-slate-300 font-light">|</span>
-                      <input 
-                        type="date" 
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
-                      />
-                    </div>
-                    <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
-                    <select 
-                      value={leadSourceFilter}
-                      onChange={(e) => setLeadSourceFilter(e.target.value)}
-                      className="text-sm font-bold border border-slate-100 rounded-xl px-4 py-2 bg-white shadow-sm focus:ring-2 focus:ring-emerald-500/20 text-slate-700 cursor-pointer outline-none transition-all"
+                  {/* Filters and Export Button */}
+                  <div className="flex flex-wrap items-center gap-4">
+                    {/* 👇 NEW EXPORT TO CSV BUTTON 👇 */}
+                    <button
+                      onClick={handleExportCSV}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-blue-600 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-500/25 hover:-translate-y-0.5 transition-all border border-blue-400/50"
                     >
-                      <option value="All">All Sources</option>
-                      {combinedSources.map(sourceName => (
-                        <option key={sourceName} value={sourceName}>{sourceName}</option>
-                      ))}
-                    </select>
+                      <Download className="w-4 h-4" />
+                      Export CSV
+                    </button>
+                    {/* 👆 NEW EXPORT TO CSV BUTTON 👆 */}
+
+                    <div className="flex flex-wrap items-center gap-4 bg-white/70 backdrop-blur-xl p-2.5 rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+                      <div className="flex items-center gap-2 px-3 bg-white border border-slate-100 rounded-xl py-1.5 shadow-sm">
+                        <Calendar className="w-4 h-4 text-emerald-500" />
+                        <input 
+                          type="date" 
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
+                        />
+                        <span className="text-slate-300 font-light">|</span>
+                        <input 
+                          type="date" 
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
+                        />
+                      </div>
+                      <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
+                      <select 
+                        value={leadSourceFilter}
+                        onChange={(e) => setLeadSourceFilter(e.target.value)}
+                        className="text-sm font-bold border border-slate-100 rounded-xl px-4 py-2 bg-white shadow-sm focus:ring-2 focus:ring-emerald-500/20 text-slate-700 cursor-pointer outline-none transition-all"
+                      >
+                        <option value="All">All Sources</option>
+                        {combinedSources.map(sourceName => (
+                          <option key={sourceName} value={sourceName}>{sourceName}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
