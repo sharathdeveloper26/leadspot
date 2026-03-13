@@ -819,7 +819,7 @@ export default function ClientDashboard() {
       </div>
 
       <div className="md:hidden relative z-20 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-white p-4 shrink-0 shadow-sm">
-        <img src="/mintage-logo.png" alt="Mintage" className="h-10 w-auto" />
+        <img src="/mintage-logo.png" alt="Mintage" className="h-10 w-auto" style="height:100px;" />
         <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
           <Menu className="w-6 h-6" />
         </button>
