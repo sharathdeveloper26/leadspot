@@ -39,78 +39,90 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
-      {/* Subtle background decoration */}
-      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-1/2 -right-1/2 w-[1000px] h-[1000px] rounded-full bg-gradient-to-b from-slate-100 to-transparent opacity-50 blur-3xl" />
-        <div className="absolute -bottom-1/2 -left-1/2 w-[1000px] h-[1000px] rounded-full bg-gradient-to-t from-slate-100 to-transparent opacity-50 blur-3xl" />
+    <div className="min-h-screen relative flex items-center justify-center bg-slate-50 font-sans overflow-hidden px-4 sm:px-6 lg:px-8">
+      
+      {/* ✨ UI UPGRADE: Pinterest-style background mesh gradient blobs */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-gradient-to-br from-emerald-200/40 to-teal-100/40 blur-3xl opacity-70 mix-blend-multiply animate-pulse-slow" />
+        <div className="absolute top-[10%] -right-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-blue-200/40 to-indigo-100/40 blur-3xl opacity-70 mix-blend-multiply animate-pulse-slow" style={{ animationDelay: '2s' }} />
+        <div className="absolute -bottom-[20%] left-[20%] w-[70%] h-[70%] rounded-full bg-gradient-to-tr from-purple-200/30 to-pink-100/30 blur-3xl opacity-70 mix-blend-multiply animate-pulse-slow" style={{ animationDelay: '4s' }} />
       </div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        <div className="flex justify-center">
-          <img src="/mintage-logo.png" alt="Mintage" className="h-12 w-auto"/>
+      <div className="w-full max-w-md relative z-10">
+        
+        {/* ✨ UI UPGRADE: Increased Logo Size and hover effect */}
+        <div className="flex justify-center mb-8">
+          <img 
+            src="/mintage-logo.png" 
+            alt="Mintage CRM" 
+            className="h-20 w-auto drop-shadow-md transition-transform hover:scale-105 duration-500" 
+          />
         </div>
-        <h2 className="mt-8 text-center text-3xl font-bold tracking-tight text-slate-900">
-          Sign in to your account
-        </h2>
-        <p className="mt-2 text-center text-sm text-slate-500">
-          Welcome back to Mintage
-        </p>
-      </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        <div className="bg-white py-8 px-4 shadow-2xl border border-slate-200 sm:rounded-2xl sm:px-10">
+        {/* ✨ UI UPGRADE: Frosted Glass Login Card */}
+        <div className="bg-white/70 backdrop-blur-2xl py-10 px-8 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] border border-white/80 rounded-3xl sm:px-10">
+          
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-2">
+              Welcome Back
+            </h2>
+            <p className="text-sm font-medium text-slate-500">
+              Enter your credentials to access your workspace.
+            </p>
+          </div>
+
           <form className="space-y-6" onSubmit={handleAuth}>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">
                 Email address
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-slate-400" />
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Mail className="h-5 w-5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                 </div>
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 transition-colors sm:text-sm"
+                  className="w-full pl-11 pr-4 py-3 bg-white/60 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm font-medium text-slate-800 outline-none shadow-sm placeholder:font-normal placeholder:text-slate-400"
                   placeholder="admin@example.com"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">
                 Password
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-slate-400" />
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Lock className="h-5 w-5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                 </div>
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 transition-colors sm:text-sm"
+                  className="w-full pl-11 pr-4 py-3 bg-white/60 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm font-medium text-slate-800 outline-none shadow-sm placeholder:font-normal placeholder:text-slate-400"
                   placeholder="••••••••"
                 />
               </div>
             </div>
 
             {error && (
-              <div className="p-4 rounded-xl bg-red-50 border border-red-100 flex items-start gap-3 text-red-800 text-sm">
-                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                <p>{error}</p>
+              <div className="p-4 rounded-xl bg-red-50/80 backdrop-blur-sm border border-red-100 flex items-start gap-3 text-red-800 text-sm shadow-sm">
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-red-500" />
+                <p className="font-medium">{error}</p>
               </div>
             )}
 
-            <div>
+            <div className="pt-2">
+              {/* ✨ UI UPGRADE: Gradient Button with hover lift and colored shadow */}
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="w-full flex justify-center items-center gap-2 py-3.5 px-4 border border-emerald-400/50 rounded-xl shadow-lg shadow-emerald-500/25 text-sm font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -124,7 +136,26 @@ export default function Login() {
             </div>
           </form>
         </div>
+
+        {/* Subtle Footer Note */}
+        <div className="text-center mt-8">
+          <p className="text-xs font-medium text-slate-400">
+            Powered by <span className="font-bold text-slate-500">Mintage CRM</span>
+          </p>
+        </div>
+
       </div>
+
+      {/* Internal CSS for the slow pulse animation on the background orbs */}
+      <style>{`
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 0.7; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.05); }
+        }
+        .animate-pulse-slow {
+          animation: pulse-slow 8s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   );
 }
