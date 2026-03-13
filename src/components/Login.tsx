@@ -48,7 +48,7 @@ export default function Login() {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <div className="flex justify-center">
-          <img src="/mintage-logo.png" alt="Mintage" className="h-12 w-auto"  style="height:80px;"/>
+          <img src="/mintage-logo.png" alt="Mintage" className="h-12 w-auto"/>
         </div>
         <h2 className="mt-8 text-center text-3xl font-bold tracking-tight text-slate-900">
           Sign in to your account
