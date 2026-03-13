@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle, ChevronDown, ChevronUp, Menu, Download } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle, ChevronDown, ChevronUp, Menu, Download, MessageSquare } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 import AddLeadModal from './AddLeadModal';
@@ -646,7 +646,7 @@ export default function ClientDashboard() {
     return matches;
   });
 
-  // 👇 NEW EXPORT TO CSV LOGIC 👇
+  // 👇 FULLY UPGRADED EXPORT TO CSV LOGIC 👇
   const handleExportCSV = () => {
     if (filteredLeads.length === 0) {
       alert("No leads found for the selected filters.");
@@ -657,7 +657,8 @@ export default function ClientDashboard() {
       "Date", "First Name", "Last Name", "Email", "Phone", 
       "Project/Property", "Status", "Source", "Sub-Source", 
       "Assigned To", "Tags", "Designation", "Location", "LinkedIn",
-      "Truecaller Name", "Ad Name", "Campaign Name", "Form ID"
+      "Truecaller Name", "Ad Name", "Campaign Name", "Form ID",
+      "Latest Feedback Note", "Note Author", "Note Date" // Added Feedback Headers
     ];
 
     const csvRows = filteredLeads.map(lead => {
@@ -665,10 +666,14 @@ export default function ClientDashboard() {
       const assignedName = lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned';
       const tags = lead.tags ? lead.tags.join(' | ') : '';
       
+      // Get the latest note for the master report
+      const sortedNotes = lead.notes ? [...lead.notes].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) : [];
+      const latestNote = sortedNotes.length > 0 ? sortedNotes[0] : null;
+      
       const escapeCSV = (val: any) => {
          if (val === null || val === undefined) return '""';
          const str = String(val);
-         return `"${str.replace(/"/g, '""')}"`;
+         return `"${str.replace(/"/g, '""').replace(/\n/g, ' ')}"`; // Also replace newlines so it doesn't break Excel
       };
 
       return [
@@ -689,7 +694,10 @@ export default function ClientDashboard() {
         escapeCSV(lead.truecallerName),
         escapeCSV(lead.adName),
         escapeCSV(lead.campaignName),
-        escapeCSV(lead.formId)
+        escapeCSV(lead.formId),
+        escapeCSV(latestNote ? latestNote.text : ''),
+        escapeCSV(latestNote ? latestNote.authorEmail : ''),
+        escapeCSV(latestNote ? new Date(latestNote.timestamp).toLocaleString() : '')
       ].join(',');
     });
 
@@ -698,13 +706,77 @@ export default function ClientDashboard() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `leads_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `leads_master_export_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
-  // 👆 END EXPORT TO CSV LOGIC 👆
+
+  // 👇 DEDICATED FEEDBACK EXPORT (Exports ALL notes for filtered leads) 👇
+  const handleExportFeedbackCSV = () => {
+    if (filteredLeads.length === 0) {
+      alert("No leads found for the selected filters.");
+      return;
+    }
+
+    const headers = [
+      "Lead Name", "Phone", "Email", "Status", "Source", "Assigned To",
+      "Feedback Note", "Note Author", "Note Date"
+    ];
+
+    const csvRows: string[] = [];
+
+    filteredLeads.forEach(lead => {
+      const assignedName = lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned';
+      
+      const escapeCSV = (val: any) => {
+         if (val === null || val === undefined) return '""';
+         const str = String(val);
+         return `"${str.replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+      };
+
+      const baseRow = [
+        escapeCSV(`${lead.firstName} ${lead.lastName}`),
+        escapeCSV(lead.phone),
+        escapeCSV(lead.email),
+        escapeCSV(lead.status),
+        escapeCSV(lead.source),
+        escapeCSV(assignedName)
+      ];
+
+      if (lead.notes && lead.notes.length > 0) {
+        // If they have notes, create a row for EVERY note
+        const sortedNotes = [...lead.notes].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        sortedNotes.forEach(note => {
+          csvRows.push([
+            ...baseRow,
+            escapeCSV(note.text),
+            escapeCSV(note.authorEmail),
+            escapeCSV(new Date(note.timestamp).toLocaleString())
+          ].join(','));
+        });
+      } else {
+        // If they have no notes, just output the lead info with empty note columns
+        csvRows.push([
+          ...baseRow,
+          '""', '""', '""'
+        ].join(','));
+      }
+    });
+
+    const csvContent = [headers.join(','), ...csvRows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `lead_feedback_history_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  // 👆 END DEDICATED FEEDBACK EXPORT 👆
 
   const sourceDataMap = new Map<string, number>();
   filteredLeads.forEach(lead => {
@@ -819,7 +891,7 @@ export default function ClientDashboard() {
       </div>
 
       <div className="md:hidden relative z-20 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-white p-4 shrink-0 shadow-sm">
-        <img src="/mintage-logo.png" alt="Mintage" className="h-10 w-auto"/>
+        <img src="/mintage-logo.png" alt="Mintage" className="h-10 w-auto" />
         <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
           <Menu className="w-6 h-6" />
         </button>
@@ -1156,67 +1228,14 @@ export default function ClientDashboard() {
                                   )}
                                 </td>
                               </tr>
-                              
-                              {/* 👇 FULLY UPGRADED EXPANDED ROW DATA 👇 */}
                               {expandedLeads.includes(lead.id) && (
                                 <tr className="bg-slate-50/50 backdrop-blur-sm border-b border-slate-200/50">
                                   <td colSpan={10} className="px-6 py-5">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 text-sm bg-white/60 p-4 rounded-xl border border-white">
-                                      
-                                      {/* Apollo Enrichment Data */}
-                                      {(lead.designation && lead.designation !== "Unknown") && (
-                                        <div>
-                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Designation</span>
-                                          <span className="text-slate-700 font-medium flex items-center gap-1.5">💼 {lead.designation}</span>
-                                        </div>
-                                      )}
-                                      {(lead.location && lead.location !== "Unknown") && (
-                                        <div>
-                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Location</span>
-                                          <span className="text-slate-700 font-medium flex items-center gap-1.5">📍 {lead.location}</span>
-                                        </div>
-                                      )}
-                                      {lead.linkedin && (
-                                        <div>
-                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">LinkedIn</span>
-                                          <a href={lead.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline text-xs font-bold flex items-center gap-1">🔗 View Profile</a>
-                                        </div>
-                                      )}
-
-                                      {/* Truecaller Verified Data */}
-                                      {(lead.truecallerName && lead.truecallerName !== "Unknown") && (
-                                        <div>
-                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Truecaller Record</span>
-                                          <span className="text-blue-700 font-bold bg-blue-100 px-2 py-0.5 rounded flex items-center gap-1.5 w-fit">
-                                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/><path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/></svg>
-                                            {lead.truecallerName}
-                                          </span>
-                                        </div>
-                                      )}
-
-                                      {/* Facebook Meta Marketing Data */}
-                                      {lead.adName && (
-                                        <div>
-                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ad Name</span>
-                                          <span className="text-slate-700 font-medium">{lead.adName}</span>
-                                        </div>
-                                      )}
-                                      {lead.campaignName && (
-                                        <div>
-                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Campaign Name</span>
-                                          <span className="text-slate-700 font-medium">{lead.campaignName}</span>
-                                        </div>
-                                      )}
+                                    <div className="grid grid-cols-4 gap-6 text-sm">
                                       {lead.formId && (
                                         <div>
                                           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Form ID</span>
                                           <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.formId}</span>
-                                        </div>
-                                      )}
-                                      {lead.adId && (
-                                        <div>
-                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ad ID</span>
-                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.adId}</span>
                                         </div>
                                       )}
                                       {lead.campaignId && (
@@ -1225,19 +1244,27 @@ export default function ClientDashboard() {
                                           <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.campaignId}</span>
                                         </div>
                                       )}
-
-                                      {/* Empty State Fallback */}
-                                      {!lead.designation && !lead.adName && !lead.formId && !lead.campaignId && !lead.adId && !lead.truecallerName && (
-                                        <div className="col-span-4 text-slate-400 font-medium italic text-xs py-2">
-                                          No extended marketing or enrichment data available for this lead.
+                                      {lead.adsetId && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Adset ID</span>
+                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.adsetId}</span>
+                                        </div>
+                                      )}
+                                      {lead.adId && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ad ID</span>
+                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.adId}</span>
+                                        </div>
+                                      )}
+                                      {!lead.formId && !lead.campaignId && !lead.adsetId && !lead.adId && (
+                                        <div className="col-span-4 text-slate-400 font-medium italic text-xs">
+                                          No extended marketing data available for this lead.
                                         </div>
                                       )}
                                     </div>
                                   </td>
                                 </tr>
                               )}
-                              {/* 👆 EXPANDED ROW END 👆 */}
-
                             </React.Fragment>
                           ))}
                         </tbody>
@@ -1332,19 +1359,6 @@ export default function ClientDashboard() {
                                   <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
                                     <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Phone className="w-3.5 h-3.5 shrink-0" /></div>
                                     <span className="truncate">{lead.phone || 'No phone'}</span>
-                                    
-                                    {/* 👇 TRUECALLER VERIFIED BADGE (Pipeline Card) 👇 */}
-                                    {lead.truecallerName && lead.truecallerName !== "Unknown" && (
-                                      <span className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 shrink-0">
-                                        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
-                                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/>
-                                          <path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/>
-                                        </svg>
-                                        Verified
-                                      </span>
-                                    )}
-                                    {/* 👆 TRUECALLER VERIFIED BADGE 👆 */}
-
                                   </div>
                                   <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
                                     <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Home className="w-3.5 h-3.5 shrink-0" /></div>
@@ -1877,6 +1891,79 @@ export default function ClientDashboard() {
                     </table>
                   </div>
                 </div>
+
+                {/* 👇 NEW LEAD FEEDBACK REPORT TABLE 👇 */}
+                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden mt-8">
+                  <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800">Lead Feedback & Status Report</h3>
+                      <p className="text-xs text-slate-500 font-medium mt-1">Review the latest notes and activity for your filtered leads.</p>
+                    </div>
+                    <button
+                      onClick={handleExportFeedbackCSV}
+                      className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
+                    >
+                      <MessageSquare className="w-4 h-4 text-emerald-500" />
+                      Export Feedback History
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto custom-scrollbar max-h-[500px]">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="sticky top-0 z-10 bg-slate-50/90 backdrop-blur-md">
+                        <tr className="border-b border-slate-200/60 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                          <th className="px-8 py-5">Lead Details</th>
+                          <th className="px-8 py-5">Source</th>
+                          <th className="px-8 py-5">Status</th>
+                          <th className="px-8 py-5 w-[40%]">Latest Feedback</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100/60">
+                        {filteredLeads.map(lead => {
+                          const sortedNotes = lead.notes ? [...lead.notes].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) : [];
+                          const latestNote = sortedNotes.length > 0 ? sortedNotes[0] : null;
+
+                          return (
+                            <tr key={lead.id} className="hover:bg-white/60 transition-colors">
+                              <td className="px-8 py-5">
+                                <div className="font-bold text-slate-800">{lead.firstName} {lead.lastName}</div>
+                                <div className="text-xs font-medium text-slate-500 mt-1">{lead.phone || lead.email}</div>
+                              </td>
+                              <td className="px-8 py-5 whitespace-nowrap">
+                                {getSourceBadge(lead.source, lead.subSource)}
+                              </td>
+                              <td className="px-8 py-5 whitespace-nowrap">
+                                 <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold border ${getStatusBadgeClass(lead.status)} uppercase tracking-wider`}>
+                                  {lead.status}
+                                </span>
+                              </td>
+                              <td className="px-8 py-5 min-w-[300px]">
+                                {latestNote ? (
+                                  <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100 shadow-sm">
+                                    <div className="flex justify-between items-center mb-2">
+                                      <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{latestNote.authorEmail}</span>
+                                      <span className="text-[10px] text-slate-400 font-bold">{new Date(latestNote.timestamp).toLocaleDateString()}</span>
+                                    </div>
+                                    <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap line-clamp-2 leading-relaxed">{latestNote.text}</p>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs font-medium text-slate-400 italic">No feedback recorded yet.</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {filteredLeads.length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="px-8 py-10 text-center text-sm font-medium text-slate-400">
+                              No leads found for the selected filters.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                {/* 👆 END LEAD FEEDBACK REPORT TABLE 👆 */}
               </div>
             ) : (
               /* Integrations View */
