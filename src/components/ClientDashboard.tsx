@@ -45,7 +45,6 @@ declare global {
 
 export default function ClientDashboard() {
   const { user, clientId, logout } = useAuth();
-  // ✨ UI UPGRADE: Added 'dashboard' as the default active tab
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'integrations' | 'team' | 'reports'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -77,20 +76,18 @@ export default function ClientDashboard() {
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
   }, [realTimeLeads, olderLeads]);
 
-  // 👇 DASHBOARD COMPUTATIONS 👇
   const dashboardStats = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(today.getDate() - 6); // Includes today
+    sevenDaysAgo.setDate(today.getDate() - 6);
 
     let todaysLeadsCount = 0;
     let activePipelineCount = 0;
     let closedWonCount = 0;
     const todaysSources = new Map<string, number>();
 
-    // Trend data initialized for the last 7 days
     const trendDataMap = new Map<string, number>();
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
@@ -103,18 +100,15 @@ export default function ClientDashboard() {
       const leadDate = lead.createdAt?.toDate();
       if (!leadDate) return;
 
-      // Pipeline & Conversions
       if (lead.status !== 'Closed Lost' && lead.status !== 'Junk / Invalid') activePipelineCount++;
       if (lead.status === 'Closed Won') closedWonCount++;
 
-      // Today's Stats
       if (leadDate >= today) {
         todaysLeadsCount++;
         const source = lead.source || 'Manual';
         todaysSources.set(source, (todaysSources.get(source) || 0) + 1);
       }
 
-      // 7 Day Trend
       if (leadDate >= sevenDaysAgo) {
         const dayStr = leadDate.toLocaleDateString('en-US', { weekday: 'short' });
         if (trendDataMap.has(dayStr)) {
@@ -134,7 +128,6 @@ export default function ClientDashboard() {
 
     return { todaysLeadsCount, activePipelineCount, conversionRate, todaysSourceChart, trendChart };
   }, [leads]);
-  // 👆 END DASHBOARD COMPUTATIONS 👆
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -839,7 +832,7 @@ export default function ClientDashboard() {
   });
   const dynamicSourceData = Array.from(sourceDataMap.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
-  const PIE_COLORS = ['#10b981', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef', '#ec4899', '#f43f5e', '#f97316', '#f59e0b', '#84cc16'];
+  const PIE_COLORS = ['#74ebd5', '#9face6', '#a1c4fd', '#c2e9fb', '#d4fc79', '#96e6a1', '#84fab0', '#8fd3f4', '#f5576c', '#f093fb'];
 
   const statusDataMap = new Map<string, number>();
   filteredLeads.forEach(lead => {
@@ -861,9 +854,9 @@ export default function ClientDashboard() {
     let colorClass = "bg-slate-100 text-slate-600 border-slate-200";
     let label = source || 'Manual';
 
-    if (s.includes('facebook')) { icon = <Facebook className="w-3 h-3" />; colorClass = "bg-blue-50 text-blue-700 border-blue-200"; } 
+    if (s.includes('facebook')) { icon = <Facebook className="w-3 h-3" />; colorClass = "bg-[#74ebd5]/10 text-[#4cb8a5] border-[#74ebd5]/30"; } 
     else if (s.includes('google')) { icon = <Search className="w-3 h-3" />; colorClass = "bg-amber-50 text-amber-700 border-amber-200"; } 
-    else if (s.includes('website')) { icon = <Globe className="w-3 h-3" />; colorClass = "bg-emerald-50 text-emerald-700 border-emerald-200"; }
+    else if (s.includes('website')) { icon = <Globe className="w-3 h-3" />; colorClass = "bg-[#9face6]/10 text-[#7a8ece] border-[#9face6]/30"; }
 
     return (
       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${colorClass}`}>
@@ -874,13 +867,13 @@ export default function ClientDashboard() {
 
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
-      case 'New': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'New': return 'bg-[#74ebd5]/10 text-[#4cb8a5] border-[#74ebd5]/30';
       case 'Attempted Contact': return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'Connected / Warm': return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'Connected / Warm': return 'bg-[#9face6]/10 text-[#7a8ece] border-[#9face6]/30';
       case 'Site Visit Scheduled': return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'Site Visit Completed': return 'bg-purple-100 text-purple-800 border-purple-300';
       case 'Negotiation': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'Closed Won': return 'bg-slate-900 text-white border-slate-700 shadow-md';
+      case 'Closed Won': return 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white border-transparent shadow-md';
       case 'Closed Lost': return 'bg-red-50 text-red-700 border-red-200';
       case 'Junk / Invalid': return 'bg-slate-100 text-slate-600 border-slate-200';
       default: return 'bg-slate-50 text-slate-700 border-slate-200';
@@ -939,13 +932,14 @@ export default function ClientDashboard() {
       
       {/* ✨ UI UPGRADE: Pinterest-style background mesh gradient blobs */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-emerald-100/40 to-teal-50/40 blur-3xl opacity-70 mix-blend-multiply" />
-        <div className="absolute top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-gradient-to-br from-blue-100/40 to-indigo-50/40 blur-3xl opacity-70 mix-blend-multiply" />
+        <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-[#74ebd5]/40 to-teal-50/40 blur-3xl opacity-70 mix-blend-multiply" />
+        <div className="absolute top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-gradient-to-br from-[#9face6]/40 to-indigo-50/40 blur-3xl opacity-70 mix-blend-multiply" />
         <div className="absolute -bottom-[20%] left-[20%] w-[60%] h-[60%] rounded-full bg-gradient-to-tr from-purple-100/30 to-pink-50/30 blur-3xl opacity-70 mix-blend-multiply" />
       </div>
 
       <div className="md:hidden relative z-20 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-white p-4 shrink-0 shadow-sm">
-        <img src="/mintage-logo.png" alt="Mintage" className="h-10 w-auto" />
+        {/* ✨ UI UPGRADE: Larger mobile logo */}
+        <img src="/mintage-logo.png" alt="Mintage" className="h-14 w-auto" />
         <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
           <Menu className="w-6 h-6" />
         </button>
@@ -956,12 +950,13 @@ export default function ClientDashboard() {
       )}
 
       {/* ✨ UI UPGRADE: Sidebar converted to frosted glassmorphism with its own subtle vertical gradient */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-white/90 via-emerald-50/40 to-slate-50/80 backdrop-blur-2xl border-r border-white/80 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-[8px_0_30px_rgba(0,0,0,0.03)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-white/90 via-slate-50/40 to-slate-50/80 backdrop-blur-2xl border-r border-white/80 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-[8px_0_30px_rgba(0,0,0,0.03)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         
-        {/* ✨ UI UPGRADE: Taller, more breathable header area for the logo */}
-        <div className="h-20 flex items-center justify-between px-6 border-b border-slate-100/50 bg-white/40">
+        {/* ✨ UI UPGRADE: Taller, more breathable header area for the larger logo */}
+        <div className="h-24 flex items-center justify-between px-6 border-b border-slate-100/50 bg-white/40">
           <div className="flex items-center gap-2 text-emerald-600 font-bold text-lg tracking-tight">
-            <img src="/mintage-logo.png" alt="Mintage" className="h-8 w-auto drop-shadow-sm" />
+            {/* ✨ UI UPGRADE: Increased desktop logo size to h-16 */}
+            <img src="/mintage-logo.png" alt="Mintage" className="h-16 w-auto drop-shadow-sm" />
           </div>
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
@@ -974,26 +969,25 @@ export default function ClientDashboard() {
         </div>
         
         <nav className="flex-1 px-4 space-y-1.5">
-          {/* 👇 NEW DASHBOARD TAB 👇 */}
+          {/* ✨ UI UPGRADE: Active states use sleek Teal/Purple gradients */}
           <button 
             onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
               activeTab === 'dashboard' 
-                ? 'bg-gradient-to-r from-emerald-500/15 to-transparent text-emerald-800 font-bold border-l-4 border-emerald-500 rounded-l-none shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]' 
-                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-emerald-700 hover:shadow-sm'
+                ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
+                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
             }`}
           >
             <LayoutDashboard className="w-5 h-5" />
             Dashboard
           </button>
-          {/* 👆 NEW DASHBOARD TAB 👆 */}
 
           <button 
             onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
               activeTab === 'leads' 
-                ? 'bg-gradient-to-r from-emerald-500/15 to-transparent text-emerald-800 font-bold border-l-4 border-emerald-500 rounded-l-none shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]' 
-                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-emerald-700 hover:shadow-sm'
+                ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
+                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
             }`}
           >
             <Users className="w-5 h-5" />
@@ -1006,8 +1000,8 @@ export default function ClientDashboard() {
                 onClick={() => { setActiveTab('team'); setIsMobileMenuOpen(false); }}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
                   activeTab === 'team' 
-                    ? 'bg-gradient-to-r from-emerald-500/15 to-transparent text-emerald-800 font-bold border-l-4 border-emerald-500 rounded-l-none shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]' 
-                    : 'text-slate-600 font-medium hover:bg-white/60 hover:text-emerald-700 hover:shadow-sm'
+                    ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
+                    : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
                 }`}
               >
                 <UserCog className="w-5 h-5" />
@@ -1017,8 +1011,8 @@ export default function ClientDashboard() {
                 onClick={() => { setActiveTab('integrations'); setIsMobileMenuOpen(false); }}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
                   activeTab === 'integrations' 
-                    ? 'bg-gradient-to-r from-emerald-500/15 to-transparent text-emerald-800 font-bold border-l-4 border-emerald-500 rounded-l-none shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]' 
-                    : 'text-slate-600 font-medium hover:bg-white/60 hover:text-emerald-700 hover:shadow-sm'
+                    ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
+                    : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
                 }`}
               >
                 <Link2 className="w-5 h-5" />
@@ -1031,8 +1025,8 @@ export default function ClientDashboard() {
             onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
               activeTab === 'reports' 
-                ? 'bg-gradient-to-r from-emerald-500/15 to-transparent text-emerald-800 font-bold border-l-4 border-emerald-500 rounded-l-none shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]' 
-                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-emerald-700 hover:shadow-sm'
+                ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
+                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
             }`}
           >
             <BarChart className="w-5 h-5" />
@@ -1055,12 +1049,12 @@ export default function ClientDashboard() {
       <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         
         {/* ✨ UI UPGRADE: Header frosted glass */}
-        <header className="h-20 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+        <header className="h-24 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
           <h1 className="text-xl font-bold tracking-tight text-slate-800">
             {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : 'Integrations'}
           </h1>
           <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-white px-4 py-2 rounded-full shadow-sm">
-            <UserCircle2 className="w-4 h-4 text-emerald-600" />
+            <UserCircle2 className="w-4 h-4 text-[#74ebd5]" />
             {user?.email}
           </div>
         </header>
@@ -1068,7 +1062,7 @@ export default function ClientDashboard() {
         <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-auto custom-scrollbar">
           <div className="max-w-7xl mx-auto h-full flex flex-col min-w-[800px] md:min-w-0">
             
-            {/* 👇 NEW DASHBOARD TAB VIEW 👇 */}
+            {/* 👇 DASHBOARD TAB VIEW 👇 */}
             {activeTab === 'dashboard' ? (
               <div className="space-y-8 animate-in fade-in duration-500">
                 <div>
@@ -1080,10 +1074,10 @@ export default function ClientDashboard() {
 
                 {/* KPI Strip */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.08)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Today's Leads</h3>
-                      <div className="p-2.5 bg-emerald-50 rounded-xl text-emerald-600 shadow-inner">
+                      <div className="p-2.5 bg-[#74ebd5]/15 rounded-xl text-[#50bdaf] shadow-inner">
                         <Zap className="w-5 h-5" />
                       </div>
                     </div>
@@ -1092,10 +1086,10 @@ export default function ClientDashboard() {
                     </div>
                   </div>
 
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.08)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">7-Day Volume</h3>
-                      <div className="p-2.5 bg-blue-50 rounded-xl text-blue-600 shadow-inner">
+                      <div className="p-2.5 bg-[#9face6]/15 rounded-xl text-[#7b8ed3] shadow-inner">
                         <Activity className="w-5 h-5" />
                       </div>
                     </div>
@@ -1104,7 +1098,7 @@ export default function ClientDashboard() {
                     </p>
                   </div>
 
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.08)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Active Pipeline</h3>
                       <div className="p-2.5 bg-purple-50 rounded-xl text-purple-600 shadow-inner">
@@ -1114,7 +1108,7 @@ export default function ClientDashboard() {
                     <p className="text-4xl font-black text-slate-800">{dashboardStats.activePipelineCount}</p>
                   </div>
 
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.08)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Conversion Rate</h3>
                       <div className="p-2.5 bg-amber-50 rounded-xl text-amber-600 shadow-inner">
@@ -1128,32 +1122,32 @@ export default function ClientDashboard() {
                 {/* Dashboard Charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* 7-Day Trend Line Chart */}
-                  <div className="lg:col-span-2 bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white flex flex-col">
+                  <div className="lg:col-span-2 bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col">
                     <h3 className="text-lg font-bold text-slate-800 mb-8">Lead Generation Trend (Last 7 Days)</h3>
                     <div className="flex-1 min-h-[250px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={dashboardStats.trendChart}>
                           <defs>
                             <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
-                              <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                              <stop offset="5%" stopColor="#74ebd5" stopOpacity={0.4}/>
+                              <stop offset="95%" stopColor="#74ebd5" stopOpacity={0}/>
                             </linearGradient>
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} dy={10} />
                           <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} dx={-10} allowDecimals={false} />
                           <Tooltip 
-                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgb(0 0 0 / 0.1)', padding: '12px 16px', fontWeight: 600 }}
-                            itemStyle={{ color: '#10b981' }}
+                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', padding: '12px 16px', fontWeight: 600 }}
+                            itemStyle={{ color: '#50bdaf' }}
                           />
-                          <Area type="monotone" dataKey="count" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorTrend)" />
+                          <Area type="monotone" dataKey="count" stroke="#74ebd5" strokeWidth={3} fillOpacity={1} fill="url(#colorTrend)" />
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
                   </div>
 
                   {/* Today's Lead Sources Pie Chart */}
-                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white flex flex-col">
+                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col">
                     <h3 className="text-lg font-bold text-slate-800 mb-6">Today's Lead Sources</h3>
                     {dashboardStats.todaysSourceChart.length > 0 ? (
                       <div className="flex-1 flex flex-col justify-center min-h-[250px]">
@@ -1175,7 +1169,7 @@ export default function ClientDashboard() {
                               ))}
                             </Pie>
                             <Tooltip 
-                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgb(0 0 0 / 0.1)', fontWeight: 600 }}
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', fontWeight: 600 }}
                             />
                           </PieChart>
                         </ResponsiveContainer>
@@ -1199,12 +1193,12 @@ export default function ClientDashboard() {
                 </div>
 
                 {/* Recent Leads Widget */}
-                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden">
+                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
                   <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40 flex justify-between items-center">
                     <h3 className="text-lg font-bold text-slate-800">Recent Lead Activity</h3>
                     <button 
                       onClick={() => setActiveTab('leads')}
-                      className="text-xs font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors"
+                      className="text-xs font-bold text-[#50bdaf] hover:text-[#419c90] bg-[#74ebd5]/10 hover:bg-[#74ebd5]/20 px-3 py-1.5 rounded-lg transition-colors"
                     >
                       View All Leads
                     </button>
@@ -1245,7 +1239,7 @@ export default function ClientDashboard() {
                               <td className="px-8 py-4 whitespace-nowrap text-right">
                                 <button 
                                   onClick={() => openLeadDetails(lead)}
-                                  className="text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-600 shadow-sm px-4 py-2 rounded-xl transition-all hover:-translate-y-0.5"
+                                  className="text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:border-[#74ebd5] hover:text-[#50bdaf] shadow-sm px-4 py-2 rounded-xl transition-all hover:-translate-y-0.5"
                                 >
                                   View Details
                                 </button>
@@ -1277,7 +1271,7 @@ export default function ClientDashboard() {
                   {/* ✨ UI UPGRADE: Gradient Button with hover lift and colored shadow */}
                   <button
                     onClick={() => setIsModalOpen(true)}
-                    className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-emerald-500/25 text-sm font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all hover:-translate-y-0.5 whitespace-nowrap border border-emerald-400/50"
+                    className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#74ebd5] transition-all hover:-translate-y-0.5 whitespace-nowrap"
                   >
                     <Plus className="w-4 h-4" />
                     Add New Lead
@@ -1286,7 +1280,7 @@ export default function ClientDashboard() {
 
                 {/* Filters & Controls */}
                 {/* ✨ UI UPGRADE: Glassmorphism Control Bar */}
-                <div className="flex flex-wrap items-center gap-4 bg-white/60 backdrop-blur-xl p-3 rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-8 shrink-0">
+                <div className="flex flex-wrap items-center gap-4 bg-white/60 backdrop-blur-xl p-3 rounded-2xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)] mb-8 shrink-0">
                   <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-3 py-1.5 h-10 shadow-sm">
                     {/* 👇 DATE VALIDATION FIX FOR LEADS TAB 👇 */}
                     <input
@@ -1324,7 +1318,7 @@ export default function ClientDashboard() {
                       </button>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-4 py-1.5 h-10 flex-1 min-w-[200px] shadow-sm focus-within:ring-2 focus-within:ring-emerald-500/20 transition-all">
+                  <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-4 py-1.5 h-10 flex-1 min-w-[200px] shadow-sm focus-within:ring-2 focus-within:ring-[#74ebd5]/30 transition-all">
                     <Search className="w-4 h-4 text-slate-400 shrink-0" />
                     <input
                       type="text"
@@ -1337,7 +1331,7 @@ export default function ClientDashboard() {
                   <select
                     value={leadsViewSourceFilter}
                     onChange={(e) => setLeadsViewSourceFilter(e.target.value)}
-                    className="text-sm font-medium border border-slate-100 rounded-xl px-4 py-1.5 h-10 text-slate-600 bg-white/80 shadow-sm focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer"
+                    className="text-sm font-medium border border-slate-100 rounded-xl px-4 py-1.5 h-10 text-slate-600 bg-white/80 shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none cursor-pointer"
                   >
                     <option value="All">All Sources</option>
                     {combinedSources.map(sourceName => (
@@ -1368,10 +1362,10 @@ export default function ClientDashboard() {
 
                 {loading ? (
                   <div className="p-12 flex justify-center">
-                    <div className="w-10 h-10 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+                    <div className="w-10 h-10 border-4 border-[#74ebd5]/30 border-t-[#74ebd5] rounded-full animate-spin" />
                   </div>
                 ) : leads.length === 0 ? (
-                  <div className="bg-white/60 backdrop-blur-xl rounded-3xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-16 text-center flex flex-col items-center">
+                  <div className="bg-white/60 backdrop-blur-xl rounded-3xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)] p-16 text-center flex flex-col items-center">
                     <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
                       <Users className="w-10 h-10 text-slate-300" />
                     </div>
@@ -1381,7 +1375,7 @@ export default function ClientDashboard() {
                 ) : viewMode === 'table' ? (
                   /* Table View */
                   // ✨ UI UPGRADE: Glassmorphism Table Container
-                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden shrink-0">
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden shrink-0">
                     {selectedLeads.length > 0 && (
                       <div className="bg-red-50/90 backdrop-blur-md px-6 py-3 border-b border-red-100 flex items-center justify-between">
                         <span className="text-sm font-bold text-red-800">
@@ -1403,7 +1397,7 @@ export default function ClientDashboard() {
                             <th className="px-6 py-4 w-10">
                               <input 
                                 type="checkbox" 
-                                className="rounded-md border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer w-4 h-4"
+                                className="rounded-md border-slate-300 text-[#74ebd5] focus:ring-[#74ebd5] cursor-pointer w-4 h-4"
                                 checked={paginatedLeads.length > 0 && selectedLeads.length === paginatedLeads.length}
                                 onChange={handleSelectAll}
                               />
@@ -1429,7 +1423,7 @@ export default function ClientDashboard() {
                                 <td className="px-6 py-5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                   <input 
                                     type="checkbox" 
-                                    className="rounded-md border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer w-4 h-4"
+                                    className="rounded-md border-slate-300 text-[#74ebd5] focus:ring-[#74ebd5] cursor-pointer w-4 h-4"
                                     checked={selectedLeads.includes(lead.id)}
                                     onChange={(e) => handleSelectLead(lead.id, e as any)}
                                   />
@@ -1494,7 +1488,7 @@ export default function ClientDashboard() {
                                         handleAssignLead(lead.id, e.target.value);
                                       }}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="text-sm font-medium bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-slate-700 focus:ring-2 focus:ring-emerald-500/20 outline-none shadow-sm cursor-pointer"
+                                      className="text-sm font-medium bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-slate-700 focus:ring-2 focus:ring-[#74ebd5]/30 outline-none shadow-sm cursor-pointer"
                                     >
                                       <option value="">Unassigned</option>
                                       {teamMembers.map(member => (
@@ -1631,7 +1625,7 @@ export default function ClientDashboard() {
                     <div className="flex gap-6 h-full min-w-max px-1 pt-1">
                       {PIPELINE_STATUSES.map(status => (
                         // ✨ UI UPGRADE: Glass Pipeline Columns
-                        <div key={status} className="w-[340px] flex flex-col bg-white/40 backdrop-blur-xl rounded-3xl border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.03)] overflow-hidden shrink-0">
+                        <div key={status} className="w-[340px] flex flex-col bg-white/40 backdrop-blur-xl rounded-3xl border border-white/80 shadow-[0_8px_30px_rgba(116,235,213,0.05)] overflow-hidden shrink-0">
                           <div className="p-5 border-b border-white/60 bg-white/40 flex items-center justify-between shrink-0">
                             <h3 className="font-extrabold text-slate-800 text-sm tracking-wide">{status}</h3>
                             <span className="bg-white/80 text-slate-600 text-xs font-bold px-2.5 py-1 rounded-lg shadow-sm border border-slate-100">
@@ -1644,7 +1638,7 @@ export default function ClientDashboard() {
                               <div 
                                 key={lead.id} 
                                 onClick={() => openLeadDetails(lead)}
-                                className="bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-[0_8px_20px_rgb(0,0,0,0.06)] hover:-translate-y-1 transition-all duration-300 cursor-pointer relative group"
+                                className="bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-[0_8px_20px_rgba(116,235,213,0.15)] hover:-translate-y-1 transition-all duration-300 cursor-pointer relative group"
                               >
                                 <div className="flex justify-between items-start mb-4">
                                   <div className="font-bold text-slate-900 text-base leading-tight pr-2">{lead.firstName} {lead.lastName}</div>
@@ -1722,7 +1716,7 @@ export default function ClientDashboard() {
                                       handleStatusChange(lead.id, e.target.value);
                                     }}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none cursor-pointer hover:bg-white transition-colors"
+                                    className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-[#74ebd5]/30 outline-none cursor-pointer hover:bg-white transition-colors"
                                   >
                                     {PIPELINE_STATUSES.map(s => (
                                       <option key={s} value={s}>{s}</option>
@@ -1736,7 +1730,7 @@ export default function ClientDashboard() {
                                         handleAssignLead(lead.id, e.target.value);
                                       }}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none cursor-pointer hover:bg-white transition-colors"
+                                      className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-[#74ebd5]/30 outline-none cursor-pointer hover:bg-white transition-colors"
                                     >
                                       <option value="">Unassigned</option>
                                       {teamMembers.map(member => (
@@ -1767,12 +1761,12 @@ export default function ClientDashboard() {
                     >
                       {loadingMoreLeads ? (
                         <>
-                          <div className="w-4 h-4 border-2 border-slate-300 border-t-emerald-500 rounded-full animate-spin" />
+                          <div className="w-4 h-4 border-2 border-slate-300 border-t-[#74ebd5] rounded-full animate-spin" />
                           Loading...
                         </>
                       ) : (
                         <>
-                          <Search className="w-4 h-4 text-emerald-500" />
+                          <Search className="w-4 h-4 text-[#74ebd5]" />
                           Load More Leads
                         </>
                       )}
@@ -1792,7 +1786,7 @@ export default function ClientDashboard() {
                     {user?.role === 'client_admin' && (
                       <button
                         onClick={() => setIsAgentModalOpen(true)}
-                        className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-emerald-500/25 text-sm font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 transition-all hover:-translate-y-0.5 border border-emerald-400/50"
+                        className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 transition-all hover:-translate-y-0.5 border border-transparent"
                       >
                         <UserPlus className="w-4 h-4" />
                         Add New Agent
@@ -1800,7 +1794,7 @@ export default function ClientDashboard() {
                     )}
                   </div>
 
-                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden">
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
                     {agents.length === 0 ? (
                       <div className="p-16 text-center flex flex-col items-center">
                         <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
@@ -1831,12 +1825,12 @@ export default function ClientDashboard() {
                                         type="text"
                                         value={inlineEditingName}
                                         onChange={(e) => setInlineEditingName(e.target.value)}
-                                        className="px-3 py-1.5 text-sm font-medium border-none rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none w-48"
+                                        className="px-3 py-1.5 text-sm font-medium border-none rounded-lg focus:ring-2 focus:ring-[#74ebd5] outline-none w-48"
                                         autoFocus
                                       />
                                       <button
                                         onClick={() => handleSaveInlineEdit(agent.id)}
-                                        className="text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors"
+                                        className="text-white bg-[#74ebd5] hover:bg-[#50bdaf] px-3 py-1.5 rounded-lg font-bold text-xs transition-colors"
                                       >
                                         Save
                                       </button>
@@ -1860,7 +1854,7 @@ export default function ClientDashboard() {
                                   </div>
                                 </td>
                                 <td className="px-6 py-5 whitespace-nowrap">
-                                  <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-widest">
+                                  <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold bg-[#74ebd5]/10 text-[#4cb8a5] border border-[#74ebd5]/30 uppercase tracking-widest">
                                     Agent
                                   </span>
                                 </td>
@@ -1903,7 +1897,7 @@ export default function ClientDashboard() {
                       </div>
                     </div>
 
-                    <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden">
+                    <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
                       <div className="p-6 border-b border-white/80 bg-white/40">
                         <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Create New Rule</h3>
                         <div className="flex flex-col sm:flex-row gap-4 items-end">
@@ -1912,7 +1906,7 @@ export default function ClientDashboard() {
                             <select
                               value={newRuleSource}
                               onChange={(e) => setNewRuleSource(e.target.value)}
-                              className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all cursor-pointer"
+                              className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all cursor-pointer"
                             >
                               <option value="">Select a source...</option>
                               {leadSources.map(source => (
@@ -1925,7 +1919,7 @@ export default function ClientDashboard() {
                             <select
                               value={newRuleAgentId}
                               onChange={(e) => setNewRuleAgentId(e.target.value)}
-                              className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all cursor-pointer"
+                              className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all cursor-pointer"
                             >
                               <option value="">Select an agent...</option>
                               {teamMembers.map(member => (
@@ -2010,17 +2004,17 @@ export default function ClientDashboard() {
                     {/* 👇 NEW EXPORT TO CSV BUTTON 👇 */}
                     <button
                       onClick={handleExportCSV}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-blue-600 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-500/25 hover:-translate-y-0.5 transition-all border border-blue-400/50"
+                      className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white text-sm font-bold rounded-xl shadow-lg shadow-[#74ebd5]/30 hover:opacity-90 hover:-translate-y-0.5 transition-all border border-transparent"
                     >
                       <Download className="w-4 h-4" />
                       Export CSV
                     </button>
                     {/* 👆 NEW EXPORT TO CSV BUTTON 👆 */}
 
-                    <div className="flex flex-wrap items-center gap-4 bg-white/70 backdrop-blur-xl p-2.5 rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+                    <div className="flex flex-wrap items-center gap-4 bg-white/70 backdrop-blur-xl p-2.5 rounded-2xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)]">
                       <div className="flex items-center gap-2 px-3 bg-white border border-slate-100 rounded-xl py-1.5 shadow-sm">
                         {/* 👇 DATE VALIDATION FIX FOR REPORTS TAB 👇 */}
-                        <Calendar className="w-4 h-4 text-emerald-500" />
+                        <Calendar className="w-4 h-4 text-[#74ebd5]" />
                         <input 
                           type="date" 
                           value={startDate}
@@ -2052,7 +2046,7 @@ export default function ClientDashboard() {
                       <select 
                         value={leadSourceFilter}
                         onChange={(e) => setLeadSourceFilter(e.target.value)}
-                        className="text-sm font-bold border border-slate-100 rounded-xl px-4 py-2 bg-white shadow-sm focus:ring-2 focus:ring-emerald-500/20 text-slate-700 cursor-pointer outline-none transition-all"
+                        className="text-sm font-bold border border-slate-100 rounded-xl px-4 py-2 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 text-slate-700 cursor-pointer outline-none transition-all"
                       >
                         <option value="All">All Sources</option>
                         {combinedSources.map(sourceName => (
@@ -2065,20 +2059,20 @@ export default function ClientDashboard() {
 
                 {/* KPI Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Total Leads</h3>
-                      <div className="p-2.5 bg-blue-50 rounded-xl text-blue-500 shadow-inner">
+                      <div className="p-2.5 bg-[#9face6]/15 rounded-xl text-[#7b8ed3] shadow-inner">
                         <Users className="w-5 h-5" />
                       </div>
                     </div>
                     <p className="text-4xl font-black text-slate-800">{filteredLeads.length}</p>
                   </div>
                   
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">New Leads</h3>
-                      <div className="p-2.5 bg-emerald-50 rounded-xl text-emerald-500 shadow-inner">
+                      <div className="p-2.5 bg-[#74ebd5]/15 rounded-xl text-[#50bdaf] shadow-inner">
                         <Zap className="w-5 h-5" />
                       </div>
                     </div>
@@ -2087,7 +2081,7 @@ export default function ClientDashboard() {
                     </p>
                   </div>
 
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Site Visits</h3>
                       <div className="p-2.5 bg-purple-50 rounded-xl text-purple-500 shadow-inner">
@@ -2099,7 +2093,7 @@ export default function ClientDashboard() {
                     </p>
                   </div>
 
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Closed Won</h3>
                       <div className="p-2.5 bg-amber-50 rounded-xl text-amber-500 shadow-inner">
@@ -2114,7 +2108,7 @@ export default function ClientDashboard() {
 
                 {/* Charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white">
+                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
                     <h3 className="text-lg font-bold text-slate-800 mb-8">Leads by Status</h3>
                     <div className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
@@ -2124,14 +2118,14 @@ export default function ClientDashboard() {
                           <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} dx={-10} />
                           <Tooltip 
                             cursor={{ fill: '#f8fafc' }}
-                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgb(0 0 0 / 0.1)', padding: '12px 16px', fontWeight: 600 }}
+                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', padding: '12px 16px', fontWeight: 600 }}
                           />
-                          <Bar dataKey="count" fill="url(#colorUv)" radius={[6, 6, 0, 0]} maxBarSize={45}>
+                          <Bar dataKey="count" fill="url(#colorUvBar)" radius={[6, 6, 0, 0]} maxBarSize={45}>
                             {/* SVG Gradient definition for the bars */}
                             <defs>
-                              <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#10b981" stopOpacity={1}/>
-                                <stop offset="95%" stopColor="#059669" stopOpacity={0.8}/>
+                              <linearGradient id="colorUvBar" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#74ebd5" stopOpacity={1}/>
+                                <stop offset="95%" stopColor="#9face6" stopOpacity={0.8}/>
                               </linearGradient>
                             </defs>
                           </Bar>
@@ -2140,7 +2134,7 @@ export default function ClientDashboard() {
                     </div>
                   </div>
 
-                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white">
+                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
                     <h3 className="text-lg font-bold text-slate-800 mb-8">Leads by Source</h3>
                     <div className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
@@ -2161,7 +2155,7 @@ export default function ClientDashboard() {
                             ))}
                           </Pie>
                           <Tooltip 
-                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgb(0 0 0 / 0.1)', fontWeight: 600 }}
+                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', fontWeight: 600 }}
                           />
                         </PieChart>
                       </ResponsiveContainer>
@@ -2178,7 +2172,7 @@ export default function ClientDashboard() {
                 </div>
 
                 {/* Agent Performance Table */}
-                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden">
+                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
                   <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40">
                     <h3 className="text-lg font-bold text-slate-800">Agent Performance</h3>
                   </div>
@@ -2209,10 +2203,10 @@ export default function ClientDashboard() {
                               <td className="px-8 py-5 whitespace-nowrap font-bold text-slate-600">
                                 {agentLeads.length}
                               </td>
-                              <td className="px-8 py-5 whitespace-nowrap font-medium text-emerald-600">
+                              <td className="px-8 py-5 whitespace-nowrap font-medium text-[#50bdaf]">
                                 {agentLeads.filter(l => l.status === 'New').length}
                               </td>
-                              <td className="px-8 py-5 whitespace-nowrap font-medium text-blue-600">
+                              <td className="px-8 py-5 whitespace-nowrap font-medium text-[#7b8ed3]">
                                 {agentLeads.filter(l => ['Contacted', 'Site Visit', 'Negotiation'].includes(l.status)).length}
                               </td>
                               <td className="px-8 py-5 whitespace-nowrap font-bold text-amber-500">
@@ -2245,7 +2239,7 @@ export default function ClientDashboard() {
                 </div>
 
                 {/* 👇 NEW LEAD FEEDBACK REPORT TABLE 👇 */}
-                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden mt-8">
+                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden mt-8">
                   <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                       <h3 className="text-lg font-bold text-slate-800">Lead Feedback & Status Report</h3>
@@ -2255,7 +2249,7 @@ export default function ClientDashboard() {
                       onClick={handleExportFeedbackCSV}
                       className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
                     >
-                      <MessageSquare className="w-4 h-4 text-emerald-500" />
+                      <MessageSquare className="w-4 h-4 text-[#74ebd5]" />
                       Export Feedback History
                     </button>
                   </div>
@@ -2327,11 +2321,11 @@ export default function ClientDashboard() {
 
                 <div className="space-y-6">
                   {/* Meta / Facebook Ads Card */}
-                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
                         <div className="flex items-center gap-5">
-                          <div className="p-4 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl text-white shadow-lg shadow-blue-500/30">
+                          <div className="p-4 bg-gradient-to-br from-[#9face6] to-[#7b8ed3] rounded-2xl text-white shadow-lg shadow-[#9face6]/30">
                             <Facebook className="w-8 h-8" />
                           </div>
                           <div>
@@ -2340,7 +2334,7 @@ export default function ClientDashboard() {
                               {isLoadingLinkedPages ? (
                                 <div className="h-6 w-24 bg-slate-200 rounded-lg animate-pulse"></div>
                               ) : linkedPages.length > 0 ? (
-                                <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200 uppercase tracking-widest">
+                                <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black bg-[#74ebd5]/20 text-[#50bdaf] border border-[#74ebd5]/40 uppercase tracking-widest">
                                   Connected
                                 </span>
                               ) : (
@@ -2374,7 +2368,7 @@ export default function ClientDashboard() {
                             {linkedPages.map(page => (
                               <div key={page.id} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
                                 <div className="flex items-center gap-3">
-                                  <div className="p-2 bg-blue-50 rounded-lg text-blue-500"><Globe className="w-5 h-5"/></div>
+                                  <div className="p-2 bg-[#9face6]/10 rounded-lg text-[#7b8ed3]"><Globe className="w-5 h-5"/></div>
                                   <div>
                                     <p className="text-sm font-bold text-slate-800">{page.pageName}</p>
                                     <p className="text-[10px] text-slate-400 font-mono mt-0.5 uppercase tracking-wider">ID: {page.pageId}</p>
@@ -2414,7 +2408,7 @@ export default function ClientDashboard() {
                                     className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-all ${
                                       isLinked || isLinking 
                                         ? 'bg-slate-50 text-slate-400 cursor-not-allowed'
-                                        : 'bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white border border-blue-100 hover:border-blue-600 shadow-sm'
+                                        : 'bg-[#9face6]/10 text-[#7b8ed3] hover:bg-[#9face6] hover:text-white border border-[#9face6]/30 shadow-sm'
                                     }`}
                                   >
                                     {isLinking ? 'Securing...' : isLinked ? 'Linked' : 'Link Page'}
@@ -2429,10 +2423,10 @@ export default function ClientDashboard() {
                   </div>
 
                   {/* Webhook URL Card */}
-                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
                       <div className="flex items-center gap-4 mb-8">
-                        <div className="p-3 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl text-white shadow-lg shadow-emerald-500/30">
+                        <div className="p-3 bg-gradient-to-br from-[#74ebd5] to-[#50bdaf] rounded-2xl text-white shadow-lg shadow-[#74ebd5]/30">
                           <Zap className="w-6 h-6" />
                         </div>
                         <div>
@@ -2442,8 +2436,8 @@ export default function ClientDashboard() {
                       </div>
 
                       <div className="bg-slate-900 rounded-2xl p-5 flex items-center justify-between gap-4 shadow-inner relative overflow-hidden group">
-                        <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                        <code className="text-sm text-emerald-400 break-all font-mono font-medium relative z-10">
+                        <div className="absolute inset-0 bg-gradient-to-r from-[#74ebd5]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <code className="text-sm text-[#74ebd5] break-all font-mono font-medium relative z-10">
                           {webhookUrl}
                         </code>
                         <button
@@ -2451,14 +2445,14 @@ export default function ClientDashboard() {
                           className="shrink-0 p-2.5 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-all shadow-sm relative z-10 border border-slate-700"
                           title="Copy to clipboard"
                         >
-                          {copied ? <Check className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
+                          {copied ? <Check className="w-5 h-5 text-[#74ebd5]" /> : <Copy className="w-5 h-5" />}
                         </button>
                       </div>
 
                       <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-8 pt-8 border-t border-slate-200/60">
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
-                            <Facebook className="w-4 h-4 text-blue-500" />
+                            <Facebook className="w-4 h-4 text-[#7b8ed3]" />
                             Facebook Ads
                           </div>
                           <p className="text-xs text-slate-500 leading-relaxed font-medium">
@@ -2476,7 +2470,7 @@ export default function ClientDashboard() {
                         </div>
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
-                            <Globe className="w-4 h-4 text-emerald-500" />
+                            <Globe className="w-4 h-4 text-[#50bdaf]" />
                             Website Forms
                           </div>
                           <p className="text-xs text-slate-500 leading-relaxed font-medium">
@@ -2488,7 +2482,7 @@ export default function ClientDashboard() {
                   </div>
 
                   {/* Export Leads (Outbound Webhook) Card */}
-                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
                       <div className="flex items-center gap-4 mb-8">
                         <div className="p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-500/30">
@@ -2534,7 +2528,7 @@ export default function ClientDashboard() {
                   </div>
 
                   {/* Documentation Card */}
-                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden p-8">
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden p-8">
                     <h3 className="text-xl font-bold text-slate-900 tracking-tight mb-3">Payload Format</h3>
                     <p className="text-sm font-medium text-slate-500 mb-6">Your external source should send a JSON POST request with the following fields:</p>
                     <div className="bg-[#0f172a] rounded-2xl p-6 overflow-x-auto relative shadow-inner border border-slate-800">
@@ -2558,7 +2552,7 @@ export default function ClientDashboard() {
                       >
                         {isCopied ? 'Copied!' : 'Copy JSON'}
                       </button>
-                      <pre className="text-sm text-emerald-400 font-mono leading-relaxed">
+                      <pre className="text-sm text-[#74ebd5] font-mono leading-relaxed">
 {`{
   "firstName": "Ravi",
   "lastName": "Kumar",
@@ -2615,7 +2609,7 @@ export default function ClientDashboard() {
                     required
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
                   />
                 </div>
                 <div>
@@ -2625,7 +2619,7 @@ export default function ClientDashboard() {
                     required
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
                   />
                 </div>
               </div>
@@ -2636,7 +2630,7 @@ export default function ClientDashboard() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
                 />
               </div>
 
@@ -2646,7 +2640,7 @@ export default function ClientDashboard() {
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
                 />
               </div>
 
@@ -2656,7 +2650,7 @@ export default function ClientDashboard() {
                   type="text"
                   value={projectProperty}
                   onChange={(e) => setProjectProperty(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
                   placeholder="e.g. Sunset Villas"
                 />
               </div>
@@ -2667,7 +2661,7 @@ export default function ClientDashboard() {
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none cursor-pointer"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium cursor-pointer"
                   >
                     {PIPELINE_STATUSES.map(s => (
                       <option key={s} value={s}>{s}</option>
@@ -2679,7 +2673,7 @@ export default function ClientDashboard() {
                   <select
                     value={source}
                     onChange={(e) => setSource(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none cursor-pointer"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium cursor-pointer"
                   >
                     {leadSources.length === 0 && <option value="Manual">Manual</option>}
                     {leadSources.map(s => (
@@ -2695,7 +2689,7 @@ export default function ClientDashboard() {
                   <select
                     value={subSource}
                     onChange={(e) => setSubSource(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none cursor-pointer"
+                    className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium cursor-pointer"
                   >
                     <option value="">None</option>
                     {leadSubSources.map(s => (
@@ -2710,7 +2704,7 @@ export default function ClientDashboard() {
                     <select
                       value={assignedTo}
                       onChange={(e) => setAssignedTo(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none cursor-pointer"
+                      className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium cursor-pointer"
                     >
                       <option value="">Unassigned</option>
                       {teamMembers.map(member => (
@@ -2734,7 +2728,7 @@ export default function ClientDashboard() {
                 type="submit"
                 form="add-lead-form"
                 disabled={addingLead}
-                className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 text-white rounded-xl hover:from-emerald-500 hover:to-teal-400 transition-all font-bold text-sm shadow-lg shadow-emerald-500/25 disabled:opacity-50 flex justify-center items-center min-w-[120px]"
+                className="px-6 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg shadow-[#74ebd5]/30 disabled:opacity-50 flex justify-center items-center min-w-[120px]"
               >
                 {addingLead ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -2774,7 +2768,7 @@ export default function ClientDashboard() {
                   required
                   value={agentName}
                   onChange={(e) => setAgentName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
                 />
               </div>
 
@@ -2785,7 +2779,7 @@ export default function ClientDashboard() {
                   required
                   value={agentEmail}
                   onChange={(e) => setAgentEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
                 />
               </div>
 
@@ -2796,7 +2790,7 @@ export default function ClientDashboard() {
                   required
                   value={agentPassword}
                   onChange={(e) => setAgentPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all sm:text-sm font-medium outline-none"
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
                   minLength={6}
                 />
                 <p className="mt-2 text-[11px] font-medium text-slate-400">Must be at least 6 characters long.</p>
@@ -2818,7 +2812,7 @@ export default function ClientDashboard() {
                 <button
                   type="submit"
                   disabled={addingAgent}
-                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 text-white rounded-xl hover:from-emerald-500 hover:to-teal-400 transition-all font-bold text-sm shadow-lg shadow-emerald-500/25 disabled:opacity-50 flex justify-center items-center"
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg shadow-[#74ebd5]/30 disabled:opacity-50 flex justify-center items-center"
                 >
                   {addingAgent ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
