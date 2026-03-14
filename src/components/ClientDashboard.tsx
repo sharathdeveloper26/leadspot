@@ -777,19 +777,39 @@ export default function ClientDashboard() {
     }
   };
 
-  const handleTestOutboundWebhook = async () => {
+ const handleTestOutboundWebhook = async () => {
     if (!outboundWebhookUrl) { alert('Please enter a webhook URL first.'); return; }
     setIsTestingOutboundWebhook(true);
     try {
       const testPayload = {
-        id: 'test-lead-123', name: 'John Doe', email: 'john.doe@example.com', phone: '+1234567890',
-        source: 'Test Webhook', status: 'new', createdAt: new Date().toISOString(), clientId: user?.clientId
+        id: 'test-lead-123', 
+        firstName: 'Test', 
+        lastName: 'Lead', 
+        email: 'test.lead@example.com', 
+        phone: '+919876543210',
+        source: 'Test Webhook', 
+        status: 'New', 
+        createdAt: new Date().toISOString(), 
+        clientId: user?.clientId,
+        projectProperty: 'Test Project',
+        campaignName: 'Test Campaign',
+        adName: 'Test Ad',
+        designation: 'CEO',
+        location: 'Hyderabad',
+        customAnswers: { "Testing Google Sheets": "It is working perfectly!" }
       };
-      const response = await fetch(outboundWebhookUrl, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(testPayload),
+      
+      // We use 'no-cors' and 'text/plain' to bypass Google Apps Script browser blocking!
+      await fetch(outboundWebhookUrl, {
+        method: 'POST', 
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' }, 
+        body: JSON.stringify(testPayload),
       });
-      if (response.ok) { alert('Test lead sent successfully!'); } 
-      else { alert(`Failed to send test lead. Server responded with status: ${response.status}`); }
+      
+      // Because 'no-cors' creates an opaque response, we assume success if no network error is thrown.
+      alert('Test lead sent! Please check your Google Sheet right now to verify it arrived.');
+      
     } catch (error) {
       console.error('Error sending test lead:', error);
       alert('Failed to send test lead. Please check the URL and try again.');

@@ -14,7 +14,6 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
 
-    // Use the secret you'll put in the Meta Developer Portal
     if (mode === "subscribe" && token === "MINTAGE_CRM_SECRET") {
       res.status(200).send(challenge);
       return;
@@ -23,44 +22,37 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
     return;
   }
 
-  // 2. LEAD CATCHER: Handle POST Request (Manual Webhook OR Meta)
+  // 2. LEAD CATCHER: Handle POST Request
   if (req.method === "POST") {
     try {
       let leadData: any = {};
       let clientId: string | null = null;
       let customAnswers: Record<string, string> = {}; 
 
-      // CHECK: Is this from Meta? (Facebook sends a specific structure)
       if (req.body.object === "page" && req.body.entry?.[0]?.changes?.[0]?.value?.leadgen_id) {
         const changes = req.body.entry[0].changes[0].value;
         const pageId = changes.page_id;
         const leadgenId = changes.leadgen_id;
 
-        // Find the client who owns this Facebook Page
         const integrationQuery = await db.collection("facebook_integrations")
           .where("pageId", "==", pageId)
           .limit(1)
           .get();
 
         if (integrationQuery.empty) {
-          console.error(`No client integration found for Page ID: ${pageId}`);
           res.status(200).send("Ignored: Integration not found");
           return;
         }
 
         const integrationData = integrationQuery.docs[0].data();
         clientId = integrationData.clientId;
-        
-        // Token Safety Check
         const pageAccessToken = integrationData.pageAccessToken || integrationData.accessToken; 
 
         if (!pageAccessToken) {
-          console.error(`CRITICAL ERROR: No access token found in database for Page ID: ${pageId}`);
           res.status(200).send("Ignored: Missing Access Token");
           return;
         }
 
-        // Fetch actual lead details AND Campaign Tracking Data from Meta Graph API
         const fbResponse = await axios.get(
           `https://graph.facebook.com/v19.0/${leadgenId}?fields=field_data,form_id,ad_id,ad_name,campaign_id,campaign_name&access_token=${pageAccessToken}`
         );
@@ -68,7 +60,6 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
         const fbData = fbResponse.data;
         const fbFields = fbData.field_data || [];
         
-        // LOOP TO EXTRACT ALL CUSTOM FACEBOOK QUESTIONS
         fbFields.forEach((field: any) => {
           if (!['full_name', 'email', 'phone_number'].includes(field.name)) {
             customAnswers[field.name] = field.values[0];
@@ -81,8 +72,6 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
           phone: fbFields.find((f: any) => f.name === "phone_number")?.values[0] || "",
           source: "Facebook",
           project: fbData.campaign_name || "Facebook Ad Campaign", 
-          
-          // Campaign Tracking Info
           formId: fbData.form_id || "",
           adId: fbData.ad_id || "",
           adName: fbData.ad_name || "Unknown Ad",
@@ -90,17 +79,13 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
           campaignName: fbData.campaign_name || "Unknown Campaign"
         };
       } else {
-        // Fallback: Use your existing manual webhook logic (for Pabbly/Zapier/Direct)
         const data = { ...req.query, ...req.body };
         clientId = data.clientId;
         customAnswers = data.customAnswers || {}; 
 
         leadData = {
-          name: data.name,
-          email: data.email,
-          phone: data.phone,
-          source: data.source || "Webhook",
-          project: data.project || "General Inquiry",
+          name: data.name, email: data.email, phone: data.phone,
+          source: data.source || "Webhook", project: data.project || "General Inquiry",
           formId: "", adId: "", adName: "", campaignId: "", campaignName: "",
           utm_source: data.utm_source || "", utm_medium: data.utm_medium || "", utm_campaign: data.utm_campaign || ""
         };
@@ -111,7 +96,7 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
         return;
       }
 
-      // --- 🚀 START APOLLO ENRICHMENT LOGIC 🚀 ---
+      // --- APOLLO ENRICHMENT LOGIC ---
       let designation = "Unknown";
       let location = "Unknown";
       let linkedinUrl = "";
@@ -119,12 +104,10 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
       if (leadData.email) {
           try {
               const apolloResponse = await axios.post('https://api.apollo.io/v1/people/match', {
-                  api_key: 'vWaMRrj2mpju0d1hVAN6RQ', // Your Apollo API Key
+                  api_key: 'vWaMRrj2mpju0d1hVAN6RQ', 
                   email: leadData.email,
                   name: leadData.name
-              }, {
-                  headers: { 'Content-Type': 'application/json' }
-              });
+              }, { headers: { 'Content-Type': 'application/json' }});
 
               if (apolloResponse.data && apolloResponse.data.person) {
                   const person = apolloResponse.data.person;
@@ -139,11 +122,8 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
 
       let assignedToId = null;
       let assignedToName = null;
-
       const rulesSnapshot = await db.collection("lead_assignment_rules")
-        .where("clientId", "==", clientId)
-        .where("sourceName", "==", leadData.source)
-        .get();
+        .where("clientId", "==", clientId).where("sourceName", "==", leadData.source).get();
 
       if (!rulesSnapshot.empty) {
         const ruleData = rulesSnapshot.docs[0].data();
@@ -151,11 +131,8 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
         assignedToName = ruleData.agentName;
       }
 
-      // 👇 SMART NAME SPLITTING LOGIC 👇
       let fName = leadData.name || "Unknown";
       let lName = "";
-      
-      // If the name has a space, intelligently split it into first and last name
       if (fName.includes(" ") && fName !== "FB Lead") {
           const parts = fName.trim().split(" ");
           fName = parts[0];
@@ -164,12 +141,11 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
           fName = "Facebook";
           lName = "Lead";
       }
-      // 👆 END SMART NAME SPLITTING 👆
 
       const finalLead = {
         clientId: clientId,
-        firstName: fName, // Uses cleanly split first name
-        lastName: lName,  // Uses cleanly split last name (NO MORE HARDCODED "Lead")
+        firstName: fName,
+        lastName: lName, 
         email: leadData.email || "",
         phone: leadData.phone || "",
         source: leadData.source,
@@ -178,26 +154,47 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
         assignedTo: assignedToId,
         assignedToId: assignedToId,
         assignedToName: assignedToName,
-        
         designation: designation,
         location: location,
         linkedin: linkedinUrl,
-        
         formId: leadData.formId,
         adId: leadData.adId,
         adName: leadData.adName,
         campaignId: leadData.campaignId,
         campaignName: leadData.campaignName,
-
         customAnswers: customAnswers,
         utm_source: leadData.utm_source || "",
         utm_medium: leadData.utm_medium || "",
         utm_campaign: leadData.utm_campaign || "",
-
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       };
 
+      // 1. SAVE TO CRM DATABASE
       await db.collection("leads").add(finalLead);
+
+      // 👇 2. NEW: MULTI-TENANT DYNAMIC OUTBOUND PUSH 👇
+      try {
+        // Check if this specific client has configured an Outbound Webhook
+        const outboundDoc = await db.collection("outbound_integrations").doc(clientId).get();
+        if (outboundDoc.exists) {
+          const clientWebhookUrl = outboundDoc.data()?.webhookUrl;
+          if (clientWebhookUrl) {
+            // We need to convert Firestore Timestamp to a normal ISO string for the HTTP push
+            const webhookPayload = {
+              ...finalLead,
+              createdAt: new Date().toISOString() 
+            };
+            
+            await axios.post(clientWebhookUrl, webhookPayload, {
+              headers: { 'Content-Type': 'application/json' }
+            });
+            console.log(`Successfully pushed lead to Client (${clientId}) Webhook: ${clientWebhookUrl}`);
+          }
+        }
+      } catch (webhookError: any) {
+        console.error(`Failed to push to Client (${clientId}) webhook:`, webhookError.message);
+      }
+      // 👆 END MULTI-TENANT PUSH 👆
 
       res.status(200).json({ success: true, message: "Event processed" });
 
@@ -211,180 +208,96 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
 });
 
 export const createAgent = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "You must be logged in to create an agent.");
-  }
+  if (!request.auth) throw new HttpsError("unauthenticated", "You must be logged in to create an agent.");
+  if (request.auth.token.role !== "client_admin") throw new HttpsError("permission-denied", "Only Client Admins can create agents.");
   
-  if (request.auth.token.role !== "client_admin") {
-    throw new HttpsError("permission-denied", "Only Client Admins can create agents.");
-  }
-
   const clientId = request.auth.token.clientId;
-  if (!clientId) {
-    throw new HttpsError("failed-precondition", "No clientId found on caller's token.");
-  }
+  if (!clientId) throw new HttpsError("failed-precondition", "No clientId found on caller's token.");
 
   const { email, password, name } = request.data;
-  if (!email || !password || !name) {
-    throw new HttpsError("invalid-argument", "Email, password, and name are required.");
-  }
+  if (!email || !password || !name) throw new HttpsError("invalid-argument", "Email, password, and name are required.");
 
   try {
     const clientDoc = await db.collection("clients").doc(clientId).get();
-    if (!clientDoc.exists) {
-      throw new HttpsError("not-found", "Client document not found.");
-    }
-    const maxAgents = clientDoc.data()?.maxAgents || 0;
-
-    const agentsSnapshot = await db.collection("users")
-      .where("clientId", "==", clientId)
-      .where("role", "==", "client_agent")
-      .count()
-      .get();
+    if (!clientDoc.exists) throw new HttpsError("not-found", "Client document not found.");
     
+    const maxAgents = clientDoc.data()?.maxAgents || 0;
+    const agentsSnapshot = await db.collection("users").where("clientId", "==", clientId).where("role", "==", "client_agent").count().get();
     const currentCount = agentsSnapshot.data().count;
 
-    if (currentCount >= maxAgents) {
-      throw new HttpsError("resource-exhausted", `Agent limit reached. Maximum allowed is ${maxAgents}.`);
-    }
+    if (currentCount >= maxAgents) throw new HttpsError("resource-exhausted", `Agent limit reached. Maximum allowed is ${maxAgents}.`);
 
-    const userRecord = await admin.auth().createUser({
-      email,
-      password,
-      displayName: name,
-      emailVerified: true 
-    });
-
+    const userRecord = await admin.auth().createUser({ email, password, displayName: name, emailVerified: true });
     const userId = userRecord.uid;
 
-    await admin.auth().setCustomUserClaims(userId, {
-      role: "client_agent",
-      clientId: clientId,
-    });
-
+    await admin.auth().setCustomUserClaims(userId, { role: "client_agent", clientId: clientId });
     await db.collection("users").doc(userId).set({
-      name,
-      email,
-      role: "client_agent",
-      clientId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      name, email, role: "client_agent", clientId, createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     return { success: true, message: "Agent created successfully", userId };
   } catch (error: any) {
-    console.error("Error creating agent:", error);
     throw new HttpsError("internal", error.message || "Failed to create agent.");
   }
 });
 
 export const deleteAgent = onCall(async (request) => {
-  if (!request.auth || request.auth.token.role !== "client_admin") {
-    throw new HttpsError("permission-denied", "Only Client Admins can delete agents.");
-  }
-
+  if (!request.auth || request.auth.token.role !== "client_admin") throw new HttpsError("permission-denied", "Only Client Admins can delete agents.");
   const clientId = request.auth.token.clientId;
   const { agentId } = request.data;
-
-  if (!agentId) {
-    throw new HttpsError("invalid-argument", "Agent ID is required.");
-  }
+  if (!agentId) throw new HttpsError("invalid-argument", "Agent ID is required.");
 
   try {
     const agentDoc = await db.collection("users").doc(agentId).get();
     if (!agentDoc.exists || agentDoc.data()?.clientId !== clientId || agentDoc.data()?.role !== "client_agent") {
       throw new HttpsError("permission-denied", "You can only delete agents in your own workspace.");
     }
-
     await admin.auth().deleteUser(agentId);
     await db.collection("users").doc(agentId).delete();
-
     return { success: true, message: "Agent deleted successfully." };
   } catch (error: any) {
-    console.error("Error deleting agent:", error);
     throw new HttpsError("internal", error.message || "Failed to delete agent.");
   }
 });
 
 export const updateAgent = onCall(async (request) => {
-  if (!request.auth || request.auth.token.role !== "client_admin") {
-    throw new HttpsError("permission-denied", "Only Client Admins can update agents.");
-  }
-
+  if (!request.auth || request.auth.token.role !== "client_admin") throw new HttpsError("permission-denied", "Only Client Admins can update agents.");
   const clientId = request.auth.token.clientId;
   const { agentId, name } = request.data;
-
-  if (!agentId || !name) {
-    throw new HttpsError("invalid-argument", "Agent ID and name are required.");
-  }
+  if (!agentId || !name) throw new HttpsError("invalid-argument", "Agent ID and name are required.");
 
   try {
     const agentDoc = await db.collection("users").doc(agentId).get();
     if (!agentDoc.exists || agentDoc.data()?.clientId !== clientId || agentDoc.data()?.role !== "client_agent") {
       throw new HttpsError("permission-denied", "You can only update agents in your own workspace.");
     }
-
     await admin.auth().updateUser(agentId, { displayName: name });
     await db.collection("users").doc(agentId).update({ name });
-
     return { success: true, message: "Agent updated successfully." };
   } catch (error: any) {
-    console.error("Error updating agent:", error);
     throw new HttpsError("internal", error.message || "Failed to update agent.");
   }
 });
 
 export const registerNewClient = onCall(async (request) => {
   const { email, password, companyName } = request.data;
-
-  if (!email || !password || !companyName) {
-    throw new HttpsError("invalid-argument", "The function must be called with email, password, and companyName.");
-  }
+  if (!email || !password || !companyName) throw new HttpsError("invalid-argument", "Missing parameters.");
 
   try {
     const clientRef = db.collection("clients").doc();
     const clientId = clientRef.id;
 
-    await clientRef.set({
-      name: companyName,
-      subscriptionPlan: "BASIC",
-      status: "ACTIVE",
-      maxAgents: 2, 
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    await clientRef.set({ name: companyName, subscriptionPlan: "BASIC", status: "ACTIVE", maxAgents: 2, createdAt: admin.firestore.FieldValue.serverTimestamp() });
 
-    const userRecord = await admin.auth().createUser({
-      email: email,
-      password: password,
-      emailVerified: false, 
-    });
-
+    const userRecord = await admin.auth().createUser({ email: email, password: password, emailVerified: false });
     const userId = userRecord.uid;
 
-    await admin.auth().setCustomUserClaims(userRecord.uid, {
-      role: "client_admin",
-      clientId: clientRef.id,
-    });
-
-    await db.collection("users").doc(userId).set({
-      email: email,
-      role: "client_admin",
-      clientId: clientRef.id,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    await admin.auth().setCustomUserClaims(userRecord.uid, { role: "client_admin", clientId: clientRef.id });
+    await db.collection("users").doc(userId).set({ email: email, role: "client_admin", clientId: clientRef.id, createdAt: admin.firestore.FieldValue.serverTimestamp() });
 
     const verificationLink = await admin.auth().generateEmailVerificationLink(email);
-    console.log(`Verification link generated for ${email}: ${verificationLink}`);
-
-    return {
-      success: true,
-      message: "Client registered successfully. Please check your email to verify your account.",
-      clientId: clientId,
-      userId: userId,
-      verificationLink: verificationLink 
-    };
-
+    return { success: true, message: "Client registered successfully.", clientId: clientId, userId: userId, verificationLink: verificationLink };
   } catch (error: any) {
-    console.error("Error registering new client:", error);
     throw new HttpsError("internal", error.message || "Failed to register new client.");
   }
 });
@@ -395,9 +308,7 @@ export const secureLinkFacebookPage = onCall(async (request) => {
   const clientId = request.auth.token.clientId;
   const { shortLivedUserToken, pageId, pageName } = request.data;
 
-  if (!clientId || !shortLivedUserToken || !pageId) {
-    throw new HttpsError("invalid-argument", "Missing required fields.");
-  }
+  if (!clientId || !shortLivedUserToken || !pageId) throw new HttpsError("invalid-argument", "Missing required fields.");
 
   const APP_ID = '1439047481212574'; 
   const APP_SECRET = 'c8ea2e55436a18ecb2ca51ccdeac0937'; 
@@ -411,32 +322,21 @@ export const secureLinkFacebookPage = onCall(async (request) => {
     const pagesRes = await axios.get(pagesUrl);
     const pageData = pagesRes.data.data.find((p: any) => p.id === pageId);
 
-    if (!pageData) {
-      throw new Error("Could not find the requested page. Check permissions.");
-    }
+    if (!pageData) throw new Error("Could not find the requested page. Check permissions.");
 
     const permanentPageToken = pageData.access_token;
 
     await axios.post(`https://graph.facebook.com/v19.0/${pageId}/subscribed_apps`, 
-      new URLSearchParams({
-        subscribed_fields: 'leadgen',
-        access_token: permanentPageToken
-      }).toString(),
+      new URLSearchParams({ subscribed_fields: 'leadgen', access_token: permanentPageToken }).toString(),
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
 
     await db.collection('facebook_integrations').doc(clientId).set({
-      clientId: clientId,
-      pageId: pageId,
-      pageName: pageName,
-      pageAccessToken: permanentPageToken,
-      status: 'active',
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      clientId: clientId, pageId: pageId, pageName: pageName, pageAccessToken: permanentPageToken, status: 'active', createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     return { success: true, message: "Page securely linked with permanent token." };
   } catch (error: any) {
-    console.error("Token Exchange Error:", error.response ? error.response.data : error.message);
     throw new HttpsError("internal", "Failed to secure Facebook connection.");
   }
 });
