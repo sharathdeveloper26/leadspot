@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 import AddLeadModal from './AddLeadModal';
@@ -45,7 +45,6 @@ declare global {
 
 export default function ClientDashboard() {
   const { user, logout } = useAuth();
-  // ✨ NEW: Added 'feedback' to active tabs ✨
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'integrations' | 'team' | 'reports'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -69,13 +68,33 @@ export default function ClientDashboard() {
   const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
 
+  // ✨ NEW: Custom Global Dialog State ✨
+  const [dialogState, setDialogState] = useState<{
+    isOpen: boolean;
+    type: 'alert' | 'confirm' | 'success' | 'error';
+    title: string;
+    message: string;
+    onConfirm?: () => void;
+    onCloseAction?: () => void;
+  }>({ isOpen: false, type: 'alert', title: '', message: '' });
+
+  const showDialog = (type: 'alert' | 'confirm' | 'success' | 'error', title: string, message: string, onConfirm?: () => void, onCloseAction?: () => void) => {
+    setDialogState({ isOpen: true, type, title, message, onConfirm, onCloseAction });
+  };
+
+  const closeDialog = () => {
+    if (dialogState.onCloseAction && dialogState.type !== 'confirm') {
+      dialogState.onCloseAction();
+    }
+    setDialogState(prev => ({ ...prev, isOpen: false }));
+  };
+
   // Notifications
   const isInitialMount = useRef(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [toastData, setToastData] = useState<{show: boolean, title: string, message: string} | null>(null);
 
-  // ✨ NEW: Bulk Import State & Ref ✨
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -163,18 +182,15 @@ export default function ClientDashboard() {
   const [inlineEditingAgentId, setInlineEditingAgentId] = useState<string | null>(null);
   const [inlineEditingName, setInlineEditingName] = useState('');
 
-  // Leads Tab Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All');
   const [leadsStartDate, setLeadsStartDate] = useState('');
   const [leadsEndDate, setLeadsEndDate] = useState('');
 
-  // Reports Tab Filters
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [leadSourceFilter, setLeadSourceFilter] = useState('All');
 
-  // ✨ NEW: Feedback Tab Filters ✨
   const [feedbackStartDate, setFeedbackStartDate] = useState('');
   const [feedbackEndDate, setFeedbackEndDate] = useState('');
   const [feedbackSourceFilter, setFeedbackSourceFilter] = useState('All');
@@ -210,24 +226,29 @@ export default function ClientDashboard() {
 
   const webhookUrl = `https://us-central1-mintage-crm.cloudfunctions.net/incomingLeadWebhook?clientId=${user?.clientId}`;
 
+  // ✨ FIXED: Ref-based stable timeout interval ✨
+  const timeoutRef = useRef<NodeJS.Timeout>();
+
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
     const resetTimer = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        alert('Session expired due to inactivity');
-        logout();
-      }, 900000);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => {
+        showDialog('alert', 'Session Expired', 'Your session has expired due to 15 minutes of inactivity. Please log in again to continue.', undefined, () => {
+          logout();
+        });
+      }, 900000); // 15 minutes
     };
+
     resetTimer();
     const events = ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'];
     const handleActivity = () => resetTimer();
+    
     events.forEach(event => window.addEventListener(event, handleActivity, { passive: true }));
     return () => {
-      clearTimeout(timeoutId);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       events.forEach(event => window.removeEventListener(event, handleActivity));
     };
-  }, [logout]);
+  }, []);
 
   useEffect(() => {
     if (!user?.clientId) return;
@@ -445,9 +466,10 @@ export default function ClientDashboard() {
       }]);
       setNewRuleSource('');
       setNewRuleAgentId('');
+      showDialog('success', 'Success', 'Auto-assignment rule added successfully.');
     } catch (error) {
       console.error("Error adding assignment rule:", error);
-      alert("Failed to add rule.");
+      showDialog('error', 'Error', 'Failed to add rule.');
     } finally {
       setAddingRule(false);
     }
@@ -455,13 +477,16 @@ export default function ClientDashboard() {
 
   const handleDeleteRule = async (ruleId: string) => {
     if (!ruleId) return;
-    try {
-      await deleteDoc(doc(db, 'lead_assignment_rules', ruleId));
-      setAssignmentRules(prevRules => prevRules.filter(r => r.id !== ruleId));
-    } catch (error) {
-      console.error("Error deleting assignment rule:", error);
-      alert("Failed to delete rule. Check console for details.");
-    }
+    showConfirm('Delete Rule', 'Are you sure you want to delete this auto-assignment rule?', async () => {
+      try {
+        await deleteDoc(doc(db, 'lead_assignment_rules', ruleId));
+        setAssignmentRules(prevRules => prevRules.filter(r => r.id !== ruleId));
+        showDialog('success', 'Deleted', 'The rule has been deleted.');
+      } catch (error) {
+        console.error("Error deleting assignment rule:", error);
+        showDialog('error', 'Error', 'Failed to delete rule.');
+      }
+    });
   };
 
   const fetchOutboundWebhook = async () => {
@@ -530,15 +555,15 @@ export default function ClientDashboard() {
       setSubSource('');
       setAssignedTo('');
       setIsModalOpen(false);
+      showDialog('success', 'Lead Added', 'The lead was manually added successfully.');
     } catch (error) {
       console.error("Error adding lead:", error);
-      alert("Failed to add lead. Check console for details.");
+      showDialog('error', 'Error', 'Failed to add lead. Check console for details.');
     } finally {
       setAddingLead(false);
     }
   };
 
-  // ✨ NEW: Bulk CSV Import Function ✨
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user?.clientId) return;
@@ -549,10 +574,9 @@ export default function ClientDashboard() {
     reader.onload = async (event) => {
       try {
         const text = event.target?.result as string;
-        // Robust regex to split CSV respecting quotes
         const rows = text.split(/\r?\n/).filter(row => row.trim() !== '');
         if (rows.length < 2) {
-          alert("CSV file must contain headers and at least one row of data.");
+          showDialog('error', 'Invalid CSV', 'CSV file must contain headers and at least one row of data.');
           setIsImporting(false);
           return;
         }
@@ -585,7 +609,6 @@ export default function ClientDashboard() {
             else if (header.includes('sub')) leadObj.subSource = val;
           });
 
-          // Fallbacks for required fields
           if (!leadObj.firstName) leadObj.firstName = "Imported";
           if (!leadObj.lastName) leadObj.lastName = "Lead";
           if (!leadObj.source) leadObj.source = "Bulk Import";
@@ -594,13 +617,13 @@ export default function ClientDashboard() {
           successCount++;
         }
         
-        alert(`Successfully imported ${successCount} leads!`);
+        showDialog('success', 'Import Complete', `Successfully imported ${successCount} leads!`);
       } catch (error) {
         console.error("Import error:", error);
-        alert("Failed to import leads. Please ensure your CSV is formatted correctly.");
+        showDialog('error', 'Import Failed', 'Failed to import leads. Please ensure your CSV is formatted correctly.');
       } finally {
         setIsImporting(false);
-        if (fileInputRef.current) fileInputRef.current.value = ''; // Reset input
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
     reader.readAsText(file);
@@ -615,10 +638,10 @@ export default function ClientDashboard() {
       setAgentName(''); setAgentEmail(''); setAgentPassword('');
       setIsAgentModalOpen(false);
       await fetchAgents();
-      alert("Agent created successfully.");
+      showDialog('success', 'Agent Created', 'Agent was created successfully.');
     } catch (error: any) {
       console.error("Error saving agent:", error);
-      alert(error.message || "Failed to save agent.");
+      showDialog('error', 'Creation Failed', error.message || "Failed to save agent.");
     } finally {
       setAddingAgent(false);
     }
@@ -639,23 +662,25 @@ export default function ClientDashboard() {
       await updateAgentFn({ agentId, name: inlineEditingName.trim() });
       await fetchAgents();
       setInlineEditingAgentId(null);
-      alert("Agent updated successfully.");
+      showDialog('success', 'Updated', 'Agent updated successfully.');
     } catch (error: any) {
       console.error("Error updating agent:", error);
-      alert(error.message || "Failed to update agent.");
+      showDialog('error', 'Update Failed', error.message || "Failed to update agent.");
     }
   };
 
   const handleDeleteAgent = async (agentId: string) => {
-    try {
-      const deleteAgentFn = httpsCallable(functions, 'deleteAgent');
-      await deleteAgentFn({ agentId });
-      await fetchAgents();
-      alert("Agent deleted successfully.");
-    } catch (error: any) {
-      console.error("Error deleting agent:", error);
-      alert(error.message || "Failed to delete agent.");
-    }
+    showConfirm('Delete Agent', 'Are you sure you want to delete this agent? This cannot be undone.', async () => {
+      try {
+        const deleteAgentFn = httpsCallable(functions, 'deleteAgent');
+        await deleteAgentFn({ agentId });
+        await fetchAgents();
+        showDialog('success', 'Deleted', 'Agent deleted successfully.');
+      } catch (error: any) {
+        console.error("Error deleting agent:", error);
+        showDialog('error', 'Delete Failed', error.message || "Failed to delete agent.");
+      }
+    });
   };
 
   const handleStatusChange = async (leadId: string, newStatus: string) => {
@@ -708,7 +733,7 @@ export default function ClientDashboard() {
             setFbPages(apiResponse.data || []);
           } else {
             console.error('Error fetching pages:', apiResponse.error);
-            alert('Failed to fetch Facebook Pages.');
+            showDialog('error', 'Facebook Error', 'Failed to fetch Facebook Pages.');
           }
           setIsLoadingFb(false);
         });
@@ -730,16 +755,17 @@ export default function ClientDashboard() {
         if (docSnap.data().clientId !== user.clientId) isConnectedToOtherClient = true;
       });
       if (isConnectedToOtherClient) {
-        alert('Error: This Facebook Page is already connected to another client workspace.');
+        showDialog('error', 'Link Error', 'This Facebook Page is already connected to another client workspace.');
         setIsLinking(false); return;
       }
       const linkFn = httpsCallable(functions, 'secureLinkFacebookPage');
       await linkFn({ shortLivedUserToken: fbUserToken, pageId: page.id, pageName: page.name });
       fetchLinkedPages();
       setFbPages([]); 
+      showDialog('success', 'Page Linked', 'Facebook page linked successfully.');
     } catch (error) {
       console.error('Error linking page:', error);
-      alert('Failed to securely link page.');
+      showDialog('error', 'Link Error', 'Failed to securely link page.');
     } finally {
       setIsLinking(false);
     }
@@ -747,13 +773,16 @@ export default function ClientDashboard() {
 
   const handleDisconnectPage = async (pageId: string) => {
     if (!user?.clientId) return;
-    try {
-      await deleteDoc(doc(db, 'facebook_integrations', user.clientId));
-      fetchLinkedPages();
-    } catch (error) {
-      console.error("Error disconnecting Facebook page:", error);
-      alert("Failed to disconnect. Please try again.");
-    }
+    showConfirm('Disconnect Page', 'Are you sure you want to disconnect this Facebook page?', async () => {
+      try {
+        await deleteDoc(doc(db, 'facebook_integrations', user.clientId));
+        fetchLinkedPages();
+        showDialog('success', 'Disconnected', 'Facebook page disconnected.');
+      } catch (error) {
+        console.error("Error disconnecting Facebook page:", error);
+        showDialog('error', 'Error', 'Failed to disconnect. Please try again.');
+      }
+    });
   };
 
   const handleCopy = () => {
@@ -768,17 +797,20 @@ export default function ClientDashboard() {
     try {
       const docRef = doc(db, 'outbound_integrations', user.clientId);
       await setDoc(docRef, { clientId: user.clientId, webhookUrl: outboundWebhookUrl, updatedAt: serverTimestamp() });
-      alert('Outbound webhook configuration saved successfully.');
+      showDialog('success', 'Saved', 'Outbound webhook configuration saved successfully.');
     } catch (error) {
       console.error('Error saving outbound webhook:', error);
-      alert('Failed to save outbound webhook configuration.');
+      showDialog('error', 'Save Failed', 'Failed to save outbound webhook configuration.');
     } finally {
       setIsSavingOutboundWebhook(false);
     }
   };
 
- const handleTestOutboundWebhook = async () => {
-    if (!outboundWebhookUrl) { alert('Please enter a webhook URL first.'); return; }
+  const handleTestOutboundWebhook = async () => {
+    if (!outboundWebhookUrl) { 
+      showDialog('alert', 'Wait a minute', 'Please enter a webhook URL first.'); 
+      return; 
+    }
     setIsTestingOutboundWebhook(true);
     try {
       const testPayload = {
@@ -799,7 +831,6 @@ export default function ClientDashboard() {
         customAnswers: { "Testing Google Sheets": "It is working perfectly!" }
       };
       
-      // We use 'no-cors' and 'text/plain' to bypass Google Apps Script browser blocking!
       await fetch(outboundWebhookUrl, {
         method: 'POST', 
         mode: 'no-cors',
@@ -807,12 +838,11 @@ export default function ClientDashboard() {
         body: JSON.stringify(testPayload),
       });
       
-      // Because 'no-cors' creates an opaque response, we assume success if no network error is thrown.
-      alert('Test lead sent! Please check your Google Sheet right now to verify it arrived.');
+      showDialog('success', 'Test Sent', 'Test lead sent! Please check your Google Sheet right now to verify it arrived.');
       
     } catch (error) {
       console.error('Error sending test lead:', error);
-      alert('Failed to send test lead. Please check the URL and try again.');
+      showDialog('error', 'Failed', 'Failed to send test lead. Please check the URL and try again.');
     } finally {
       setIsTestingOutboundWebhook(false);
     }
@@ -859,7 +889,7 @@ export default function ClientDashboard() {
     return matches;
   });
 
-  // --- ✨ NEW: FEEDBACK TAB FILTERING & DATA ✨ ---
+  // --- FEEDBACK TAB FILTERING & DATA ---
   const filteredFeedbackLeads = leads.filter(lead => {
     let matches = true;
     if (feedbackSourceFilter !== 'All') {
@@ -891,7 +921,7 @@ export default function ClientDashboard() {
   // EXPORT FUNCTIONS
   const handleExportCSV = () => {
     if (filteredLeads.length === 0) {
-      alert("No leads found for the selected filters.");
+      showDialog('alert', 'Notice', 'No leads found for the selected filters.');
       return;
     }
 
@@ -956,7 +986,7 @@ export default function ClientDashboard() {
 
   const handleExportFeedbackCSV = () => {
     if (filteredFeedbackLeads.length === 0) {
-      alert("No leads found for the selected filters.");
+      showDialog('alert', 'Notice', 'No leads found for the selected filters.');
       return;
     }
 
@@ -1081,15 +1111,17 @@ export default function ClientDashboard() {
   };
 
   const handleDeleteSelected = async () => {
-    if (!window.confirm(`Are you sure you want to delete ${selectedLeads.length} selected leads?`)) return;
-    try {
-      for (const id of selectedLeads) { await deleteDoc(doc(db, 'leads', id)); }
-      setSelectedLeads([]);
-      setOlderLeads(prev => prev.filter(l => !selectedLeads.includes(l.id)));
-    } catch (error) {
-      console.error("Error deleting leads:", error);
-      alert("Failed to delete some leads.");
-    }
+    showConfirm('Delete Leads', `Are you sure you want to delete ${selectedLeads.length} selected leads? This cannot be undone.`, async () => {
+      try {
+        for (const id of selectedLeads) { await deleteDoc(doc(db, 'leads', id)); }
+        setSelectedLeads([]);
+        setOlderLeads(prev => prev.filter(l => !selectedLeads.includes(l.id)));
+        showDialog('success', 'Deleted', 'Selected leads have been deleted.');
+      } catch (error) {
+        console.error("Error deleting leads:", error);
+        showDialog('error', 'Delete Failed', 'Failed to delete some leads.');
+      }
+    });
   };
 
   const toggleExpandLead = (id: string, e: React.MouseEvent) => {
@@ -1100,9 +1132,59 @@ export default function ClientDashboard() {
   return (
     <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
       
+      {/* ✨ CUSTOM DIALOG COMPONENT ✨ */}
+      {dialogState.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/50 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-6 text-center">
+              <div className={`mx-auto flex items-center justify-center h-14 w-14 rounded-full mb-5 shadow-inner ${
+                dialogState.type === 'confirm' ? 'bg-amber-100 text-amber-600' : 
+                dialogState.type === 'error' ? 'bg-red-100 text-red-600' :
+                dialogState.type === 'success' ? 'bg-[#74ebd5]/20 text-[#50bdaf]' :
+                'bg-blue-100 text-blue-600'
+              }`}>
+                 {dialogState.type === 'confirm' ? <AlertCircle className="h-7 w-7" /> : 
+                  dialogState.type === 'error' ? <XCircle className="h-7 w-7" /> :
+                  dialogState.type === 'success' ? <CheckCircle2 className="h-7 w-7" /> :
+                  <Info className="h-7 w-7" />}
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">{dialogState.title}</h3>
+              <p className="text-sm font-medium text-slate-500 leading-relaxed">{dialogState.message}</p>
+            </div>
+            <div className="p-4 bg-slate-50/50 border-t border-slate-100/80 flex gap-3">
+              {dialogState.type === 'confirm' && (
+                <button
+                  onClick={closeDialog}
+                  className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (dialogState.type === 'confirm' && dialogState.onConfirm) {
+                    dialogState.onConfirm();
+                  } else if (dialogState.onCloseAction) {
+                    dialogState.onCloseAction();
+                  }
+                  closeDialog();
+                }}
+                className={`flex-1 px-4 py-2.5 text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg ${
+                  dialogState.type === 'confirm' ? 'bg-slate-900 shadow-slate-900/20' :
+                  dialogState.type === 'error' ? 'bg-red-600 shadow-red-500/30' :
+                  'bg-gradient-to-r from-[#74ebd5] to-[#9face6] shadow-[#74ebd5]/30'
+                }`}
+              >
+                {dialogState.type === 'confirm' ? 'Confirm' : 'OK'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ✨ LIVE TOAST NOTIFICATION ✨ */}
       {toastData && toastData.show && (
-        <div className="fixed top-6 right-6 z-[100] bg-white/90 backdrop-blur-xl border border-[#74ebd5]/50 shadow-2xl rounded-2xl p-4 animate-in slide-in-from-top-5 fade-in duration-300 flex items-start gap-4 w-80">
+        <div className="fixed top-6 right-6 z-[90] bg-white/90 backdrop-blur-xl border border-[#74ebd5]/50 shadow-2xl rounded-2xl p-4 animate-in slide-in-from-top-5 fade-in duration-300 flex items-start gap-4 w-80">
           <div className="p-2.5 bg-gradient-to-br from-[#74ebd5] to-[#9face6] rounded-xl text-white shadow-md shrink-0">
              <Zap className="w-5 h-5 animate-pulse" />
           </div>
@@ -1177,7 +1259,6 @@ export default function ClientDashboard() {
             Leads
           </button>
 
-          {/* ✨ NEW: LEADS FEEDBACK TAB BUTTON ✨ */}
           <button 
             onClick={() => { setActiveTab('feedback'); setIsMobileMenuOpen(false); }}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
@@ -1232,7 +1313,7 @@ export default function ClientDashboard() {
 
         <div className="p-5 border-t border-slate-100/50 bg-white/20">
           <button 
-            onClick={logout}
+            onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())}
             className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-600 font-medium hover:bg-red-50/80 hover:text-red-600 hover:shadow-sm transition-all duration-200"
           >
             <LogOut className="w-5 h-5" />
@@ -1313,6 +1394,7 @@ export default function ClientDashboard() {
         <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-auto custom-scrollbar">
           <div className="max-w-7xl mx-auto h-full flex flex-col min-w-[800px] md:min-w-0">
             
+            {/* 👇 DASHBOARD TAB VIEW 👇 */}
             {activeTab === 'dashboard' ? (
               <div className="space-y-8 animate-in fade-in duration-500">
                 <div>
@@ -1510,6 +1592,8 @@ export default function ClientDashboard() {
 
               </div>
             ) : activeTab === 'leads' ? (
+            /* 👆 END DASHBOARD TAB VIEW 👆 */
+
               <>
                 <div className="flex justify-between items-center mb-8 shrink-0">
                   <div>
@@ -1517,7 +1601,6 @@ export default function ClientDashboard() {
                     <p className="text-slate-500 text-sm font-medium">Manage and track your prospective customers.</p>
                   </div>
                   
-                  {/* ✨ NEW: Bulk Import CSV Button ✨ */}
                   <div className="flex items-center gap-3">
                     <input 
                       type="file" 
@@ -2865,7 +2948,7 @@ export default function ClientDashboard() {
                             </button>
                             <button
                               onClick={handleTestOutboundWebhook}
-                              disabled={isTestingOutboundWebhook || !outboundWebhookUrl}
+                              disabled={isTestingOutboundWebhook}
                               className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm disabled:opacity-50"
                             >
                               {isTestingOutboundWebhook ? 'Sending...' : 'Send Test Lead'}
@@ -3086,6 +3169,91 @@ export default function ClientDashboard() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Agent Modal */}
+      {isAgentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md transition-all">
+          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-200/60">
+              <h3 className="text-xl font-extrabold text-slate-800">Add New Agent</h3>
+              <button 
+                onClick={() => {
+                  setIsAgentModalOpen(false);
+                  setAgentName('');
+                  setAgentEmail('');
+                  setAgentPassword('');
+                }}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateAgent} className="p-8 space-y-5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={agentName}
+                  onChange={(e) => setAgentName(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={agentEmail}
+                  onChange={(e) => setAgentEmail(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Temporary Password</label>
+                <input
+                  type="password"
+                  required
+                  value={agentPassword}
+                  onChange={(e) => setAgentPassword(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
+                  minLength={6}
+                />
+                <p className="mt-2 text-[11px] font-medium text-slate-400">Must be at least 6 characters long.</p>
+              </div>
+
+              <div className="pt-6 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAgentModalOpen(false);
+                    setAgentName('');
+                    setAgentEmail('');
+                    setAgentPassword('');
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingAgent}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg shadow-[#74ebd5]/30 disabled:opacity-50 flex justify-center items-center"
+                >
+                  {addingAgent ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    'Create Agent'
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
