@@ -44,7 +44,7 @@ export interface Lead {
   campaignId?: string;
   campaignName?: string;
   
-  // NEW: Custom FB Questions & UTMs
+  // Custom FB Questions & UTMs
   customAnswers?: Record<string, string>;
   utm_source?: string;
   utm_medium?: string;
@@ -228,7 +228,6 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
     return new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   };
 
-  // 👇 FIX: Re-added the missing timestamp formatting function here 👇
   const formatTimestamp = (isoString: string) => {
     const date = new Date(isoString);
     const datePart = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -238,7 +237,6 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
 
   const sortedNotes = [...(lead.notes || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-  // Exclude standard fields from the "Advanced Tracking" raw JSON dump at the bottom
   const standardFields = [
     'id', 'firstName', 'lastName', 'email', 'phone', 'projectProperty', 'status', 
     'source', 'subSource', 'assignedTo', 'assignedToId', 'assignedToName', 
@@ -283,8 +281,9 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
             <div className="space-y-6">
               <div className="flex items-start justify-between">
                 <div>
+                  {/* 👇 UI PATCH APPLIED TO MODAL HEADING 👇 */}
                   <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight">
-                    {lead.firstName} {lead.lastName}
+                    {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
                   </h1>
                   
                   {/* APOLLO & TRUECALLER ENRICHMENT UI */}
@@ -421,7 +420,7 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                         <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
                           {question.replace(/_/g, ' ')}
                         </span>
-                        <span className="text-sm font-bold text-slate-800 whitespace-pre-wrap">{answer}</span>
+                        <span className="text-sm font-bold text-slate-800 whitespace-pre-wrap">{String(answer)}</span>
                       </div>
                     ))}
                   </div>

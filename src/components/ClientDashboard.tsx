@@ -3,10 +3,9 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
-import AddLeadModal from './AddLeadModal';
 
 interface Agent {
   id: string;
@@ -44,7 +43,7 @@ declare global {
 }
 
 export default function ClientDashboard() {
-  const { user, clientId, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'integrations' | 'team' | 'reports'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -68,7 +67,7 @@ export default function ClientDashboard() {
   const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
 
-  // 👇 NEW NOTIFICATION STATES 👇
+  // Notifications
   const isInitialMount = useRef(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -209,17 +208,11 @@ export default function ClientDashboard() {
     };
     resetTimer();
     const events = ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'];
-    const handleActivity = () => {
-      resetTimer();
-    };
-    events.forEach(event => {
-      window.addEventListener(event, handleActivity, { passive: true });
-    });
+    const handleActivity = () => resetTimer();
+    events.forEach(event => window.addEventListener(event, handleActivity, { passive: true }));
     return () => {
       clearTimeout(timeoutId);
-      events.forEach(event => {
-        window.removeEventListener(event, handleActivity);
-      });
+      events.forEach(event => window.removeEventListener(event, handleActivity));
     };
   }, [logout]);
 
@@ -242,22 +235,20 @@ export default function ClientDashboard() {
       
       setRealTimeLeads(fetchedLeads);
 
-      // 👇 LIVE NOTIFICATION LOGIC 👇
       if (!isInitialMount.current) {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const newLead = change.doc.data() as Lead;
-            const leadName = `${newLead.firstName} ${newLead.lastName}`.trim() || 'Someone';
+            const cleanLastName = newLead.lastName === 'Lead' ? '' : newLead.lastName;
+            const leadName = `${newLead.firstName} ${cleanLastName}`.trim() || 'Someone';
             const sourceName = newLead.source || 'Direct Entry';
             
-            // Fire Toast Notification
             setToastData({
               show: true,
               title: "New Lead Captured!",
               message: `${leadName} just arrived via ${sourceName}.`
             });
 
-            // Add to Notification Dropdown
             setNotifications(prev => [{
               id: change.doc.id + Date.now(),
               leadId: change.doc.id,
@@ -266,14 +257,12 @@ export default function ClientDashboard() {
               message: `${leadName} - ${newLead.projectProperty || 'General Inquiry'}`,
               time: new Date(),
               isRead: false
-            }, ...prev].slice(0, 30)); // Keep last 30
+            }, ...prev].slice(0, 30));
 
-            // Hide toast after 5s
             setTimeout(() => setToastData(null), 5000);
           }
         });
       }
-      // 👆 END LIVE NOTIFICATION LOGIC 👆
       
       if (isInitialMount.current) {
         isInitialMount.current = false;
@@ -730,19 +719,17 @@ export default function ClientDashboard() {
 
   const filteredLeads = leads.filter(lead => {
     let matches = true;
-    if (leadSourceFilter !== 'All') {
-      const source = lead.source || '';
-      if (!source.toLowerCase().includes(leadSourceFilter.toLowerCase())) matches = false;
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const fullName = `${lead.firstName} ${lead.lastName}`.toLowerCase();
+      if (!fullName.includes(query) && !lead.email?.toLowerCase().includes(query) && !lead.phone?.toLowerCase().includes(query)) matches = false;
     }
-    if (startDate) {
-      const leadDate = lead.createdAt?.toDate();
-      if (leadDate && leadDate < new Date(startDate)) matches = false;
-    }
-    if (endDate) {
-      const leadDate = lead.createdAt?.toDate();
-      const end = new Date(endDate);
-      end.setDate(end.getDate() + 1);
-      if (leadDate && leadDate >= end) matches = false;
+    if (leadsViewSourceFilter !== 'All') { if (lead.source !== leadsViewSourceFilter) matches = false; }
+    if (leadsStartDate || leadsEndDate) {
+      const leadDate = lead.createdAt ? lead.createdAt.toDate() : new Date();
+      leadDate.setHours(0, 0, 0, 0);
+      if (leadsStartDate) { const start = new Date(leadsStartDate); start.setHours(0, 0, 0, 0); if (leadDate < start) matches = false; }
+      if (leadsEndDate) { const end = new Date(leadsEndDate); end.setHours(23, 59, 59, 999); if (leadDate > end) matches = false; }
     }
     return matches;
   });
@@ -778,7 +765,7 @@ export default function ClientDashboard() {
       return [
         escapeCSV(dateStr),
         escapeCSV(lead.firstName),
-        escapeCSV(lead.lastName),
+        escapeCSV(lead.lastName === 'Lead' ? '' : lead.lastName),
         escapeCSV(lead.email),
         escapeCSV(lead.phone),
         escapeCSV(lead.projectProperty),
@@ -835,7 +822,7 @@ export default function ClientDashboard() {
       };
 
       const baseRow = [
-        escapeCSV(`${lead.firstName} ${lead.lastName}`),
+        escapeCSV(`${lead.firstName} ${lead.lastName === 'Lead' ? '' : lead.lastName}`.trim()),
         escapeCSV(lead.phone),
         escapeCSV(lead.email),
         escapeCSV(lead.status),
@@ -992,7 +979,6 @@ export default function ClientDashboard() {
         </div>
       )}
 
-      {/* ✨ UI UPGRADE: Pinterest-style background mesh gradient blobs */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-[#74ebd5]/40 to-teal-50/40 blur-3xl opacity-70 mix-blend-multiply" />
         <div className="absolute top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-gradient-to-br from-[#9face6]/40 to-indigo-50/40 blur-3xl opacity-70 mix-blend-multiply" />
@@ -1336,7 +1322,10 @@ export default function ClientDashboard() {
                           {leads.slice(0, 5).map(lead => (
                             <tr key={lead.id} className="hover:bg-white/60 transition-colors">
                               <td className="px-8 py-4 whitespace-nowrap">
-                                <div className="font-bold text-slate-800">{lead.firstName} {lead.lastName}</div>
+                                {/* 👇 UI PATCH APPLIED TO DASHBOARD 👇 */}
+                                <div className="font-bold text-slate-800">
+                                  {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
+                                </div>
                                 <div className="text-xs text-slate-500">{lead.phone || lead.email || 'No contact info'}</div>
                               </td>
                               <td className="px-8 py-4 whitespace-nowrap">
@@ -1558,8 +1547,9 @@ export default function ClientDashboard() {
                                   {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}
                                 </td>
                                 <td className="px-6 py-5 whitespace-nowrap">
+                                  {/* 👇 UI PATCH APPLIED TO TABLE 👇 */}
                                   <div className="font-bold text-slate-800">
-                                    {lead.firstName} {lead.lastName}
+                                    {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
                                     {lead.isDuplicate && (
                                       <span className="ml-2.5 inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold bg-red-100 text-red-700 uppercase tracking-widest">
                                         Duplicate
@@ -1620,13 +1610,12 @@ export default function ClientDashboard() {
                                 </td>
                               </tr>
                               
-                              {/* 👇 FULLY UPGRADED EXPANDED ROW DATA 👇 */}
+                              {/* Expanded Row Content */}
                               {expandedLeads.includes(lead.id) && (
                                 <tr className="bg-slate-50/50 backdrop-blur-sm border-b border-slate-200/50">
                                   <td colSpan={10} className="px-6 py-5">
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 text-sm bg-white/60 p-4 rounded-xl border border-white">
                                       
-                                      {/* Apollo Enrichment Data */}
                                       {(lead.designation && lead.designation !== "Unknown") && (
                                         <div>
                                           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Designation</span>
@@ -1645,8 +1634,6 @@ export default function ClientDashboard() {
                                           <a href={lead.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline text-xs font-bold flex items-center gap-1">🔗 View Profile</a>
                                         </div>
                                       )}
-
-                                      {/* Truecaller Verified Data */}
                                       {(lead.truecallerName && lead.truecallerName !== "Unknown") && (
                                         <div>
                                           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Truecaller Record</span>
@@ -1656,8 +1643,6 @@ export default function ClientDashboard() {
                                           </span>
                                         </div>
                                       )}
-
-                                      {/* Facebook Meta Marketing Data */}
                                       {lead.adName && (
                                         <div>
                                           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ad Name</span>
@@ -1688,8 +1673,6 @@ export default function ClientDashboard() {
                                           <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.campaignId}</span>
                                         </div>
                                       )}
-
-                                      {/* Empty State Fallback */}
                                       {!lead.designation && !lead.adName && !lead.formId && !lead.campaignId && !lead.adId && !lead.truecallerName && (
                                         <div className="col-span-4 text-slate-400 font-medium italic text-xs py-2">
                                           No extended marketing or enrichment data available for this lead.
@@ -1699,7 +1682,6 @@ export default function ClientDashboard() {
                                   </td>
                                 </tr>
                               )}
-                              {/* 👆 EXPANDED ROW END 👆 */}
 
                             </React.Fragment>
                           ))}
@@ -1741,7 +1723,6 @@ export default function ClientDashboard() {
                   <div className="flex-1 overflow-x-auto pb-6 custom-scrollbar">
                     <div className="flex gap-6 h-full min-w-max px-1 pt-1">
                       {PIPELINE_STATUSES.map(status => (
-                        // ✨ UI UPGRADE: Glass Pipeline Columns
                         <div key={status} className="w-[340px] flex flex-col bg-white/40 backdrop-blur-xl rounded-3xl border border-white/80 shadow-[0_8px_30px_rgba(116,235,213,0.05)] overflow-hidden shrink-0">
                           <div className="p-5 border-b border-white/60 bg-white/40 flex items-center justify-between shrink-0">
                             <h3 className="font-extrabold text-slate-800 text-sm tracking-wide">{status}</h3>
@@ -1751,14 +1732,16 @@ export default function ClientDashboard() {
                           </div>
                           <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
                             {filteredLeadsView.filter(l => l.status === status).map(lead => (
-                              // ✨ UI UPGRADE: Glass Lead Cards with hover lifts
                               <div 
                                 key={lead.id} 
                                 onClick={() => openLeadDetails(lead)}
                                 className="bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-[0_8px_20px_rgba(116,235,213,0.15)] hover:-translate-y-1 transition-all duration-300 cursor-pointer relative group"
                               >
                                 <div className="flex justify-between items-start mb-4">
-                                  <div className="font-bold text-slate-900 text-base leading-tight pr-2">{lead.firstName} {lead.lastName}</div>
+                                  {/* 👇 UI PATCH APPLIED TO PIPELINE CARD 👇 */}
+                                  <div className="font-bold text-slate-900 text-base leading-tight pr-2">
+                                    {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
+                                  </div>
                                   {getSourceBadge(lead.source, lead.subSource)}
                                 </div>
                                 
@@ -1796,7 +1779,6 @@ export default function ClientDashboard() {
                                     <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Phone className="w-3.5 h-3.5 shrink-0" /></div>
                                     <span className="truncate">{lead.phone || 'No phone'}</span>
                                     
-                                    {/* 👇 TRUECALLER VERIFIED BADGE (Pipeline Card) 👇 */}
                                     {lead.truecallerName && lead.truecallerName !== "Unknown" && (
                                       <span className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 shrink-0">
                                         <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
@@ -1806,8 +1788,6 @@ export default function ClientDashboard() {
                                         Verified
                                       </span>
                                     )}
-                                    {/* 👆 TRUECALLER VERIFIED BADGE 👆 */}
-
                                   </div>
                                   <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
                                     <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Home className="w-3.5 h-3.5 shrink-0" /></div>
@@ -2238,7 +2218,6 @@ export default function ClientDashboard() {
                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', padding: '12px 16px', fontWeight: 600 }}
                           />
                           <Bar dataKey="count" fill="url(#colorUvBar)" radius={[6, 6, 0, 0]} maxBarSize={45}>
-                            {/* SVG Gradient definition for the bars */}
                             <defs>
                               <linearGradient id="colorUvBar" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#74ebd5" stopOpacity={1}/>
@@ -2332,7 +2311,6 @@ export default function ClientDashboard() {
                             </tr>
                           );
                         })}
-                        {/* Unassigned row */}
                         <tr className="bg-slate-50/30">
                           <td className="px-8 py-5 whitespace-nowrap">
                             <div className="font-bold text-slate-400 italic">Unassigned Leads</div>
@@ -2388,7 +2366,10 @@ export default function ClientDashboard() {
                           return (
                             <tr key={lead.id} className="hover:bg-white/60 transition-colors">
                               <td className="px-8 py-5">
-                                <div className="font-bold text-slate-800">{lead.firstName} {lead.lastName}</div>
+                                {/* 👇 UI PATCH APPLIED TO FEEDBACK TABLE 👇 */}
+                                <div className="font-bold text-slate-800">
+                                  {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
+                                </div>
                                 <div className="text-xs font-medium text-slate-500 mt-1">{lead.phone || lead.email}</div>
                               </td>
                               <td className="px-8 py-5 whitespace-nowrap">
@@ -2426,7 +2407,6 @@ export default function ClientDashboard() {
                     </table>
                   </div>
                 </div>
-                {/* 👆 END LEAD FEEDBACK REPORT TABLE 👆 */}
               </div>
             ) : (
               /* Integrations View */
@@ -2854,91 +2834,6 @@ export default function ClientDashboard() {
                 )}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Agent Modal */}
-      {isAgentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md transition-all">
-          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-200/60">
-              <h3 className="text-xl font-extrabold text-slate-800">Add New Agent</h3>
-              <button 
-                onClick={() => {
-                  setIsAgentModalOpen(false);
-                  setAgentName('');
-                  setAgentEmail('');
-                  setAgentPassword('');
-                }}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <form onSubmit={handleCreateAgent} className="p-8 space-y-5">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={agentName}
-                  onChange={(e) => setAgentName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={agentEmail}
-                  onChange={(e) => setAgentEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Temporary Password</label>
-                <input
-                  type="password"
-                  required
-                  value={agentPassword}
-                  onChange={(e) => setAgentPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
-                  minLength={6}
-                />
-                <p className="mt-2 text-[11px] font-medium text-slate-400">Must be at least 6 characters long.</p>
-              </div>
-
-              <div className="pt-6 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsAgentModalOpen(false);
-                    setAgentName('');
-                    setAgentEmail('');
-                    setAgentPassword('');
-                  }}
-                  className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addingAgent}
-                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg shadow-[#74ebd5]/30 disabled:opacity-50 flex justify-center items-center"
-                >
-                  {addingAgent ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    'Create Agent'
-                  )}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
