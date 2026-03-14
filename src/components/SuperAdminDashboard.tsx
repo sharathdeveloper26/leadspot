@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, updateDoc, doc, deleteDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, deleteDoc, query, where, addDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { LayoutDashboard, Users, Database, Settings, LogOut, Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, XCircle, Info, AlertCircle, Building2, Activity, Server, Search, Menu, X, Calendar } from 'lucide-react';
+import { LayoutDashboard, Users, Database, Settings, LogOut, Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, XCircle, Info, AlertCircle, Building2, Activity, Server, Search, Menu, X, Calendar, Globe, Key, Save, Facebook } from 'lucide-react';
 
 interface ClientData {
   id: string;
@@ -14,9 +14,14 @@ interface ClientData {
   createdAt: any;
 }
 
+interface GlobalSource {
+  id: string;
+  name: string;
+}
+
 export default function SuperAdminDashboard() {
   const { logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'lead_sources' | 'settings'>('clients');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'lead_sources' | 'settings'>('settings');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [clients, setClients] = useState<ClientData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +29,20 @@ export default function SuperAdminDashboard() {
 
   // Global Stats
   const [totalAgents, setTotalAgents] = useState(0);
+
+  // Global Sources State
+  const [globalSources, setGlobalSources] = useState<GlobalSource[]>([]);
+  const [newSourceName, setNewSourceName] = useState('');
+  const [addingSource, setAddingSource] = useState(false);
+
+  // System Settings State
+  const [systemSettings, setSystemSettings] = useState({
+    metaAppId: '',
+    metaAppSecret: '',
+    apolloApiKey: '',
+    supportEmail: ''
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
 
   // Modal States
   const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
@@ -60,13 +79,12 @@ export default function SuperAdminDashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch Clients
+      // 1. Fetch Clients
       const clientsSnap = await getDocs(collection(db, 'clients'));
       const fetchedClients: ClientData[] = [];
       clientsSnap.forEach(doc => {
         fetchedClients.push({ id: doc.id, ...doc.data() } as ClientData);
       });
-      // Sort by newest
       fetchedClients.sort((a, b) => {
         const timeA = a.createdAt?.toMillis() || 0;
         const timeB = b.createdAt?.toMillis() || 0;
@@ -74,9 +92,23 @@ export default function SuperAdminDashboard() {
       });
       setClients(fetchedClients);
 
-      // Fetch Total Agents across system
+      // 2. Fetch Total Agents across system
       const usersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'client_agent')));
       setTotalAgents(usersSnap.size);
+
+      // 3. Fetch Global Sources
+      const sourcesSnap = await getDocs(collection(db, 'global_lead_sources'));
+      const fetchedSources: GlobalSource[] = [];
+      sourcesSnap.forEach(doc => {
+        fetchedSources.push({ id: doc.id, name: doc.data().name });
+      });
+      setGlobalSources(fetchedSources.sort((a, b) => a.name.localeCompare(b.name)));
+
+      // 4. Fetch System Settings
+      const settingsDoc = await getDoc(doc(db, 'system_settings', 'core'));
+      if (settingsDoc.exists()) {
+        setSystemSettings(prev => ({ ...prev, ...settingsDoc.data() }));
+      }
 
     } catch (error) {
       console.error("Error fetching super admin data:", error);
@@ -90,6 +122,7 @@ export default function SuperAdminDashboard() {
     fetchData();
   }, []);
 
+  // --- CLIENT MANAGEMENT FUNCTIONS ---
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!companyName || !adminEmail || !adminPassword) {
@@ -149,6 +182,51 @@ export default function SuperAdminDashboard() {
         showDialog('error', 'Deletion Failed', 'Failed to delete workspace. Check permissions.');
       }
     });
+  };
+
+  // --- GLOBAL SOURCES FUNCTIONS ---
+  const handleAddGlobalSource = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSourceName.trim()) return;
+    setAddingSource(true);
+    try {
+      const docRef = await addDoc(collection(db, 'global_lead_sources'), { 
+        name: newSourceName.trim(), 
+        createdAt: serverTimestamp() 
+      });
+      setGlobalSources([...globalSources, { id: docRef.id, name: newSourceName.trim() }].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewSourceName('');
+      showDialog('success', 'Source Added', 'Global lead source added successfully.');
+    } catch (error) {
+      showDialog('error', 'Error', 'Failed to add global source.');
+    } finally {
+      setAddingSource(false);
+    }
+  };
+
+  const handleDeleteGlobalSource = async (id: string) => {
+    showDialog('confirm', 'Delete Source', 'Remove this global source from the system?', async () => {
+      try {
+        await deleteDoc(doc(db, 'global_lead_sources', id));
+        setGlobalSources(prev => prev.filter(s => s.id !== id));
+        showDialog('success', 'Deleted', 'Source removed successfully.');
+      } catch (error) {
+        showDialog('error', 'Error', 'Failed to delete source.');
+      }
+    });
+  };
+
+  // --- SYSTEM SETTINGS FUNCTIONS ---
+  const handleSaveSystemSettings = async () => {
+    setSavingSettings(true);
+    try {
+      await setDoc(doc(db, 'system_settings', 'core'), systemSettings, { merge: true });
+      showDialog('success', 'Settings Saved', 'System configurations have been securely updated.');
+    } catch (error) {
+      showDialog('error', 'Save Failed', 'Failed to update system settings.');
+    } finally {
+      setSavingSettings(false);
+    }
   };
 
   const filteredClients = clients.filter(c => 
@@ -373,8 +451,8 @@ export default function SuperAdminDashboard() {
 
             ) : activeTab === 'clients' ? (
               /* 👇 CLIENTS MANAGEMENT TAB 👇 */
-              <>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 shrink-0">
+              <div className="space-y-8 animate-in fade-in duration-500">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
                   <div>
                     <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Workspaces</h2>
                     <p className="text-slate-500 text-sm font-medium">Manage client accounts, limits, and statuses.</p>
@@ -494,13 +572,176 @@ export default function SuperAdminDashboard() {
                     </table>
                   </div>
                 </div>
-              </>
+              </div>
+            ) : activeTab === 'lead_sources' ? (
+              /* 👇 GLOBAL SOURCES TAB 👇 */
+              <div className="space-y-8 animate-in fade-in duration-500">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+                  <div>
+                    <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Global Sources</h2>
+                    <p className="text-slate-500 text-sm font-medium">Manage default lead sources available across all workspaces.</p>
+                  </div>
+                </div>
+
+                <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden max-w-3xl">
+                  <div className="p-6 border-b border-white/80 bg-white/40">
+                    <form onSubmit={handleAddGlobalSource} className="flex gap-4">
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          required
+                          placeholder="E.g., Facebook Ads, Walk-in, Website..."
+                          value={newSourceName}
+                          onChange={(e) => setNewSourceName(e.target.value)}
+                          className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-3 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={addingSource || !newSourceName.trim()}
+                        className="flex items-center gap-2 py-3 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none"
+                      >
+                        {addingSource ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="w-4 h-4" />}
+                        Add Source
+                      </button>
+                    </form>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50/50 border-b border-slate-200/60 text-xs uppercase tracking-widest text-slate-500 font-bold">
+                          <th className="px-8 py-5">Source Name</th>
+                          <th className="px-8 py-5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100/60">
+                        {globalSources.map((source) => (
+                          <tr key={source.id} className="hover:bg-white/60 transition-colors">
+                            <td className="px-8 py-5 whitespace-nowrap">
+                              <div className="font-bold text-slate-800 flex items-center gap-3">
+                                <div className="p-2 bg-slate-100 rounded-lg text-slate-500"><Globe className="w-4 h-4" /></div>
+                                {source.name}
+                              </div>
+                            </td>
+                            <td className="px-8 py-5 whitespace-nowrap text-right">
+                              <button
+                                onClick={() => handleDeleteGlobalSource(source.id)}
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {globalSources.length === 0 && (
+                          <tr>
+                            <td colSpan={2} className="p-12 text-center text-slate-400 font-medium">No global sources defined.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
             ) : (
-              /* 👇 PLACEHOLDERS FOR SETTINGS / SOURCES 👇 */
-              <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white p-16 text-center">
-                <Database className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-slate-800 mb-2">Configuration Page</h3>
-                <p className="text-slate-500 text-sm">System-wide configurations will be managed here.</p>
+              /* 👇 SYSTEM SETTINGS TAB 👇 */
+              <div className="space-y-8 animate-in fade-in duration-500 max-w-4xl">
+                <div>
+                  <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">System Settings</h2>
+                  <p className="text-slate-500 text-sm font-medium">Manage master API keys and core platform configurations.</p>
+                </div>
+
+                <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden p-8">
+                  <div className="flex items-center gap-4 mb-8 border-b border-slate-100/60 pb-6">
+                    <div className="p-3 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl text-white shadow-lg shadow-slate-900/20">
+                      <Key className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-900 tracking-tight">Core Integrations</h3>
+                      <p className="text-slate-500 text-sm font-medium mt-1">These keys power the enrichment and connection engines across all workspaces.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 space-y-5">
+                      <div>
+                        <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">
+                          <Database className="w-3.5 h-3.5" />
+                          Apollo.io Master API Key
+                        </label>
+                        <input
+                          type="password"
+                          value={systemSettings.apolloApiKey}
+                          onChange={(e) => setSystemSettings({...systemSettings, apolloApiKey: e.target.value})}
+                          placeholder="vWaMRrj2mpju..."
+                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all shadow-sm"
+                        />
+                        <p className="text-xs text-slate-400 mt-2 font-medium">Powers the B2B Data Enrichment engine (LinkedIn, Designation, Location).</p>
+                      </div>
+                      
+                      <div className="h-px w-full bg-slate-200/60 my-2"></div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                          <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">
+                            <Facebook className="w-3.5 h-3.5 text-blue-500" />
+                            Meta App ID
+                          </label>
+                          <input
+                            type="text"
+                            value={systemSettings.metaAppId}
+                            onChange={(e) => setSystemSettings({...systemSettings, metaAppId: e.target.value})}
+                            placeholder="1439047481212574"
+                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 outline-none transition-all shadow-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">
+                            <Key className="w-3.5 h-3.5 text-blue-500" />
+                            Meta App Secret
+                          </label>
+                          <input
+                            type="password"
+                            value={systemSettings.metaAppSecret}
+                            onChange={(e) => setSystemSettings({...systemSettings, metaAppSecret: e.target.value})}
+                            placeholder="c8ea2e5543..."
+                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 outline-none transition-all shadow-sm"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-2 font-medium">Required for authenticating client Facebook Pages and Webhooks.</p>
+                      
+                      <div className="h-px w-full bg-slate-200/60 my-2"></div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">
+                          Global Support Email
+                        </label>
+                        <input
+                          type="email"
+                          value={systemSettings.supportEmail}
+                          onChange={(e) => setSystemSettings({...systemSettings, supportEmail: e.target.value})}
+                          placeholder="support@mintagemarkcomm.com"
+                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all shadow-sm"
+                        />
+                      </div>
+
+                    </div>
+
+                    <div className="flex justify-end pt-4">
+                      <button
+                        onClick={handleSaveSystemSettings}
+                        disabled={savingSettings}
+                        className="flex items-center gap-2 px-8 py-3 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition-all shadow-lg hover:-translate-y-0.5 disabled:opacity-50"
+                      >
+                        {savingSettings ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                        Save Configurations
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
