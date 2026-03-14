@@ -80,17 +80,30 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
   const [leadSources, setLeadSources] = useState<{id: string, name: string}[]>([]);
   const [leadSubSources, setLeadSubSources] = useState<{id: string, name: string}[]>([]);
 
-  useEffect(() => {
+ useEffect(() => {
     const fetchLeadSources = async () => {
       if (!user?.clientId) return;
       try {
+        const fetched: {id: string, name: string}[] = [];
+        
+        // 1. Fetch Client Sources
         const q = query(collection(db, 'lead_sources'), where('clientId', '==', user.clientId));
         const snapshot = await getDocs(q);
-        const fetched: {id: string, name: string}[] = [];
         snapshot.forEach(doc => fetched.push({ id: doc.id, name: doc.data().name }));
+
+        // 2. Fetch Global Sources
+        const globalQ = collection(db, 'global_lead_sources');
+        const globalSnapshot = await getDocs(globalQ);
+        globalSnapshot.forEach(doc => {
+          if (!fetched.some(s => s.name.toLowerCase() === doc.data().name.toLowerCase())) {
+            fetched.push({ id: doc.id, name: doc.data().name });
+          }
+        });
+
         fetched.sort((a, b) => a.name.localeCompare(b.name));
         setLeadSources(fetched);
 
+        // Fetch Sub-Sources
         const qSub = query(collection(db, 'lead_sub_sources'), where('clientId', '==', user.clientId));
         const snapshotSub = await getDocs(qSub);
         const fetchedSub: {id: string, name: string}[] = [];
@@ -103,7 +116,6 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
     };
     if (isOpen) fetchLeadSources();
   }, [user?.clientId, isOpen]);
-
   if (!isOpen || !lead) return null;
 
   const handleAddTag = async (e?: React.FormEvent) => {

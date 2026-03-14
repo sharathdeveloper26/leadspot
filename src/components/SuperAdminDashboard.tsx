@@ -76,7 +76,7 @@ export default function SuperAdminDashboard() {
     setDialogState(prev => ({ ...prev, isOpen: false }));
   };
 
-  const fetchData = async () => {
+const fetchData = async () => {
     setLoading(true);
     try {
       // 1. Fetch Clients
@@ -85,10 +85,16 @@ export default function SuperAdminDashboard() {
       clientsSnap.forEach(doc => {
         fetchedClients.push({ id: doc.id, ...doc.data() } as ClientData);
       });
+      
+      // ULTRA-SAFE SORTING (Prevents crashes if createdAt is missing)
       fetchedClients.sort((a, b) => {
-        const timeA = a.createdAt?.toMillis() || 0;
-        const timeB = b.createdAt?.toMillis() || 0;
-        return timeB - timeA;
+        const getTime = (val: any) => {
+          if (!val) return 0;
+          if (typeof val.toMillis === 'function') return val.toMillis();
+          if (typeof val.toDate === 'function') return val.toDate().getTime();
+          return new Date(val).getTime() || 0;
+        };
+        return getTime(b.createdAt) - getTime(a.createdAt);
       });
       setClients(fetchedClients);
 
@@ -110,9 +116,9 @@ export default function SuperAdminDashboard() {
         setSystemSettings(prev => ({ ...prev, ...settingsDoc.data() }));
       }
 
-    } catch (error) {
-      console.error("Error fetching super admin data:", error);
-      showDialog('error', 'Sync Error', 'Failed to synchronize system data.');
+    } catch (error: any) {
+      console.error("🔥 Detailed Sync Error:", error);
+      showDialog('error', 'Sync Error', error.message || 'Failed to synchronize system data. Press F12 to check console.');
     } finally {
       setLoading(false);
     }

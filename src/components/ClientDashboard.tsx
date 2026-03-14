@@ -400,21 +400,37 @@ export default function ClientDashboard() {
     }
   };
 
-  const fetchLeadSources = async () => {
+ const fetchLeadSources = async () => {
     if (!user?.clientId) return;
     try {
+      const fetched: {id: string, name: string}[] = [];
+
+      // 1. Fetch Client-Specific Sources
       const q = query(collection(db, 'lead_sources'), where('clientId', '==', user.clientId));
       const snapshot = await getDocs(q);
-      const fetched: {id: string, name: string}[] = [];
       snapshot.forEach(doc => {
         fetched.push({ id: doc.id, name: doc.data().name });
       });
+
+      // 2. Fetch Super Admin Global Sources
+      const globalQ = collection(db, 'global_lead_sources');
+      const globalSnapshot = await getDocs(globalQ);
+      globalSnapshot.forEach(doc => {
+        // Smart check: Don't add it if the client already made a custom source with the exact same name!
+        if (!fetched.some(s => s.name.toLowerCase() === doc.data().name.toLowerCase())) {
+          fetched.push({ id: doc.id, name: doc.data().name });
+        }
+      });
+
+      // Sort alphabetically and set
       fetched.sort((a, b) => a.name.localeCompare(b.name));
       setLeadSources(fetched);
+      
       if (fetched.length > 0) {
         setSource(fetched[0].name);
       }
 
+      // Fetch Sub-Sources (Remains unchanged)
       const qSub = query(collection(db, 'lead_sub_sources'), where('clientId', '==', user.clientId));
       const snapshotSub = await getDocs(qSub);
       const fetchedSub: {id: string, name: string}[] = [];
