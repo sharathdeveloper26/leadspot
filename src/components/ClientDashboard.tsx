@@ -3,9 +3,10 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
+import AddLeadModal from './AddLeadModal';
 
 interface Agent {
   id: string;
@@ -44,7 +45,8 @@ declare global {
 
 export default function ClientDashboard() {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'integrations' | 'team' | 'reports'>('dashboard');
+  // ✨ NEW: Added 'feedback' to active tabs ✨
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'integrations' | 'team' | 'reports'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('pipeline');
@@ -72,6 +74,10 @@ export default function ClientDashboard() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [toastData, setToastData] = useState<{show: boolean, title: string, message: string} | null>(null);
+
+  // ✨ NEW: Bulk Import State & Ref ✨
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -157,14 +163,21 @@ export default function ClientDashboard() {
   const [inlineEditingAgentId, setInlineEditingAgentId] = useState<string | null>(null);
   const [inlineEditingName, setInlineEditingName] = useState('');
 
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [leadSourceFilter, setLeadSourceFilter] = useState('All');
-
+  // Leads Tab Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All');
   const [leadsStartDate, setLeadsStartDate] = useState('');
   const [leadsEndDate, setLeadsEndDate] = useState('');
+
+  // Reports Tab Filters
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [leadSourceFilter, setLeadSourceFilter] = useState('All');
+
+  // ✨ NEW: Feedback Tab Filters ✨
+  const [feedbackStartDate, setFeedbackStartDate] = useState('');
+  const [feedbackEndDate, setFeedbackEndDate] = useState('');
+  const [feedbackSourceFilter, setFeedbackSourceFilter] = useState('All');
 
   const [currentPage, setCurrentPage] = useState(1);
   const leadsPerPage = 10;
@@ -525,6 +538,74 @@ export default function ClientDashboard() {
     }
   };
 
+  // ✨ NEW: Bulk CSV Import Function ✨
+  const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.clientId) return;
+
+    setIsImporting(true);
+    const reader = new FileReader();
+
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        // Robust regex to split CSV respecting quotes
+        const rows = text.split(/\r?\n/).filter(row => row.trim() !== '');
+        if (rows.length < 2) {
+          alert("CSV file must contain headers and at least one row of data.");
+          setIsImporting(false);
+          return;
+        }
+
+        const headers = rows[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
+
+        let successCount = 0;
+        
+        for (let i = 1; i < rows.length; i++) {
+          const rowValues = rows[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/^"|"$/g, '').trim());
+          if (rowValues.length === 0 || !rowValues[0]) continue;
+
+          let leadObj: any = {
+            clientId: user.clientId,
+            status: 'New',
+            createdAt: serverTimestamp(),
+            assignedTo: '',
+            assignedToId: '',
+            assignedToName: '',
+          };
+
+          headers.forEach((header, index) => {
+            const val = rowValues[index] || '';
+            if (header.includes('first') || header === 'name') leadObj.firstName = val;
+            else if (header.includes('last')) leadObj.lastName = val;
+            else if (header.includes('email')) leadObj.email = val;
+            else if (header.includes('phone') || header.includes('mobile')) leadObj.phone = val;
+            else if (header.includes('project') || header.includes('property')) leadObj.projectProperty = val;
+            else if (header.includes('source') && !header.includes('sub')) leadObj.source = val;
+            else if (header.includes('sub')) leadObj.subSource = val;
+          });
+
+          // Fallbacks for required fields
+          if (!leadObj.firstName) leadObj.firstName = "Imported";
+          if (!leadObj.lastName) leadObj.lastName = "Lead";
+          if (!leadObj.source) leadObj.source = "Bulk Import";
+
+          await addDoc(collection(db, 'leads'), leadObj);
+          successCount++;
+        }
+        
+        alert(`Successfully imported ${successCount} leads!`);
+      } catch (error) {
+        console.error("Import error:", error);
+        alert("Failed to import leads. Please ensure your CSV is formatted correctly.");
+      } finally {
+        setIsImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = ''; // Reset input
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const handleCreateAgent = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddingAgent(true);
@@ -717,7 +798,8 @@ export default function ClientDashboard() {
     }
   };
 
-  const filteredLeads = leads.filter(lead => {
+  // --- LEADS TAB FILTERING ---
+  const filteredLeadsView = leads.filter(lead => {
     let matches = true;
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -734,6 +816,59 @@ export default function ClientDashboard() {
     return matches;
   });
 
+  const totalPages = Math.ceil(filteredLeadsView.length / leadsPerPage);
+  const paginatedLeads = filteredLeadsView.slice((currentPage - 1) * leadsPerPage, currentPage * leadsPerPage);
+
+  // --- REPORTS TAB FILTERING ---
+  const filteredLeads = leads.filter(lead => {
+    let matches = true;
+    if (leadSourceFilter !== 'All') {
+      const source = lead.source || '';
+      if (!source.toLowerCase().includes(leadSourceFilter.toLowerCase())) matches = false;
+    }
+    if (startDate) {
+      const leadDate = lead.createdAt?.toDate();
+      if (leadDate && leadDate < new Date(startDate)) matches = false;
+    }
+    if (endDate) {
+      const leadDate = lead.createdAt?.toDate();
+      const end = new Date(endDate);
+      end.setDate(end.getDate() + 1);
+      if (leadDate && leadDate >= end) matches = false;
+    }
+    return matches;
+  });
+
+  // --- ✨ NEW: FEEDBACK TAB FILTERING & DATA ✨ ---
+  const filteredFeedbackLeads = leads.filter(lead => {
+    let matches = true;
+    if (feedbackSourceFilter !== 'All') {
+      const source = lead.source || '';
+      if (!source.toLowerCase().includes(feedbackSourceFilter.toLowerCase())) matches = false;
+    }
+    if (feedbackStartDate) {
+      const leadDate = lead.createdAt?.toDate();
+      if (leadDate && leadDate < new Date(feedbackStartDate)) matches = false;
+    }
+    if (feedbackEndDate) {
+      const leadDate = lead.createdAt?.toDate();
+      const end = new Date(feedbackEndDate);
+      end.setDate(end.getDate() + 1);
+      if (leadDate && leadDate >= end) matches = false;
+    }
+    return matches;
+  });
+
+  const feedbackSourceDataMap = new Map<string, number>();
+  filteredFeedbackLeads.forEach(lead => {
+    const source = lead.source || 'Manual';
+    feedbackSourceDataMap.set(source, (feedbackSourceDataMap.get(source) || 0) + 1);
+  });
+  const dynamicFeedbackSourceData = Array.from(feedbackSourceDataMap.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
+  // EXPORT FUNCTIONS
   const handleExportCSV = () => {
     if (filteredLeads.length === 0) {
       alert("No leads found for the selected filters.");
@@ -800,7 +935,7 @@ export default function ClientDashboard() {
   };
 
   const handleExportFeedbackCSV = () => {
-    if (filteredLeads.length === 0) {
+    if (filteredFeedbackLeads.length === 0) {
       alert("No leads found for the selected filters.");
       return;
     }
@@ -812,7 +947,7 @@ export default function ClientDashboard() {
 
     const csvRows: string[] = [];
 
-    filteredLeads.forEach(lead => {
+    filteredFeedbackLeads.forEach(lead => {
       const assignedName = lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned';
       
       const escapeCSV = (val: any) => {
@@ -915,26 +1050,6 @@ export default function ClientDashboard() {
     }
   };
 
-  const filteredLeadsView = leads.filter(lead => {
-    let matches = true;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const fullName = `${lead.firstName} ${lead.lastName}`.toLowerCase();
-      if (!fullName.includes(query) && !lead.email?.toLowerCase().includes(query) && !lead.phone?.toLowerCase().includes(query)) matches = false;
-    }
-    if (leadsViewSourceFilter !== 'All') { if (lead.source !== leadsViewSourceFilter) matches = false; }
-    if (leadsStartDate || leadsEndDate) {
-      const leadDate = lead.createdAt ? lead.createdAt.toDate() : new Date();
-      leadDate.setHours(0, 0, 0, 0);
-      if (leadsStartDate) { const start = new Date(leadsStartDate); start.setHours(0, 0, 0, 0); if (leadDate < start) matches = false; }
-      if (leadsEndDate) { const end = new Date(leadsEndDate); end.setHours(23, 59, 59, 999); if (leadDate > end) matches = false; }
-    }
-    return matches;
-  });
-
-  const totalPages = Math.ceil(filteredLeadsView.length / leadsPerPage);
-  const paginatedLeads = filteredLeadsView.slice((currentPage - 1) * leadsPerPage, currentPage * leadsPerPage);
-
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) { setSelectedLeads(paginatedLeads.map(l => l.id)); } 
     else { setSelectedLeads([]); }
@@ -1017,7 +1132,7 @@ export default function ClientDashboard() {
           Workspace
         </div>
         
-        <nav className="flex-1 px-4 space-y-1.5">
+        <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto custom-scrollbar">
           <button 
             onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
@@ -1040,6 +1155,19 @@ export default function ClientDashboard() {
           >
             <Users className="w-5 h-5" />
             Leads
+          </button>
+
+          {/* ✨ NEW: LEADS FEEDBACK TAB BUTTON ✨ */}
+          <button 
+            onClick={() => { setActiveTab('feedback'); setIsMobileMenuOpen(false); }}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
+              activeTab === 'feedback' 
+                ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
+                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
+            }`}
+          >
+            <MessageSquare className="w-5 h-5" />
+            Leads Feedback
           </button>
 
           {user?.role === 'client_admin' && (
@@ -1098,7 +1226,7 @@ export default function ClientDashboard() {
         
         <header className="h-24 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
           <h1 className="text-xl font-bold tracking-tight text-slate-800">
-            {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : 'Integrations'}
+            {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'feedback' ? 'Leads Feedback' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : 'Integrations'}
           </h1>
           <div className="flex items-center gap-6">
             
@@ -1165,7 +1293,6 @@ export default function ClientDashboard() {
         <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-auto custom-scrollbar">
           <div className="max-w-7xl mx-auto h-full flex flex-col min-w-[800px] md:min-w-0">
             
-            {/* 👇 DASHBOARD TAB VIEW 👇 */}
             {activeTab === 'dashboard' ? (
               <div className="space-y-8 animate-in fade-in duration-500">
                 <div>
@@ -1322,7 +1449,6 @@ export default function ClientDashboard() {
                           {leads.slice(0, 5).map(lead => (
                             <tr key={lead.id} className="hover:bg-white/60 transition-colors">
                               <td className="px-8 py-4 whitespace-nowrap">
-                                {/* 👇 UI PATCH APPLIED TO DASHBOARD 👇 */}
                                 <div className="font-bold text-slate-800">
                                   {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
                                 </div>
@@ -1364,31 +1490,44 @@ export default function ClientDashboard() {
 
               </div>
             ) : activeTab === 'leads' ? (
-            /* 👆 END DASHBOARD TAB VIEW 👆 */
-
               <>
-                {/* Header Actions */}
                 <div className="flex justify-between items-center mb-8 shrink-0">
                   <div>
-                    {/* ✨ UI UPGRADE: Gradient Text Header */}
                     <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Your Leads</h2>
                     <p className="text-slate-500 text-sm font-medium">Manage and track your prospective customers.</p>
                   </div>
-                  {/* ✨ UI UPGRADE: Gradient Button with hover lift and colored shadow */}
-                  <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#74ebd5] transition-all hover:-translate-y-0.5 whitespace-nowrap"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add New Lead
-                  </button>
+                  
+                  {/* ✨ NEW: Bulk Import CSV Button ✨ */}
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="file" 
+                      accept=".csv" 
+                      ref={fileInputRef} 
+                      onChange={handleImportCSV} 
+                      className="hidden" 
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isImporting}
+                      className="flex items-center gap-2 py-2.5 px-5 rounded-xl text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50"
+                      title="Upload a CSV with First Name, Last Name, Phone, Email, and Source"
+                    >
+                      {isImporting ? <div className="w-4 h-4 border-2 border-slate-300 border-t-[#74ebd5] rounded-full animate-spin" /> : <Upload className="w-4 h-4" />}
+                      Import CSV
+                    </button>
+                    
+                    <button
+                      onClick={() => setIsModalOpen(true)}
+                      className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#74ebd5] transition-all hover:-translate-y-0.5 whitespace-nowrap"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add New Lead
+                    </button>
+                  </div>
                 </div>
 
-                {/* Filters & Controls */}
-                {/* ✨ UI UPGRADE: Glassmorphism Control Bar */}
                 <div className="flex flex-wrap items-center gap-4 bg-white/60 backdrop-blur-xl p-3 rounded-2xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)] mb-8 shrink-0">
                   <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-3 py-1.5 h-10 shadow-sm">
-                    {/* 👇 DATE VALIDATION FIX FOR LEADS TAB 👇 */}
                     <input
                       type="date"
                       value={leadsStartDate}
@@ -1414,7 +1553,6 @@ export default function ClientDashboard() {
                       }}
                       className="text-sm font-medium border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer"
                     />
-                    {/* 👆 END DATE VALIDATION FIX 👆 */}
                     {(leadsStartDate || leadsEndDate) && (
                       <button 
                         onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); }}
@@ -1479,8 +1617,6 @@ export default function ClientDashboard() {
                     <p className="text-slate-500 text-sm max-w-sm">Your pipeline is empty. Get started by adding a new lead manually or checking your integrations.</p>
                   </div>
                 ) : viewMode === 'table' ? (
-                  /* Table View */
-                  // ✨ UI UPGRADE: Glassmorphism Table Container
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden shrink-0">
                     {selectedLeads.length > 0 && (
                       <div className="bg-red-50/90 backdrop-blur-md px-6 py-3 border-b border-red-100 flex items-center justify-between">
@@ -1547,7 +1683,6 @@ export default function ClientDashboard() {
                                   {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}
                                 </td>
                                 <td className="px-6 py-5 whitespace-nowrap">
-                                  {/* 👇 UI PATCH APPLIED TO TABLE 👇 */}
                                   <div className="font-bold text-slate-800">
                                     {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
                                     {lead.isDuplicate && (
@@ -1738,7 +1873,6 @@ export default function ClientDashboard() {
                                 className="bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-[0_8px_20px_rgba(116,235,213,0.15)] hover:-translate-y-1 transition-all duration-300 cursor-pointer relative group"
                               >
                                 <div className="flex justify-between items-start mb-4">
-                                  {/* 👇 UI PATCH APPLIED TO PIPELINE CARD 👇 */}
                                   <div className="font-bold text-slate-900 text-base leading-tight pr-2">
                                     {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
                                   </div>
@@ -1871,6 +2005,183 @@ export default function ClientDashboard() {
                   </div>
                 )}
               </>
+            ) : activeTab === 'feedback' ? (
+              /* 👇 NEW: LEADS FEEDBACK TAB 👇 */
+              <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                  <div>
+                    <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Leads Feedback</h2>
+                    <p className="text-slate-500 text-sm font-medium">Analyze communication history and agent notes.</p>
+                  </div>
+                  
+                  {/* Feedback Filters and Export */}
+                  <div className="flex flex-wrap items-center gap-4">
+                    <button
+                      onClick={handleExportFeedbackCSV}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white text-sm font-bold rounded-xl shadow-lg shadow-[#74ebd5]/30 hover:opacity-90 hover:-translate-y-0.5 transition-all border border-transparent"
+                    >
+                      <Download className="w-4 h-4" />
+                      Export Feedback
+                    </button>
+
+                    <div className="flex flex-wrap items-center gap-4 bg-white/70 backdrop-blur-xl p-2.5 rounded-2xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)]">
+                      <div className="flex items-center gap-2 px-3 bg-white border border-slate-100 rounded-xl py-1.5 shadow-sm">
+                        <Calendar className="w-4 h-4 text-[#74ebd5]" />
+                        <input 
+                          type="date" 
+                          value={feedbackStartDate}
+                          max={feedbackEndDate || undefined}
+                          onChange={(e) => {
+                            setFeedbackStartDate(e.target.value);
+                            if (feedbackEndDate && e.target.value > feedbackEndDate) {
+                              setFeedbackEndDate(e.target.value);
+                            }
+                          }}
+                          className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
+                        />
+                        <span className="text-slate-300 font-light">|</span>
+                        <input 
+                          type="date" 
+                          value={feedbackEndDate}
+                          min={feedbackStartDate || undefined}
+                          onChange={(e) => {
+                            setFeedbackEndDate(e.target.value);
+                            if (feedbackStartDate && e.target.value < feedbackStartDate) {
+                              setFeedbackStartDate(e.target.value);
+                            }
+                          }}
+                          className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
+                        />
+                      </div>
+                      <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
+                      <select 
+                        value={feedbackSourceFilter}
+                        onChange={(e) => setFeedbackSourceFilter(e.target.value)}
+                        className="text-sm font-bold border border-slate-100 rounded-xl px-4 py-2 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 text-slate-700 cursor-pointer outline-none transition-all"
+                      >
+                        <option value="All">All Sources</option>
+                        {combinedSources.map(sourceName => (
+                          <option key={sourceName} value={sourceName}>{sourceName}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Feedback Source Pie Chart */}
+                <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
+                  <h3 className="text-lg font-bold text-slate-800 mb-6">Feedback Distribution by Source</h3>
+                  {dynamicFeedbackSourceData.length > 0 ? (
+                    <div className="flex flex-col lg:flex-row items-center justify-center gap-8">
+                      <div className="h-[250px] w-full max-w-md">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={dynamicFeedbackSourceData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={70}
+                              outerRadius={100}
+                              paddingAngle={4}
+                              dataKey="value"
+                              nameKey="name"
+                              stroke="none"
+                            >
+                              {dynamicFeedbackSourceData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', fontWeight: 600 }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="flex flex-wrap justify-center lg:justify-start gap-x-6 gap-y-4">
+                        {dynamicFeedbackSourceData.map((source, index) => (
+                          <div key={source.name} className="flex items-center gap-3 text-sm font-bold text-slate-700 bg-white/60 p-3 rounded-xl border border-white shadow-sm">
+                            <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
+                            {source.name} <span className="text-slate-400 font-medium ml-1">({source.value})</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-center p-12 bg-slate-50/50 rounded-2xl border border-slate-100">
+                      <MessageSquare className="w-10 h-10 text-slate-300 mb-3" />
+                      <p className="text-sm font-bold text-slate-500">No data available for the selected filters.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Feedback Report Table */}
+                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
+                  <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40">
+                    <h3 className="text-lg font-bold text-slate-800">Lead Feedback Logs</h3>
+                  </div>
+                  <div className="overflow-x-auto custom-scrollbar max-h-[600px]">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="sticky top-0 z-10 bg-slate-50/90 backdrop-blur-md">
+                        <tr className="border-b border-slate-200/60 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                          <th className="px-8 py-5">Lead Details</th>
+                          <th className="px-8 py-5">Source</th>
+                          <th className="px-8 py-5">Status</th>
+                          <th className="px-8 py-5 w-[45%]">Latest Feedback</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100/60">
+                        {filteredFeedbackLeads.map(lead => {
+                          const sortedNotes = lead.notes ? [...lead.notes].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) : [];
+                          const latestNote = sortedNotes.length > 0 ? sortedNotes[0] : null;
+
+                          return (
+                            <tr 
+                              key={lead.id} 
+                              className="hover:bg-white/60 transition-colors cursor-pointer"
+                              onClick={() => openLeadDetails(lead)}
+                            >
+                              <td className="px-8 py-5">
+                                <div className="font-bold text-slate-800">
+                                  {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
+                                </div>
+                                <div className="text-xs font-medium text-slate-500 mt-1">{lead.phone || lead.email}</div>
+                              </td>
+                              <td className="px-8 py-5 whitespace-nowrap">
+                                {getSourceBadge(lead.source, lead.subSource)}
+                              </td>
+                              <td className="px-8 py-5 whitespace-nowrap">
+                                 <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold border ${getStatusBadgeClass(lead.status)} uppercase tracking-wider`}>
+                                  {lead.status}
+                                </span>
+                              </td>
+                              <td className="px-8 py-5 min-w-[300px]">
+                                {latestNote ? (
+                                  <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100 shadow-sm">
+                                    <div className="flex justify-between items-center mb-2">
+                                      <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{latestNote.authorEmail}</span>
+                                      <span className="text-[10px] text-slate-400 font-bold">{new Date(latestNote.timestamp).toLocaleDateString()}</span>
+                                    </div>
+                                    <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap line-clamp-2 leading-relaxed">{latestNote.text}</p>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs font-medium text-slate-400 italic">No feedback recorded yet.</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {filteredFeedbackLeads.length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="px-8 py-10 text-center text-sm font-medium text-slate-400">
+                              No leads found for the selected filters.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             ) : activeTab === 'team' ? (
               /* Team View */
               <div className="max-w-6xl mx-auto space-y-8">
@@ -2098,7 +2409,6 @@ export default function ClientDashboard() {
                   
                   {/* Filters and Export Button */}
                   <div className="flex flex-wrap items-center gap-4">
-                    {/* 👇 NEW EXPORT TO CSV BUTTON 👇 */}
                     <button
                       onClick={handleExportCSV}
                       className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white text-sm font-bold rounded-xl shadow-lg shadow-[#74ebd5]/30 hover:opacity-90 hover:-translate-y-0.5 transition-all border border-transparent"
@@ -2106,11 +2416,9 @@ export default function ClientDashboard() {
                       <Download className="w-4 h-4" />
                       Export CSV
                     </button>
-                    {/* 👆 NEW EXPORT TO CSV BUTTON 👆 */}
 
                     <div className="flex flex-wrap items-center gap-4 bg-white/70 backdrop-blur-xl p-2.5 rounded-2xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)]">
                       <div className="flex items-center gap-2 px-3 bg-white border border-slate-100 rounded-xl py-1.5 shadow-sm">
-                        {/* 👇 DATE VALIDATION FIX FOR REPORTS TAB 👇 */}
                         <Calendar className="w-4 h-4 text-[#74ebd5]" />
                         <input 
                           type="date" 
@@ -2137,7 +2445,6 @@ export default function ClientDashboard() {
                           }}
                           className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
                         />
-                        {/* 👆 END DATE VALIDATION FIX 👆 */}
                       </div>
                       <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
                       <select 
@@ -2328,81 +2635,6 @@ export default function ClientDashboard() {
                             {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && l.status === 'Closed Won').length}
                           </td>
                         </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* 👇 NEW LEAD FEEDBACK REPORT TABLE 👇 */}
-                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden mt-8">
-                  <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-800">Lead Feedback & Status Report</h3>
-                      <p className="text-xs text-slate-500 font-medium mt-1">Review the latest notes and activity for your filtered leads.</p>
-                    </div>
-                    <button
-                      onClick={handleExportFeedbackCSV}
-                      className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
-                    >
-                      <MessageSquare className="w-4 h-4 text-[#74ebd5]" />
-                      Export Feedback History
-                    </button>
-                  </div>
-                  <div className="overflow-x-auto custom-scrollbar max-h-[500px]">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="sticky top-0 z-10 bg-slate-50/90 backdrop-blur-md">
-                        <tr className="border-b border-slate-200/60 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-                          <th className="px-8 py-5">Lead Details</th>
-                          <th className="px-8 py-5">Source</th>
-                          <th className="px-8 py-5">Status</th>
-                          <th className="px-8 py-5 w-[40%]">Latest Feedback</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100/60">
-                        {filteredLeads.map(lead => {
-                          const sortedNotes = lead.notes ? [...lead.notes].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) : [];
-                          const latestNote = sortedNotes.length > 0 ? sortedNotes[0] : null;
-
-                          return (
-                            <tr key={lead.id} className="hover:bg-white/60 transition-colors">
-                              <td className="px-8 py-5">
-                                {/* 👇 UI PATCH APPLIED TO FEEDBACK TABLE 👇 */}
-                                <div className="font-bold text-slate-800">
-                                  {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
-                                </div>
-                                <div className="text-xs font-medium text-slate-500 mt-1">{lead.phone || lead.email}</div>
-                              </td>
-                              <td className="px-8 py-5 whitespace-nowrap">
-                                {getSourceBadge(lead.source, lead.subSource)}
-                              </td>
-                              <td className="px-8 py-5 whitespace-nowrap">
-                                 <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold border ${getStatusBadgeClass(lead.status)} uppercase tracking-wider`}>
-                                  {lead.status}
-                                </span>
-                              </td>
-                              <td className="px-8 py-5 min-w-[300px]">
-                                {latestNote ? (
-                                  <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100 shadow-sm">
-                                    <div className="flex justify-between items-center mb-2">
-                                      <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{latestNote.authorEmail}</span>
-                                      <span className="text-[10px] text-slate-400 font-bold">{new Date(latestNote.timestamp).toLocaleDateString()}</span>
-                                    </div>
-                                    <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap line-clamp-2 leading-relaxed">{latestNote.text}</p>
-                                  </div>
-                                ) : (
-                                  <span className="text-xs font-medium text-slate-400 italic">No feedback recorded yet.</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {filteredLeads.length === 0 && (
-                          <tr>
-                            <td colSpan={4} className="px-8 py-10 text-center text-sm font-medium text-slate-400">
-                              No leads found for the selected filters.
-                            </td>
-                          </tr>
-                        )}
                       </tbody>
                     </table>
                   </div>
