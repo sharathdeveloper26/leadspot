@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc, onSnapshot, orderBy, limit, startAfter, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 import AddLeadModal from './AddLeadModal';
@@ -67,6 +67,19 @@ export default function ClientDashboard() {
   const [hasMoreLeads, setHasMoreLeads] = useState(true);
   const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
+
+  // 👇 NEW NOTIFICATION STATES 👇
+  const isInitialMount = useRef(true);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [toastData, setToastData] = useState<{show: boolean, title: string, message: string} | null>(null);
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    setIsNotificationOpen(false);
+  };
 
   const [fbUserToken, setFbUserToken] = useState("");
   const [isLinking, setIsLinking] = useState(false);
@@ -228,13 +241,48 @@ export default function ClientDashboard() {
       });
       
       setRealTimeLeads(fetchedLeads);
-      
-      if (!lastVisibleLead && snapshot.docs.length > 0) {
-        setLastVisibleLead(snapshot.docs[snapshot.docs.length - 1]);
-        setHasMoreLeads(snapshot.docs.length === 50);
+
+      // 👇 LIVE NOTIFICATION LOGIC 👇
+      if (!isInitialMount.current) {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const newLead = change.doc.data() as Lead;
+            const leadName = `${newLead.firstName} ${newLead.lastName}`.trim() || 'Someone';
+            const sourceName = newLead.source || 'Direct Entry';
+            
+            // Fire Toast Notification
+            setToastData({
+              show: true,
+              title: "New Lead Captured!",
+              message: `${leadName} just arrived via ${sourceName}.`
+            });
+
+            // Add to Notification Dropdown
+            setNotifications(prev => [{
+              id: change.doc.id + Date.now(),
+              leadId: change.doc.id,
+              leadRef: newLead,
+              title: "New Lead",
+              message: `${leadName} - ${newLead.projectProperty || 'General Inquiry'}`,
+              time: new Date(),
+              isRead: false
+            }, ...prev].slice(0, 30)); // Keep last 30
+
+            // Hide toast after 5s
+            setTimeout(() => setToastData(null), 5000);
+          }
+        });
       }
+      // 👆 END LIVE NOTIFICATION LOGIC 👆
       
-      setLoading(false);
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+        if (!lastVisibleLead && snapshot.docs.length > 0) {
+          setLastVisibleLead(snapshot.docs[snapshot.docs.length - 1]);
+          setHasMoreLeads(snapshot.docs.length === 50);
+        }
+        setLoading(false);
+      }
     }, (error) => {
       console.error("Error in onSnapshot:", error);
       setLoading(false);
@@ -724,7 +772,7 @@ export default function ClientDashboard() {
       const escapeCSV = (val: any) => {
          if (val === null || val === undefined) return '""';
          const str = String(val);
-         return `"${str.replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+         return `"${str.replace(/"/g, '""').replace(/\n/g, ' ')}"`; 
       };
 
       return [
@@ -930,6 +978,20 @@ export default function ClientDashboard() {
   return (
     <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
       
+      {/* ✨ LIVE TOAST NOTIFICATION ✨ */}
+      {toastData && toastData.show && (
+        <div className="fixed top-6 right-6 z-[100] bg-white/90 backdrop-blur-xl border border-[#74ebd5]/50 shadow-2xl rounded-2xl p-4 animate-in slide-in-from-top-5 fade-in duration-300 flex items-start gap-4 w-80">
+          <div className="p-2.5 bg-gradient-to-br from-[#74ebd5] to-[#9face6] rounded-xl text-white shadow-md shrink-0">
+             <Zap className="w-5 h-5 animate-pulse" />
+          </div>
+          <div className="flex-1 pt-0.5">
+             <h4 className="text-sm font-extrabold text-slate-900 tracking-tight">{toastData.title}</h4>
+             <p className="text-xs font-medium text-slate-500 mt-1 leading-relaxed">{toastData.message}</p>
+          </div>
+          <button onClick={() => setToastData(null)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-1.5 rounded-lg transition-colors"><X className="w-4 h-4"/></button>
+        </div>
+      )}
+
       {/* ✨ UI UPGRADE: Pinterest-style background mesh gradient blobs */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-[#74ebd5]/40 to-teal-50/40 blur-3xl opacity-70 mix-blend-multiply" />
@@ -938,24 +1000,26 @@ export default function ClientDashboard() {
       </div>
 
       <div className="md:hidden relative z-20 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-white p-4 shrink-0 shadow-sm">
-        {/* ✨ UI UPGRADE: Larger mobile logo */}
         <img src="/mintage-logo.png" alt="Mintage" className="h-14 w-auto" />
-        <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
-          <Menu className="w-6 h-6" />
-        </button>
+        <div className="flex items-center gap-4">
+          <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className="relative p-2 text-slate-600">
+            <Bell className="w-6 h-6" />
+            {unreadCount > 0 && <span className="absolute top-1 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}
+          </button>
+          <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
+            <Menu className="w-6 h-6" />
+          </button>
+        </div>
       </div>
 
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
       )}
 
-      {/* ✨ UI UPGRADE: Sidebar converted to frosted glassmorphism with its own subtle vertical gradient */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-white/90 via-slate-50/40 to-slate-50/80 backdrop-blur-2xl border-r border-white/80 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-[8px_0_30px_rgba(0,0,0,0.03)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         
-        {/* ✨ UI UPGRADE: Taller, more breathable header area for the larger logo */}
         <div className="h-24 flex items-center justify-between px-6 border-b border-slate-100/50 bg-white/40">
           <div className="flex items-center gap-2 text-emerald-600 font-bold text-lg tracking-tight">
-            {/* ✨ UI UPGRADE: Increased desktop logo size to h-16 */}
             <img src="/mintage-logo.png" alt="Mintage" className="h-16 w-auto drop-shadow-sm" />
           </div>
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
@@ -963,13 +1027,11 @@ export default function ClientDashboard() {
           </button>
         </div>
         
-        {/* ✨ UI UPGRADE: Gradient Text for Workspace label */}
         <div className="px-6 py-6 text-[11px] font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-400 to-slate-500 uppercase tracking-[0.2em]">
           Workspace
         </div>
         
         <nav className="flex-1 px-4 space-y-1.5">
-          {/* ✨ UI UPGRADE: Active states use sleek Teal/Purple gradients */}
           <button 
             onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
@@ -1048,14 +1110,69 @@ export default function ClientDashboard() {
       {/* Main Content */}
       <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         
-        {/* ✨ UI UPGRADE: Header frosted glass */}
         <header className="h-24 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
           <h1 className="text-xl font-bold tracking-tight text-slate-800">
             {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : 'Integrations'}
           </h1>
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-white px-4 py-2 rounded-full shadow-sm">
-            <UserCircle2 className="w-4 h-4 text-[#74ebd5]" />
-            {user?.email}
+          <div className="flex items-center gap-6">
+            
+            {/* ✨ NOTIFICATION BELL DROPDOWN ✨ */}
+            <div className="relative">
+              <button 
+                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                className={`p-2.5 rounded-xl transition-all relative ${isNotificationOpen ? 'bg-white shadow-sm text-[#50bdaf]' : 'bg-white/60 hover:bg-white text-slate-500 hover:text-[#50bdaf]'}`}
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                )}
+              </button>
+
+              {isNotificationOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsNotificationOpen(false)}></div>
+                  <div className="absolute right-0 mt-3 w-80 bg-white/90 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white z-50 overflow-hidden animate-in slide-in-from-top-2 fade-in">
+                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                      <h3 className="font-bold text-slate-800 text-sm">Notifications</h3>
+                      {unreadCount > 0 && (
+                        <button onClick={markAllAsRead} className="text-[10px] font-bold text-[#50bdaf] hover:text-[#419c90] uppercase tracking-wider">
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-80 overflow-y-auto custom-scrollbar">
+                      {notifications.length === 0 ? (
+                        <div className="p-8 text-center text-slate-400 text-xs font-medium">No new notifications.</div>
+                      ) : (
+                        notifications.map(notif => (
+                          <div 
+                            key={notif.id} 
+                            onClick={() => {
+                              openLeadDetails(notif.leadRef);
+                              setIsNotificationOpen(false);
+                            }}
+                            className={`p-4 border-b border-slate-50 hover:bg-slate-50/80 cursor-pointer transition-colors ${!notif.isRead ? 'bg-[#74ebd5]/5' : ''}`}
+                          >
+                            <div className="flex justify-between items-start mb-1">
+                              <span className="text-xs font-bold text-slate-800">{notif.title}</span>
+                              <span className="text-[10px] font-medium text-slate-400">
+                                {notif.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                              </span>
+                            </div>
+                            <p className="text-xs font-medium text-slate-500 line-clamp-2">{notif.message}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-white px-4 py-2 rounded-full shadow-sm">
+              <UserCircle2 className="w-4 h-4 text-[#74ebd5]" />
+              {user?.email}
+            </div>
           </div>
         </header>
 
@@ -1716,7 +1833,7 @@ export default function ClientDashboard() {
                                       handleStatusChange(lead.id, e.target.value);
                                     }}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-[#74ebd5]/30 outline-none cursor-pointer hover:bg-white transition-colors"
+                                    className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-[#74ebd5]/30 focus:border-[#74ebd5] outline-none cursor-pointer hover:bg-white transition-colors"
                                   >
                                     {PIPELINE_STATUSES.map(s => (
                                       <option key={s} value={s}>{s}</option>
@@ -1730,7 +1847,7 @@ export default function ClientDashboard() {
                                         handleAssignLead(lead.id, e.target.value);
                                       }}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-[#74ebd5]/30 outline-none cursor-pointer hover:bg-white transition-colors"
+                                      className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-[#74ebd5]/30 focus:border-[#74ebd5] outline-none cursor-pointer hover:bg-white transition-colors"
                                     >
                                       <option value="">Unassigned</option>
                                       {teamMembers.map(member => (
