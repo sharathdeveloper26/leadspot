@@ -28,7 +28,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
         try {
             let leadData = {};
             let clientId = null;
-            let customAnswers = {}; // 👈 CAPTURES FB CONDITIONAL FIELDS
+            let customAnswers = {};
             // CHECK: Is this from Meta? (Facebook sends a specific structure)
             if (req.body.object === "page" && ((_e = (_d = (_c = (_b = (_a = req.body.entry) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.changes) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.value) === null || _e === void 0 ? void 0 : _e.leadgen_id)) {
                 const changes = req.body.entry[0].changes[0].value;
@@ -41,7 +41,6 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                     .get();
                 if (integrationQuery.empty) {
                     console.error(`No client integration found for Page ID: ${pageId}`);
-                    // 🚨 FIX: Always return 200 to Meta so they don't ban the webhook
                     res.status(200).send("Ignored: Integration not found");
                     return;
                 }
@@ -51,7 +50,6 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                 const pageAccessToken = integrationData.pageAccessToken || integrationData.accessToken;
                 if (!pageAccessToken) {
                     console.error(`CRITICAL ERROR: No access token found in database for Page ID: ${pageId}`);
-                    // 🚨 FIX: Always return 200 to Meta
                     res.status(200).send("Ignored: Missing Access Token");
                     return;
                 }
@@ -59,7 +57,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                 const fbResponse = await axios_1.default.get(`https://graph.facebook.com/v19.0/${leadgenId}?fields=field_data,form_id,ad_id,ad_name,campaign_id,campaign_name&access_token=${pageAccessToken}`);
                 const fbData = fbResponse.data;
                 const fbFields = fbData.field_data || [];
-                // 👇 LOOP TO EXTRACT ALL CUSTOM FACEBOOK QUESTIONS 👇
+                // LOOP TO EXTRACT ALL CUSTOM FACEBOOK QUESTIONS
                 fbFields.forEach((field) => {
                     if (!['full_name', 'email', 'phone_number'].includes(field.name)) {
                         customAnswers[field.name] = field.values[0];
@@ -83,22 +81,15 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                 // Fallback: Use your existing manual webhook logic (for Pabbly/Zapier/Direct)
                 const data = Object.assign(Object.assign({}, req.query), req.body);
                 clientId = data.clientId;
-                customAnswers = data.customAnswers || {}; // For custom webhook fields
+                customAnswers = data.customAnswers || {};
                 leadData = {
                     name: data.name,
                     email: data.email,
                     phone: data.phone,
                     source: data.source || "Webhook",
                     project: data.project || "General Inquiry",
-                    formId: "",
-                    adId: "",
-                    adName: "",
-                    campaignId: "",
-                    campaignName: "",
-                    // Map manual UTMs
-                    utm_source: data.utm_source || "",
-                    utm_medium: data.utm_medium || "",
-                    utm_campaign: data.utm_campaign || ""
+                    formId: "", adId: "", adName: "", campaignId: "", campaignName: "",
+                    utm_source: data.utm_source || "", utm_medium: data.utm_medium || "", utm_campaign: data.utm_campaign || ""
                 };
             }
             if (!clientId) {
@@ -126,11 +117,9 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                     }
                 }
                 catch (enrichmentError) {
-                    console.error("Apollo API Miss:", enrichmentError.response ? enrichmentError.response.data : enrichmentError.message);
+                    console.error("Apollo API Miss:", enrichmentError.message);
                 }
             }
-            // --- 🚀 END APOLLO ENRICHMENT LOGIC 🚀 ---
-            // --- START ASSIGNMENT LOGIC (Existing) ---
             let assignedToId = null;
             let assignedToName = null;
             const rulesSnapshot = await db.collection("lead_assignment_rules")
@@ -142,10 +131,24 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                 assignedToId = ruleData.agentId;
                 assignedToName = ruleData.agentName;
             }
+            // 👇 SMART NAME SPLITTING LOGIC 👇
+            let fName = leadData.name || "Unknown";
+            let lName = "";
+            // If the name has a space, intelligently split it into first and last name
+            if (fName.includes(" ") && fName !== "FB Lead") {
+                const parts = fName.trim().split(" ");
+                fName = parts[0];
+                lName = parts.slice(1).join(" ");
+            }
+            else if (fName === "FB Lead") {
+                fName = "Facebook";
+                lName = "Lead";
+            }
+            // 👆 END SMART NAME SPLITTING 👆
             const finalLead = {
                 clientId: clientId,
-                firstName: leadData.name || "External",
-                lastName: "Lead",
+                firstName: fName, // Uses cleanly split first name
+                lastName: lName, // Uses cleanly split last name (NO MORE HARDCODED "Lead")
                 email: leadData.email || "",
                 phone: leadData.phone || "",
                 source: leadData.source,
@@ -154,17 +157,14 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                 assignedTo: assignedToId,
                 assignedToId: assignedToId,
                 assignedToName: assignedToName,
-                // APOLLO ENRICHMENT DATA
                 designation: designation,
                 location: location,
                 linkedin: linkedinUrl,
-                // META CAMPAIGN TRACKING DATA
                 formId: leadData.formId,
                 adId: leadData.adId,
                 adName: leadData.adName,
                 campaignId: leadData.campaignId,
                 campaignName: leadData.campaignName,
-                // 👇 NEW: SAVE CUSTOM QUESTIONS & UTMS TO FIRESTORE 👇
                 customAnswers: customAnswers,
                 utm_source: leadData.utm_source || "",
                 utm_medium: leadData.utm_medium || "",
@@ -172,19 +172,14 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             };
             await db.collection("leads").add(finalLead);
-            // --- END ASSIGNMENT LOGIC ---
-            res.status(200).json({ success: true, message: "Event processed", received: finalLead });
+            res.status(200).json({ success: true, message: "Event processed" });
         }
         catch (error) {
             console.error("Webhook Processing Error:", error.message || error);
-            // 🚨 THE MAGIC FIX 🚨
-            // Even if our code crashes completely (database down, API timeout, missing variables),
-            // we MUST tell Facebook "200 OK". If we send 500, Facebook disconnects us.
             res.status(200).send("EVENT_RECEIVED_BUT_ERRORED");
         }
         return;
     }
-    // Handle all other random pings with a safe 200 so Meta doesn't panic
     res.status(200).send("Method Not Allowed");
 });
 exports.createAgent = (0, https_1.onCall)(async (request) => {
@@ -346,13 +341,11 @@ exports.secureLinkFacebookPage = (0, https_1.onCall)(async (request) => {
         throw new https_1.HttpsError("invalid-argument", "Missing required fields.");
     }
     const APP_ID = '1439047481212574';
-    const APP_SECRET = 'c8ea2e55436a18ecb2ca51ccdeac0937'; // <-- PASTE YOUR SECRET HERE
+    const APP_SECRET = 'c8ea2e55436a18ecb2ca51ccdeac0937';
     try {
-        // 1. Exchange short-lived user token for a long-lived user token
         const exchangeUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${shortLivedUserToken}`;
         const exchangeRes = await axios_1.default.get(exchangeUrl);
         const longLivedUserToken = exchangeRes.data.access_token;
-        // 2. Fetch the PERMANENT Page Access Token using the long-lived user token
         const pagesUrl = `https://graph.facebook.com/v19.0/me/accounts?access_token=${longLivedUserToken}`;
         const pagesRes = await axios_1.default.get(pagesUrl);
         const pageData = pagesRes.data.data.find((p) => p.id === pageId);
@@ -360,12 +353,10 @@ exports.secureLinkFacebookPage = (0, https_1.onCall)(async (request) => {
             throw new Error("Could not find the requested page. Check permissions.");
         }
         const permanentPageToken = pageData.access_token;
-        // 3. Subscribe the page to your app's webhook securely
         await axios_1.default.post(`https://graph.facebook.com/v19.0/${pageId}/subscribed_apps`, new URLSearchParams({
             subscribed_fields: 'leadgen',
             access_token: permanentPageToken
         }).toString(), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-        // 4. Save the PERMANENT token to Firestore
         await db.collection('facebook_integrations').doc(clientId).set({
             clientId: clientId,
             pageId: pageId,
