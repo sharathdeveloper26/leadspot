@@ -1,403 +1,299 @@
 import React, { useState, useEffect } from 'react';
+import { collection, getDocs, updateDoc, doc, deleteDoc, query, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { collection, getDocs, query, doc, updateDoc, where, addDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { Building2, Mail, Lock, UserPlus, AlertCircle, CheckCircle2, LayoutDashboard, Users, Settings, LogOut, Plus, Calendar, ArrowLeft, Edit2, X, List, Trash2 } from 'lucide-react';
-import { functions, db } from '../firebase';
+import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { LayoutDashboard, Users, Database, Settings, LogOut, Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, XCircle, Info, AlertCircle, Building2, Activity, Server, Search, Menu, X, Calendar } from 'lucide-react';
 
-interface Client {
+interface ClientData {
   id: string;
   name: string;
-  subscriptionPlan: string;
   status: string;
-  maxAgents?: number;
+  subscriptionPlan: string;
+  maxAgents: number;
   createdAt: any;
 }
 
 export default function SuperAdminDashboard() {
-  const { logout, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'clients' | 'add_client' | 'lead_sources'>('clients');
+  const { logout } = useAuth();
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'lead_sources' | 'settings'>('clients');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [clients, setClients] = useState<ClientData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Global Stats
+  const [totalAgents, setTotalAgents] = useState(0);
+
+  // Modal States
+  const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
+  const [addingClient, setAddingClient] = useState(false);
   
-  // Clients List State
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loadingClients, setLoadingClients] = useState(true);
-
-  // Form State
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  // New Client Form
   const [companyName, setCompanyName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
 
-  // Edit Limit State
-  const [editingClient, setEditingClient] = useState<string | null>(null);
-  const [editLimitValue, setEditLimitValue] = useState<number>(2);
-  const [updatingLimit, setUpdatingLimit] = useState(false);
+  // Inline Editing
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [editMaxAgents, setEditMaxAgents] = useState<number>(2);
 
-  // Lead Sources State
-  const [selectedClientId, setSelectedClientId] = useState<string>('');
-  const [leadSources, setLeadSources] = useState<{id: string, name: string, clientId: string}[]>([]);
-  const [loadingSources, setLoadingSources] = useState(false);
-  const [newSourceName, setNewSourceName] = useState('');
-  const [addingSource, setAddingSource] = useState(false);
-  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
-  const [editSourceName, setEditSourceName] = useState('');
+  // Custom Global Dialog Engine
+  const [dialogState, setDialogState] = useState<{
+    isOpen: boolean;
+    type: 'alert' | 'confirm' | 'success' | 'error';
+    title: string;
+    message: string;
+    onConfirm?: () => void;
+    onCloseAction?: () => void;
+  }>({ isOpen: false, type: 'alert', title: '', message: '' });
 
-  // Lead Sub-Sources State
-  const [leadSubSources, setLeadSubSources] = useState<{id: string, name: string, clientId: string}[]>([]);
-  const [loadingSubSources, setLoadingSubSources] = useState(false);
-  const [newSubSourceName, setNewSubSourceName] = useState('');
-  const [addingSubSource, setAddingSubSource] = useState(false);
-  const [editingSubSourceId, setEditingSubSourceId] = useState<string | null>(null);
-  const [editSubSourceName, setEditSubSourceName] = useState('');
+  const showDialog = (type: 'alert' | 'confirm' | 'success' | 'error', title: string, message: string, onConfirm?: () => void, onCloseAction?: () => void) => {
+    setDialogState({ isOpen: true, type, title, message, onConfirm, onCloseAction });
+  };
 
-  // Edit Client State
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
-  const [editCompanyName, setEditCompanyName] = useState('');
-  const [editStatus, setEditStatus] = useState('');
-  const [editAgentLimit, setEditAgentLimit] = useState<number>(2);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const closeDialog = () => {
+    if (dialogState.onCloseAction && dialogState.type !== 'confirm') dialogState.onCloseAction();
+    setDialogState(prev => ({ ...prev, isOpen: false }));
+  };
 
-  // Delete Client State
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
-  const [deleteAssociatedLeads, setDeleteAssociatedLeads] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const fetchClients = async () => {
-    setLoadingClients(true);
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      const q = query(collection(db, 'clients'));
-      const snapshot = await getDocs(q);
-      const fetched: Client[] = [];
-      snapshot.forEach(doc => {
-        fetched.push({ id: doc.id, ...doc.data() } as Client);
+      // Fetch Clients
+      const clientsSnap = await getDocs(collection(db, 'clients'));
+      const fetchedClients: ClientData[] = [];
+      clientsSnap.forEach(doc => {
+        fetchedClients.push({ id: doc.id, ...doc.data() } as ClientData);
       });
-      // Sort descending by createdAt
-      fetched.sort((a, b) => {
+      // Sort by newest
+      fetchedClients.sort((a, b) => {
         const timeA = a.createdAt?.toMillis() || 0;
         const timeB = b.createdAt?.toMillis() || 0;
         return timeB - timeA;
       });
-      setClients(fetched);
-    } catch (err) {
-      console.error("Error fetching clients:", err);
-    } finally {
-      setLoadingClients(false);
-    }
-  };
+      setClients(fetchedClients);
 
-  useEffect(() => {
-    if (activeTab === 'clients' || activeTab === 'lead_sources') {
-      fetchClients();
-    }
-  }, [activeTab]);
+      // Fetch Total Agents across system
+      const usersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'client_agent')));
+      setTotalAgents(usersSnap.size);
 
-  const fetchLeadSources = async (clientId: string) => {
-    if (!clientId) {
-      setLeadSources([]);
-      setLeadSubSources([]);
-      return;
-    }
-    setLoadingSources(true);
-    setLoadingSubSources(true);
-    try {
-      const q = query(collection(db, 'lead_sources'), where('clientId', '==', clientId));
-      const snapshot = await getDocs(q);
-      const fetched: any[] = [];
-      snapshot.forEach(doc => {
-        fetched.push({ id: doc.id, ...doc.data() });
-      });
-      // Sort by name
-      fetched.sort((a, b) => a.name.localeCompare(b.name));
-      setLeadSources(fetched);
-
-      const qSub = query(collection(db, 'lead_sub_sources'), where('clientId', '==', clientId));
-      const snapshotSub = await getDocs(qSub);
-      const fetchedSub: any[] = [];
-      snapshotSub.forEach(doc => {
-        fetchedSub.push({ id: doc.id, ...doc.data() });
-      });
-      fetchedSub.sort((a, b) => a.name.localeCompare(b.name));
-      setLeadSubSources(fetchedSub);
-    } catch (err) {
-      console.error("Error fetching lead sources:", err);
-    } finally {
-      setLoadingSources(false);
-      setLoadingSubSources(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'lead_sources' && selectedClientId) {
-      fetchLeadSources(selectedClientId);
-    } else {
-      setLeadSources([]);
-    }
-  }, [activeTab, selectedClientId]);
-
-  const handleAddSource = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedClientId || !newSourceName.trim()) return;
-    
-    setAddingSource(true);
-    try {
-      const docRef = await addDoc(collection(db, 'lead_sources'), {
-        name: newSourceName.trim(),
-        clientId: selectedClientId,
-        createdAt: serverTimestamp()
-      });
-      
-      setLeadSources([...leadSources, { id: docRef.id, name: newSourceName.trim(), clientId: selectedClientId }].sort((a, b) => a.name.localeCompare(b.name)));
-      setNewSourceName('');
     } catch (error) {
-      console.error("Error adding lead source:", error);
-      alert("Failed to add lead source.");
-    } finally {
-      setAddingSource(false);
-    }
-  };
-
-  const handleUpdateSource = async (sourceId: string) => {
-    if (!editSourceName.trim()) return;
-    try {
-      const sourceRef = doc(db, 'lead_sources', sourceId);
-      await updateDoc(sourceRef, { name: editSourceName.trim() });
-      setLeadSources(leadSources.map(s => s.id === sourceId ? { ...s, name: editSourceName.trim() } : s).sort((a, b) => a.name.localeCompare(b.name)));
-      setEditingSourceId(null);
-    } catch (error) {
-      console.error("Error updating lead source:", error);
-      alert("Failed to update lead source.");
-    }
-  };
-
-  const handleDeleteSource = async (sourceId: string) => {
-    if (window.confirm("Are you sure you want to delete this lead source?")) {
-      try {
-        await deleteDoc(doc(db, 'lead_sources', sourceId));
-        setLeadSources(leadSources.filter(s => s.id !== sourceId));
-      } catch (error) {
-        console.error("Error deleting lead source:", error);
-        alert("Failed to delete lead source.");
-      }
-    }
-  };
-
-  const handleAddSubSource = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedClientId || !newSubSourceName.trim()) return;
-    
-    setAddingSubSource(true);
-    try {
-      const docRef = await addDoc(collection(db, 'lead_sub_sources'), {
-        name: newSubSourceName.trim(),
-        clientId: selectedClientId,
-        createdAt: serverTimestamp()
-      });
-      
-      setLeadSubSources([...leadSubSources, { id: docRef.id, name: newSubSourceName.trim(), clientId: selectedClientId }].sort((a, b) => a.name.localeCompare(b.name)));
-      setNewSubSourceName('');
-    } catch (error) {
-      console.error("Error adding lead sub-source:", error);
-      alert("Failed to add lead sub-source.");
-    } finally {
-      setAddingSubSource(false);
-    }
-  };
-
-  const handleUpdateSubSource = async (sourceId: string) => {
-    if (!editSubSourceName.trim()) return;
-    try {
-      const sourceRef = doc(db, 'lead_sub_sources', sourceId);
-      await updateDoc(sourceRef, { name: editSubSourceName.trim() });
-      setLeadSubSources(leadSubSources.map(s => s.id === sourceId ? { ...s, name: editSubSourceName.trim() } : s).sort((a, b) => a.name.localeCompare(b.name)));
-      setEditingSubSourceId(null);
-    } catch (error) {
-      console.error("Error updating lead sub-source:", error);
-      alert("Failed to update lead sub-source.");
-    }
-  };
-
-  const handleDeleteSubSource = async (sourceId: string) => {
-    if (window.confirm("Are you sure you want to delete this lead sub-source?")) {
-      try {
-        await deleteDoc(doc(db, 'lead_sub_sources', sourceId));
-        setLeadSubSources(leadSubSources.filter(s => s.id !== sourceId));
-      } catch (error) {
-        console.error("Error deleting lead sub-source:", error);
-        alert("Failed to delete lead sub-source.");
-      }
-    }
-  };
-
-  const handleRegisterClient = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      const registerNewClient = httpsCallable(functions, 'registerNewClient');
-      const result = await registerNewClient({ email, password, companyName });
-      
-      const data = result.data as any;
-      setSuccess('Client registered successfully! They can now log in using their temporary password.');
-      
-      // Clear form on success
-      setEmail('');
-      setPassword('');
-      setCompanyName('');
-      
-      // Refresh clients list in background
-      fetchClients();
-    } catch (err: any) {
-      console.error('Registration error:', err);
-      setError(err.message || 'Failed to register client. Please try again.');
+      console.error("Error fetching super admin data:", error);
+      showDialog('error', 'Sync Error', 'Failed to synchronize system data.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpdateLimit = async (clientId: string) => {
-    setUpdatingLimit(true);
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!companyName || !adminEmail || !adminPassword) {
+      showDialog('error', 'Missing Fields', 'Please fill in all required fields.');
+      return;
+    }
+    setAddingClient(true);
     try {
-      const clientRef = doc(db, 'clients', clientId);
-      await updateDoc(clientRef, { maxAgents: editLimitValue });
-      setClients(clients.map(c => c.id === clientId ? { ...c, maxAgents: editLimitValue } : c));
-      setEditingClient(null);
-    } catch (err) {
-      console.error("Error updating limit:", err);
-      alert("Failed to update limit.");
+      const registerFn = httpsCallable(functions, 'registerNewClient');
+      await registerFn({ email: adminEmail, password: adminPassword, companyName: companyName });
+      
+      setCompanyName(''); setAdminEmail(''); setAdminPassword('');
+      setIsAddClientModalOpen(false);
+      await fetchData();
+      showDialog('success', 'Workspace Created', `${companyName} has been successfully provisioned.`);
+    } catch (error: any) {
+      console.error("Error creating client:", error);
+      showDialog('error', 'Provisioning Failed', error.message || "Failed to create client workspace.");
     } finally {
-      setUpdatingLimit(false);
+      setAddingClient(false);
     }
   };
 
-  const handleOpenEditModal = (client: Client) => {
-    setClientToEdit(client);
-    setEditCompanyName(client.name);
-    setEditStatus(client.status || 'ACTIVE');
-    setEditAgentLimit(client.maxAgents || 2);
-    setIsEditModalOpen(true);
-  };
-
-  const handleSaveEditClient = async () => {
-    if (!clientToEdit) return;
-    setIsSavingEdit(true);
-    try {
-      const clientRef = doc(db, 'clients', clientToEdit.id);
-      await updateDoc(clientRef, {
-        name: editCompanyName,
-        status: editStatus,
-        maxAgents: editAgentLimit
-      });
-      
-      setClients(clients.map(c => c.id === clientToEdit.id ? {
-        ...c,
-        name: editCompanyName,
-        status: editStatus,
-        maxAgents: editAgentLimit
-      } : c));
-      
-      setIsEditModalOpen(false);
-      setClientToEdit(null);
-    } catch (error) {
-      console.error("Error updating client:", error);
-      alert("Failed to update client.");
-    } finally {
-      setIsSavingEdit(false);
-    }
-  };
-
-  const handleOpenDeleteModal = (client: Client) => {
-    setClientToDelete(client);
-    setDeleteAssociatedLeads(false);
-    setIsDeleteModalOpen(true);
-  };
-
-  const handleConfirmDeleteClient = async () => {
-    if (!clientToDelete) return;
-    setIsDeleting(true);
-    try {
-      if (deleteAssociatedLeads) {
-        // Delete associated leads
-        const leadsQuery = query(collection(db, 'leads'), where('clientId', '==', clientToDelete.id));
-        const leadsSnapshot = await getDocs(leadsQuery);
-        
-        if (!leadsSnapshot.empty) {
-          const batch = writeBatch(db);
-          leadsSnapshot.forEach((leadDoc) => {
-            batch.delete(leadDoc.ref);
-          });
-          await batch.commit();
-        }
+  const toggleClientStatus = async (clientId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    const actionText = newStatus === 'ACTIVE' ? 'activate' : 'suspend';
+    
+    showDialog('confirm', 'Change Workspace Status', `Are you sure you want to ${actionText} this workspace?`, async () => {
+      try {
+        await updateDoc(doc(db, 'clients', clientId), { status: newStatus });
+        setClients(prev => prev.map(c => c.id === clientId ? { ...c, status: newStatus } : c));
+        showDialog('success', 'Status Updated', `Workspace has been marked as ${newStatus}.`);
+      } catch (error) {
+        showDialog('error', 'Update Failed', 'Failed to update client status.');
       }
+    });
+  };
 
-      // Delete the client document
-      await deleteDoc(doc(db, 'clients', clientToDelete.id));
-      
-      // Update local state
-      setClients(clients.filter(c => c.id !== clientToDelete.id));
-      
-      setIsDeleteModalOpen(false);
-      setClientToDelete(null);
+  const saveAgentLimit = async (clientId: string) => {
+    try {
+      await updateDoc(doc(db, 'clients', clientId), { maxAgents: editMaxAgents });
+      setClients(prev => prev.map(c => c.id === clientId ? { ...c, maxAgents: editMaxAgents } : c));
+      setEditingClientId(null);
+      showDialog('success', 'Limit Updated', `Agent limit has been successfully updated to ${editMaxAgents}.`);
     } catch (error) {
-      console.error("Error deleting client:", error);
-      alert("Failed to delete client.");
-    } finally {
-      setIsDeleting(false);
+      showDialog('error', 'Update Failed', 'Failed to update agent limit.');
     }
   };
+
+  const deleteClient = async (clientId: string) => {
+    showDialog('confirm', 'CRITICAL WARNING', 'Are you absolutely sure you want to delete this workspace? This will orphan all associated users and leads. This cannot be undone.', async () => {
+      try {
+        await deleteDoc(doc(db, 'clients', clientId));
+        setClients(prev => prev.filter(c => c.id !== clientId));
+        showDialog('success', 'Deleted', 'Client workspace has been permanently deleted.');
+      } catch (error) {
+        showDialog('error', 'Deletion Failed', 'Failed to delete workspace. Check permissions.');
+      }
+    });
+  };
+
+  const filteredClients = clients.filter(c => 
+    c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    c.id.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b border-slate-100">
-          <div className="flex items-center gap-2 text-indigo-600 font-semibold text-lg tracking-tight">
-            <img src="/mintage-logo.png" alt="Mintage" className="h-8 w-auto" />
+    <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
+      
+      {/* ✨ CUSTOM DIALOG COMPONENT ✨ */}
+      {dialogState.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/50 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-6 text-center">
+              <div className={`mx-auto flex items-center justify-center h-14 w-14 rounded-full mb-5 shadow-inner ${
+                dialogState.type === 'confirm' ? 'bg-amber-100 text-amber-600' : 
+                dialogState.type === 'error' ? 'bg-red-100 text-red-600' :
+                dialogState.type === 'success' ? 'bg-[#74ebd5]/20 text-[#50bdaf]' :
+                'bg-blue-100 text-blue-600'
+              }`}>
+                 {dialogState.type === 'confirm' ? <AlertCircle className="h-7 w-7" /> : 
+                  dialogState.type === 'error' ? <XCircle className="h-7 w-7" /> :
+                  dialogState.type === 'success' ? <CheckCircle2 className="h-7 w-7" /> :
+                  <Info className="h-7 w-7" />}
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">{dialogState.title}</h3>
+              <p className="text-sm font-medium text-slate-500 leading-relaxed">{dialogState.message}</p>
+            </div>
+            <div className="p-4 bg-slate-50/50 border-t border-slate-100/80 flex gap-3">
+              {dialogState.type === 'confirm' && (
+                <button
+                  onClick={closeDialog}
+                  className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (dialogState.type === 'confirm' && dialogState.onConfirm) {
+                    dialogState.onConfirm();
+                  } else if (dialogState.onCloseAction) {
+                    dialogState.onCloseAction();
+                  }
+                  closeDialog();
+                }}
+                className={`flex-1 px-4 py-2.5 text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg ${
+                  dialogState.type === 'confirm' ? 'bg-slate-900 shadow-slate-900/20' :
+                  dialogState.type === 'error' ? 'bg-red-600 shadow-red-500/30' :
+                  'bg-gradient-to-r from-[#74ebd5] to-[#9face6] shadow-[#74ebd5]/30'
+                }`}
+              >
+                {dialogState.type === 'confirm' ? 'Confirm' : 'OK'}
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Background Mesh */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-[#74ebd5]/40 to-teal-50/40 blur-3xl opacity-70 mix-blend-multiply" />
+        <div className="absolute top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-gradient-to-br from-[#9face6]/40 to-indigo-50/40 blur-3xl opacity-70 mix-blend-multiply" />
+        <div className="absolute -bottom-[20%] left-[20%] w-[60%] h-[60%] rounded-full bg-gradient-to-tr from-purple-100/30 to-pink-50/30 blur-3xl opacity-70 mix-blend-multiply" />
+      </div>
+
+      <div className="md:hidden relative z-20 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-white p-4 shrink-0 shadow-sm">
+        <img src="/mintage-logo.png" alt="Mintage" className="h-14 w-auto" />
+        <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
+          <Menu className="w-6 h-6" />
+        </button>
+      </div>
+
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
+      )}
+
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-white/90 via-slate-50/40 to-slate-50/80 backdrop-blur-2xl border-r border-white/80 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-[8px_0_30px_rgba(0,0,0,0.03)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="h-24 flex items-center justify-between px-6 border-b border-slate-100/50 bg-white/40">
+          <img src="/mintage-logo.png" alt="Mintage" className="h-16 w-auto drop-shadow-sm" />
+          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
         
-        <div className="px-4 py-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+        <div className="px-6 py-6 flex items-center gap-2 text-[11px] font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-400 to-slate-500 uppercase tracking-[0.2em]">
+          <ShieldAlert className="w-4 h-4 text-red-400" />
           Super Admin
         </div>
         
-        <nav className="flex-1 px-3 space-y-1">
+        <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto custom-scrollbar">
           <button 
-            onClick={() => setActiveTab('clients')}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-              activeTab === 'clients' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
+              activeTab === 'dashboard' 
+                ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
+                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
             }`}
           >
-            <Users className="w-5 h-5" />
+            <LayoutDashboard className="w-5 h-5" />
+            System Overview
+          </button>
+
+          <button 
+            onClick={() => { setActiveTab('clients'); setIsMobileMenuOpen(false); }}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
+              activeTab === 'clients' 
+                ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
+                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
+            }`}
+          >
+            <Building2 className="w-5 h-5" />
             Clients
           </button>
+
           <button 
-            onClick={() => setActiveTab('lead_sources')}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-left transition-colors ${
-              activeTab === 'lead_sources' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            onClick={() => { setActiveTab('lead_sources'); setIsMobileMenuOpen(false); }}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
+              activeTab === 'lead_sources' 
+                ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
+                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
             }`}
           >
-            <List className="w-5 h-5" />
-            Lead Sources
+            <Database className="w-5 h-5" />
+            Global Sources
           </button>
-          <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
-            <LayoutDashboard className="w-5 h-5" />
-            Dashboard
-          </a>
-          <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
+
+          <button 
+            onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
+              activeTab === 'settings' 
+                ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
+                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
+            }`}
+          >
             <Settings className="w-5 h-5" />
-            Settings
-          </a>
+            System Settings
+          </button>
         </nav>
 
-        <div className="p-4 border-t border-slate-100">
+        <div className="p-5 border-t border-slate-100/50 bg-white/20">
           <button 
-            onClick={logout}
-            className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+            onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())}
+            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-600 font-medium hover:bg-red-50/80 hover:text-red-600 hover:shadow-sm transition-all duration-200"
           >
             <LogOut className="w-5 h-5" />
             Sign Out
@@ -406,640 +302,307 @@ export default function SuperAdminDashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center px-8">
-          <h1 className="text-xl font-semibold tracking-tight">Client Management</h1>
+      <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0">
+        <header className="h-24 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+          <h1 className="text-xl font-bold tracking-tight text-slate-800">
+            {activeTab === 'dashboard' ? 'System Telemetry' : activeTab === 'clients' ? 'Client Workspaces' : activeTab === 'lead_sources' ? 'Global Configurations' : 'System Settings'}
+          </h1>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100 shadow-sm">
+              <Server className="w-4 h-4 animate-pulse" />
+              SYSTEM HEALTHY
+            </div>
+          </div>
         </header>
 
-        <div className="flex-1 p-8 overflow-auto">
-          <div className="max-w-5xl mx-auto">
+        <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-auto custom-scrollbar">
+          <div className="max-w-7xl mx-auto h-full flex flex-col min-w-[800px] md:min-w-0">
             
-            {activeTab === 'clients' ? (
-              /* Clients List View */
-              <>
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <h2 className="text-2xl font-semibold tracking-tight mb-1">Clients</h2>
-                    <p className="text-slate-500 text-sm">Manage your clients and their workspaces.</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setActiveTab('add_client');
-                      setSuccess('');
-                      setError('');
-                    }}
-                    className="flex items-center gap-2 py-2 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add New Client
-                  </button>
+            {loading ? (
+              <div className="p-12 flex justify-center">
+                <div className="w-10 h-10 border-4 border-[#74ebd5]/30 border-t-[#74ebd5] rounded-full animate-spin" />
+              </div>
+            ) : activeTab === 'dashboard' ? (
+              /* 👇 SYSTEM OVERVIEW TAB 👇 */
+              <div className="space-y-8 animate-in fade-in duration-500">
+                <div>
+                  <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">
+                    System Telemetry
+                  </h2>
+                  <p className="text-slate-500 text-sm font-medium">Real-time usage metrics across all hosted workspaces.</p>
                 </div>
 
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                  {loadingClients ? (
-                    <div className="p-12 flex justify-center">
-                      <div className="w-8 h-8 border-4 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.08)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Total Workspaces</h3>
+                      <div className="p-2.5 bg-[#9face6]/15 rounded-xl text-[#7b8ed3] shadow-inner">
+                        <Building2 className="w-5 h-5" />
+                      </div>
                     </div>
-                  ) : clients.length === 0 ? (
-                    <div className="p-12 text-center">
-                      <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-slate-900 mb-1">No clients found</h3>
-                      <p className="text-slate-500 text-sm">Get started by adding your first client.</p>
+                    <p className="text-4xl font-black text-slate-800">{clients.length}</p>
+                  </div>
+
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.08)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Active Accounts</h3>
+                      <div className="p-2.5 bg-[#74ebd5]/15 rounded-xl text-[#50bdaf] shadow-inner">
+                        <Activity className="w-5 h-5" />
+                      </div>
                     </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                            <th className="px-6 py-4">Company Name</th>
-                            <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4">Agent Limit</th>
-                            <th className="px-6 py-4">Created</th>
-                            <th className="px-6 py-4 text-right">Actions</th>
+                    <p className="text-4xl font-black text-slate-800">{clients.filter(c => c.status === 'ACTIVE').length}</p>
+                  </div>
+
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.08)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Total Agents Hosted</h3>
+                      <div className="p-2.5 bg-amber-50 rounded-xl text-amber-500 shadow-inner">
+                        <Users className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <p className="text-4xl font-black text-slate-800">{totalAgents}</p>
+                  </div>
+                </div>
+
+                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden p-8 text-center">
+                  <Server className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-bold text-slate-800">More Telemetry Coming Soon</h3>
+                  <p className="text-sm text-slate-500 max-w-sm mx-auto mt-2">Future updates will include global MRR, storage usage, API limits, and cross-client lead volume analytics.</p>
+                </div>
+              </div>
+
+            ) : activeTab === 'clients' ? (
+              /* 👇 CLIENTS MANAGEMENT TAB 👇 */
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 shrink-0">
+                  <div>
+                    <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Workspaces</h2>
+                    <p className="text-slate-500 text-sm font-medium">Manage client accounts, limits, and statuses.</p>
+                  </div>
+                  
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-4 py-2 h-11 flex-1 min-w-[250px] shadow-sm focus-within:ring-2 focus-within:ring-[#74ebd5]/30 transition-all">
+                      <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="Search workspace..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent w-full outline-none placeholder:font-normal"
+                      />
+                    </div>
+                    <button
+                      onClick={() => setIsAddClientModalOpen(true)}
+                      className="flex items-center justify-center gap-2 h-11 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 focus:outline-none transition-all hover:-translate-y-0.5 whitespace-nowrap"
+                    >
+                      <Plus className="w-4 h-4" />
+                      New Workspace
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden shrink-0">
+                  <div className="overflow-x-auto max-h-[calc(100vh-280px)] custom-scrollbar">
+                    <table className="w-full text-left border-collapse relative">
+                      <thead className="sticky top-0 z-10 bg-slate-100/80 backdrop-blur-xl shadow-sm">
+                        <tr className="text-[10px] uppercase tracking-widest text-slate-500 font-bold border-b border-slate-200/60">
+                          <th className="px-8 py-5">Company Name / ID</th>
+                          <th className="px-6 py-5">Plan</th>
+                          <th className="px-6 py-5">Status</th>
+                          <th className="px-6 py-5">Agent Limit</th>
+                          <th className="px-6 py-5">Created</th>
+                          <th className="px-8 py-5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100/60 bg-transparent">
+                        {filteredClients.map((client) => (
+                          <tr key={client.id} className="hover:bg-white/60 transition-colors group">
+                            <td className="px-8 py-5 whitespace-nowrap">
+                              <div className="font-extrabold text-slate-800 text-sm">{client.name}</div>
+                              <div className="text-[10px] font-mono text-slate-400 mt-0.5">{client.id}</div>
+                            </td>
+                            <td className="px-6 py-5 whitespace-nowrap">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[9px] font-black bg-indigo-50 text-indigo-600 border border-indigo-100 shadow-sm uppercase tracking-widest">
+                                {client.subscriptionPlan || 'BASIC'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-5 whitespace-nowrap">
+                              <button
+                                onClick={() => toggleClientStatus(client.id, client.status)}
+                                className={`inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold shadow-sm uppercase tracking-widest transition-colors ${
+                                  client.status === 'ACTIVE' 
+                                    ? 'bg-[#74ebd5]/20 text-[#4cb8a5] hover:bg-red-50 hover:text-red-600' 
+                                    : 'bg-slate-200 text-slate-600 hover:bg-[#74ebd5]/20 hover:text-[#4cb8a5]'
+                                }`}
+                                title={client.status === 'ACTIVE' ? "Click to Suspend" : "Click to Activate"}
+                              >
+                                {client.status}
+                              </button>
+                            </td>
+                            <td className="px-6 py-5 whitespace-nowrap">
+                              {editingClientId === client.id ? (
+                                <div className="flex items-center gap-2 bg-white p-1 rounded-xl shadow-sm border border-slate-200 w-fit">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={editMaxAgents}
+                                    onChange={(e) => setEditMaxAgents(Number(e.target.value))}
+                                    className="w-16 px-2 py-1 text-sm font-bold border-none focus:ring-0 outline-none text-center"
+                                    autoFocus
+                                  />
+                                  <button onClick={() => saveAgentLimit(client.id)} className="p-1.5 bg-[#74ebd5] text-white rounded-lg hover:bg-[#50bdaf] transition-colors"><CheckCircle2 className="w-3.5 h-3.5"/></button>
+                                  <button onClick={() => setEditingClientId(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"><X className="w-3.5 h-3.5"/></button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-3">
+                                  <span className="font-bold text-slate-700 text-sm">{client.maxAgents || 2}</span>
+                                  <button 
+                                    onClick={() => {
+                                      setEditMaxAgents(client.maxAgents || 2);
+                                      setEditingClientId(client.id);
+                                    }}
+                                    className="text-slate-400 hover:text-[#50bdaf] opacity-0 group-hover:opacity-100 transition-all"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-5 whitespace-nowrap text-sm font-medium text-slate-500">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-slate-400" />
+                                {client.createdAt ? new Date(client.createdAt.toDate()).toLocaleDateString() : 'Unknown'}
+                              </div>
+                            </td>
+                            <td className="px-8 py-5 whitespace-nowrap text-right">
+                              <button
+                                onClick={() => deleteClient(client.id)}
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors inline-block"
+                                title="Delete Workspace permanently"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200">
-                          {clients.map((client) => (
-                            <tr key={client.id} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="font-medium text-slate-900">
-                                  {client.name}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                                  {client.status || 'ACTIVE'}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                {editingClient === client.id ? (
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="number"
-                                      min="1"
-                                      value={editLimitValue}
-                                      onChange={(e) => setEditLimitValue(parseInt(e.target.value) || 1)}
-                                      className="w-20 px-2 py-1 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
-                                    />
-                                    <button
-                                      onClick={() => handleUpdateLimit(client.id)}
-                                      disabled={updatingLimit}
-                                      className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50"
-                                    >
-                                      <CheckCircle2 className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => setEditingClient(null)}
-                                      className="p-1 text-slate-400 hover:bg-slate-100 rounded transition-colors"
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm text-slate-600 font-medium">{client.maxAgents || 2}</span>
-                                    <button
-                                      onClick={() => {
-                                        setEditingClient(client.id);
-                                        setEditLimitValue(client.maxAgents || 2);
-                                      }}
-                                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-                                      title="Edit Limit"
-                                    >
-                                      <Edit2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                                <div className="flex items-center gap-2">
-                                  <Calendar className="w-4 h-4" />
-                                  {client.createdAt ? new Date(client.createdAt.toDate()).toLocaleDateString() : 'Just now'}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <div className="flex items-center justify-end gap-2">
-                                  <button
-                                    onClick={() => handleOpenEditModal(client)}
-                                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                    title="Edit Client"
-                                  >
-                                    <Edit2 className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleOpenDeleteModal(client)}
-                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Delete Client"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                        ))}
+                        {filteredClients.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="p-16 text-center text-slate-400 font-medium">No workspaces match your search.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </>
-            ) : activeTab === 'lead_sources' ? (
-              /* Lead Sources View */
-              <div className="max-w-5xl mx-auto">
-                <div className="mb-8">
-                  <h2 className="text-2xl font-semibold tracking-tight mb-1">Lead Sources Management</h2>
-                  <p className="text-slate-500 text-sm">Manage custom lead sources for specific clients.</p>
-                </div>
-
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-8">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Select Client</label>
-                  <select
-                    value={selectedClientId}
-                    onChange={(e) => setSelectedClientId(e.target.value)}
-                    className="w-full md:w-1/2 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm bg-white"
-                  >
-                    <option value="">-- Select a Client --</option>
-                    {clients.map(client => (
-                      <option key={client.id} value={client.id}>{client.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {selectedClientId && (
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <h3 className="text-lg font-semibold text-slate-900">Client Lead Sources</h3>
-                      <form onSubmit={handleAddSource} className="flex items-center gap-3">
-                        <input
-                          type="text"
-                          required
-                          value={newSourceName}
-                          onChange={(e) => setNewSourceName(e.target.value)}
-                          placeholder="New Source Name"
-                          className="px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
-                        />
-                        <button
-                          type="submit"
-                          disabled={addingSource || !newSourceName.trim()}
-                          className="flex items-center gap-2 py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 transition-colors disabled:opacity-50"
-                        >
-                          {addingSource ? (
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          ) : (
-                            <>
-                              <Plus className="w-4 h-4" />
-                              Add Source
-                            </>
-                          )}
-                        </button>
-                      </form>
-                    </div>
-
-                    {loadingSources ? (
-                      <div className="p-12 flex justify-center">
-                        <div className="w-8 h-8 border-4 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin" />
-                      </div>
-                    ) : leadSources.length === 0 ? (
-                      <div className="p-12 text-center">
-                        <List className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-slate-900 mb-1">No lead sources found</h3>
-                        <p className="text-slate-500 text-sm">Add a custom lead source for this client to get started.</p>
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                              <th className="px-6 py-4">Source Name</th>
-                              <th className="px-6 py-4 text-right">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200">
-                            {leadSources.map((source) => (
-                              <tr key={source.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  {editingSourceId === source.id ? (
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        type="text"
-                                        value={editSourceName}
-                                        onChange={(e) => setEditSourceName(e.target.value)}
-                                        className="px-2 py-1 border border-slate-200 rounded text-sm focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
-                                        autoFocus
-                                      />
-                                      <button
-                                        onClick={() => handleUpdateSource(source.id)}
-                                        className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                                      >
-                                        <CheckCircle2 className="w-4 h-4" />
-                                      </button>
-                                      <button
-                                        onClick={() => setEditingSourceId(null)}
-                                        className="p-1 text-slate-400 hover:bg-slate-100 rounded transition-colors"
-                                      >
-                                        <X className="w-4 h-4" />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <div className="font-medium text-slate-900">
-                                      {source.name}
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                  <div className="flex items-center justify-end gap-2">
-                                    <button
-                                      onClick={() => {
-                                        setEditingSourceId(source.id);
-                                        setEditSourceName(source.name);
-                                      }}
-                                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                      title="Edit Source"
-                                    >
-                                      <Edit2 className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteSource(source.id)}
-                                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                      title="Delete Source"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {selectedClientId && (
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mt-8">
-                    <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <h3 className="text-lg font-semibold text-slate-900">Client Lead Sub-Sources</h3>
-                      <form onSubmit={handleAddSubSource} className="flex items-center gap-3">
-                        <input
-                          type="text"
-                          required
-                          value={newSubSourceName}
-                          onChange={(e) => setNewSubSourceName(e.target.value)}
-                          placeholder="New Sub-Source Name"
-                          className="px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
-                        />
-                        <button
-                          type="submit"
-                          disabled={addingSubSource || !newSubSourceName.trim()}
-                          className="flex items-center gap-2 py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 transition-colors disabled:opacity-50"
-                        >
-                          {addingSubSource ? (
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          ) : (
-                            <>
-                              <Plus className="w-4 h-4" />
-                              Add Sub-Source
-                            </>
-                          )}
-                        </button>
-                      </form>
-                    </div>
-
-                    {loadingSubSources ? (
-                      <div className="p-12 flex justify-center">
-                        <div className="w-8 h-8 border-4 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin" />
-                      </div>
-                    ) : leadSubSources.length === 0 ? (
-                      <div className="p-12 text-center">
-                        <List className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-slate-900 mb-1">No lead sub-sources found</h3>
-                        <p className="text-slate-500 text-sm">Add a custom lead sub-source for this client to get started.</p>
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                              <th className="px-6 py-4">Sub-Source Name</th>
-                              <th className="px-6 py-4 text-right">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200">
-                            {leadSubSources.map((source) => (
-                              <tr key={source.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  {editingSubSourceId === source.id ? (
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        type="text"
-                                        value={editSubSourceName}
-                                        onChange={(e) => setEditSubSourceName(e.target.value)}
-                                        className="px-2 py-1 border border-slate-200 rounded text-sm focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
-                                        autoFocus
-                                      />
-                                      <button
-                                        onClick={() => handleUpdateSubSource(source.id)}
-                                        className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                                      >
-                                        <CheckCircle2 className="w-4 h-4" />
-                                      </button>
-                                      <button
-                                        onClick={() => setEditingSubSourceId(null)}
-                                        className="p-1 text-slate-400 hover:bg-slate-100 rounded transition-colors"
-                                      >
-                                        <X className="w-4 h-4" />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <span className="text-sm font-medium text-slate-900">{source.name}</span>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-right">
-                                  <div className="flex items-center justify-end gap-2">
-                                    <button
-                                      onClick={() => {
-                                        setEditingSubSourceId(source.id);
-                                        setEditSubSourceName(source.name);
-                                      }}
-                                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                      title="Edit Sub-Source"
-                                    >
-                                      <Edit2 className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteSubSource(source.id)}
-                                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                      title="Delete Sub-Source"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
             ) : (
-              /* Add Client View */
-              <div className="max-w-2xl">
-                <div className="mb-8 flex items-center gap-4">
-                  <button 
-                    onClick={() => setActiveTab('clients')}
-                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                  >
-                    <ArrowLeft className="w-5 h-5" />
-                  </button>
-                  <div>
-                    <h2 className="text-2xl font-semibold tracking-tight mb-1">Onboard New Client</h2>
-                    <p className="text-slate-500 text-sm">Create a new client workspace and assign a Client Admin.</p>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                  <div className="p-6 sm:p-8">
-                    <form onSubmit={handleRegisterClient} className="space-y-5">
-                      
-                      {/* Company Name */}
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                          Company Name
-                        </label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Building2 className="h-5 w-5 text-slate-400" />
-                          </div>
-                          <input
-                            type="text"
-                            required
-                            value={companyName}
-                            onChange={(e) => setCompanyName(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
-                            placeholder="Acme Corp"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Admin Email */}
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                          Client Admin Email
-                        </label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Mail className="h-5 w-5 text-slate-400" />
-                          </div>
-                          <input
-                            type="email"
-                            required
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
-                            placeholder="admin@acmecorp.com"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Admin Password */}
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                          Temporary Password
-                        </label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Lock className="h-5 w-5 text-slate-400" />
-                          </div>
-                          <input
-                            type="password"
-                            required
-                            minLength={6}
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
-                            placeholder="••••••••"
-                          />
-                        </div>
-                        <p className="mt-1.5 text-xs text-slate-500">Must be at least 6 characters long.</p>
-                      </div>
-
-                      {/* Status Messages */}
-                      {error && (
-                        <div className="p-4 rounded-xl bg-red-50 border border-red-100 flex items-start gap-3 text-red-800 text-sm">
-                          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                          <p>{error}</p>
-                        </div>
-                      )}
-
-                      {success && (
-                        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 flex items-start gap-3 text-emerald-800 text-sm">
-                          <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
-                          <p>{success}</p>
-                        </div>
-                      )}
-
-                      {/* Submit Button */}
-                      <div className="pt-2">
-                        <button
-                          type="submit"
-                          disabled={loading}
-                          className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {loading ? (
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          ) : (
-                            <>
-                              <UserPlus className="w-5 h-5" />
-                              Register Client
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
+              /* 👇 PLACEHOLDERS FOR SETTINGS / SOURCES 👇 */
+              <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white p-16 text-center">
+                <Database className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Configuration Page</h3>
+                <p className="text-slate-500 text-sm">System-wide configurations will be managed here.</p>
               </div>
             )}
-
           </div>
         </div>
-
-        {/* Edit Client Modal */}
-        {isEditModalOpen && clientToEdit && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 sm:p-6">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col">
-              <div className="flex justify-between items-center p-6 border-b border-slate-200 shrink-0">
-                <h3 className="text-lg font-semibold text-slate-900">Edit Client</h3>
-                <button
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-500 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-6 overflow-y-auto flex-1 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Company Name</label>
-                  <input
-                    type="text"
-                    value={editCompanyName}
-                    onChange={(e) => setEditCompanyName(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm bg-white"
-                  >
-                    <option value="ACTIVE">Active</option>
-                    <option value="INACTIVE">Inactive</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Agent Limit</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={editAgentLimit}
-                    onChange={(e) => setEditAgentLimit(parseInt(e.target.value) || 1)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-colors sm:text-sm"
-                  />
-                </div>
-              </div>
-              <div className="p-6 border-t border-slate-200 flex justify-end gap-3 shrink-0 bg-slate-50 rounded-b-xl">
-                <button
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveEditClient}
-                  disabled={isSavingEdit || !editCompanyName.trim()}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 transition-colors disabled:opacity-50"
-                >
-                  {isSavingEdit ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    'Save Changes'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Delete Client Modal */}
-        {isDeleteModalOpen && clientToDelete && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 sm:p-6">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col">
-              <div className="flex justify-between items-center p-6 border-b border-slate-200 shrink-0">
-                <h3 className="text-lg font-semibold text-red-600 flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5" />
-                  Delete Client
-                </h3>
-                <button
-                  onClick={() => setIsDeleteModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-500 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-6 overflow-y-auto flex-1 space-y-4">
-                <p className="text-slate-700 text-sm">
-                  Are you sure you want to delete <span className="font-semibold">{clientToDelete.name}</span>? This action cannot be undone.
-                </p>
-                <div className="flex items-start gap-3 mt-4 p-4 bg-red-50 border border-red-100 rounded-lg">
-                  <div className="flex items-center h-5">
-                    <input
-                      id="delete-leads"
-                      type="checkbox"
-                      checked={deleteAssociatedLeads}
-                      onChange={(e) => setDeleteAssociatedLeads(e.target.checked)}
-                      className="w-4 h-4 text-red-600 bg-white border-red-300 rounded focus:ring-red-600 focus:ring-2"
-                    />
-                  </div>
-                  <div className="text-sm">
-                    <label htmlFor="delete-leads" className="font-medium text-red-800">
-                      Also delete all leads associated with this client.
-                    </label>
-                    <p className="text-red-600 mt-1">
-                      If checked, all lead data for this client will be permanently removed.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="p-6 border-t border-slate-200 flex justify-end gap-3 shrink-0 bg-slate-50 rounded-b-xl">
-                <button
-                  onClick={() => setIsDeleteModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmDeleteClient}
-                  disabled={isDeleting}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 transition-colors disabled:opacity-50"
-                >
-                  {isDeleting ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    'Confirm Delete'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
+
+      {/* Add Client Modal */}
+      {isAddClientModalOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md transition-all">
+          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-200/60">
+              <h3 className="text-xl font-extrabold text-slate-800">Provision Workspace</h3>
+              <button 
+                onClick={() => {
+                  setIsAddClientModalOpen(false);
+                  setCompanyName(''); setAdminEmail(''); setAdminPassword('');
+                }}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateClient} className="p-8 space-y-5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Company / Workspace Name</label>
+                <input
+                  type="text"
+                  required
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all text-sm font-medium"
+                  placeholder="e.g. Mintage CRM"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Admin Email</label>
+                <input
+                  type="email"
+                  required
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all text-sm font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Admin Password</label>
+                <input
+                  type="password"
+                  required
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all text-sm font-medium"
+                  minLength={6}
+                />
+                <p className="mt-2 text-[10px] font-bold text-slate-400">Must be at least 6 characters.</p>
+              </div>
+
+              <div className="pt-6 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsAddClientModalOpen(false)}
+                  className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingClient}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg shadow-[#74ebd5]/30 disabled:opacity-50 flex justify-center items-center"
+                >
+                  {addingClient ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    'Create Client'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Internal CSS for custom scrollbars */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(148, 163, 184, 0.3);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(148, 163, 184, 0.5);
+        }
+      `}</style>
     </div>
   );
 }
-
