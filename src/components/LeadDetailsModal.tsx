@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Phone, Mail, Home, Calendar, Globe, Facebook, Search, Zap, CheckCircle2, AlertCircle, Clock, Send, Tag, Plus, UserCircle2 } from 'lucide-react';
+import { X, Phone, Mail, Home, Calendar, Globe, Facebook, Search, Zap, Clock, Send, Tag, Plus, UserCircle2, HelpCircle } from 'lucide-react';
 import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,19 +28,27 @@ export interface Lead {
   createdAt: any;
   notes?: LeadNote[];
   tags?: string[];
-  [key: string]: any; // For advanced tracking parameters
+  [key: string]: any; 
   
-  // Enrichment & Attribution Data
+  // Enrichment Data
   designation?: string;
   location?: string;
   linkedin?: string;
+  truecallerName?: string;
+  truecallerEmail?: string;
+
+  // Facebook & Marketing Data
   formId?: string;
   adId?: string;
   adName?: string;
   campaignId?: string;
   campaignName?: string;
-  truecallerName?: string;
-  truecallerEmail?: string;
+  
+  // NEW: Custom FB Questions & UTMs
+  customAnswers?: Record<string, string>;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
 }
 
 interface LeadDetailsModalProps {
@@ -79,27 +87,21 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
         const q = query(collection(db, 'lead_sources'), where('clientId', '==', user.clientId));
         const snapshot = await getDocs(q);
         const fetched: {id: string, name: string}[] = [];
-        snapshot.forEach(doc => {
-          fetched.push({ id: doc.id, name: doc.data().name });
-        });
+        snapshot.forEach(doc => fetched.push({ id: doc.id, name: doc.data().name }));
         fetched.sort((a, b) => a.name.localeCompare(b.name));
         setLeadSources(fetched);
 
         const qSub = query(collection(db, 'lead_sub_sources'), where('clientId', '==', user.clientId));
         const snapshotSub = await getDocs(qSub);
         const fetchedSub: {id: string, name: string}[] = [];
-        snapshotSub.forEach(doc => {
-          fetchedSub.push({ id: doc.id, name: doc.data().name });
-        });
+        snapshotSub.forEach(doc => fetchedSub.push({ id: doc.id, name: doc.data().name }));
         fetchedSub.sort((a, b) => a.name.localeCompare(b.name));
         setLeadSubSources(fetchedSub);
       } catch (error) {
         console.error("Error fetching lead sources:", error);
       }
     };
-    if (isOpen) {
-      fetchLeadSources();
-    }
+    if (isOpen) fetchLeadSources();
   }, [user?.clientId, isOpen]);
 
   if (!isOpen || !lead) return null;
@@ -107,24 +109,13 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
   const handleAddTag = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!tagInput.trim() || !user) return;
-
     const newTag = tagInput.trim();
-    if (lead.tags?.includes(newTag)) {
-      setTagInput('');
-      return;
-    }
+    if (lead.tags?.includes(newTag)) { setTagInput(''); return; }
 
     setIsAddingTag(true);
     try {
-      const leadRef = doc(db, 'leads', lead.id);
-      await updateDoc(leadRef, {
-        tags: arrayUnion(newTag)
-      });
-
-      onLeadUpdated({
-        ...lead,
-        tags: [...(lead.tags || []), newTag]
-      });
+      await updateDoc(doc(db, 'leads', lead.id), { tags: arrayUnion(newTag) });
+      onLeadUpdated({ ...lead, tags: [...(lead.tags || []), newTag] });
       setTagInput('');
     } catch (error) {
       console.error('Error adding tag:', error);
@@ -135,17 +126,9 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
 
   const handleRemoveTag = async (tag: string) => {
     if (!user) return;
-
     try {
-      const leadRef = doc(db, 'leads', lead.id);
-      await updateDoc(leadRef, {
-        tags: arrayRemove(tag)
-      });
-
-      onLeadUpdated({
-        ...lead,
-        tags: (lead.tags || []).filter(t => t !== tag)
-      });
+      await updateDoc(doc(db, 'leads', lead.id), { tags: arrayRemove(tag) });
+      onLeadUpdated({ ...lead, tags: (lead.tags || []).filter(t => t !== tag) });
     } catch (error) {
       console.error('Error removing tag:', error);
     }
@@ -153,7 +136,6 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
 
   const handleSaveNote = async () => {
     if (!noteText.trim() || !user) return;
-
     setIsSaving(true);
     try {
       const newNote: LeadNote = {
@@ -162,21 +144,10 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
         authorRole: role || 'unknown',
         timestamp: new Date().toISOString()
       };
-
-      const leadRef = doc(db, 'leads', lead.id);
-      await updateDoc(leadRef, {
-        notes: arrayUnion(newNote)
-      });
-
-      const updatedLead = {
-        ...lead,
-        notes: [...(lead.notes || []), newNote]
-      };
-      
-      onLeadUpdated(updatedLead);
+      await updateDoc(doc(db, 'leads', lead.id), { notes: arrayUnion(newNote) });
+      onLeadUpdated({ ...lead, notes: [...(lead.notes || []), newNote] });
       setNoteText('');
     } catch (error) {
-      console.error('Error saving note:', error);
       alert('Failed to save note. Please try again.');
     } finally {
       setIsSaving(false);
@@ -185,8 +156,7 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
 
   const handleStatusChange = async (newStatus: string) => {
     try {
-      const leadRef = doc(db, 'leads', lead.id);
-      await updateDoc(leadRef, { status: newStatus });
+      await updateDoc(doc(db, 'leads', lead.id), { status: newStatus });
       onLeadUpdated({ ...lead, status: newStatus });
     } catch (error) {
       console.error('Error updating status:', error);
@@ -195,11 +165,9 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
 
   const handleAssignmentChange = async (newAssignedToId: string) => {
     try {
-      const leadRef = doc(db, 'leads', lead.id);
       const assignedUser = (teamMembers || []).find(m => m.id === newAssignedToId);
       const assignedToName = assignedUser ? assignedUser.name : '';
-      
-      await updateDoc(leadRef, { 
+      await updateDoc(doc(db, 'leads', lead.id), { 
         assignedTo: newAssignedToId || null,
         assignedToId: newAssignedToId || null,
         assignedToName: assignedToName || null
@@ -223,13 +191,13 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
 
     if (s.includes('facebook')) {
       icon = <Facebook className="w-3.5 h-3.5" />;
-      colorClass = "bg-blue-100 text-blue-700";
+      colorClass = "bg-[#74ebd5]/20 text-[#4cb8a5]";
     } else if (s.includes('google')) {
       icon = <Search className="w-3.5 h-3.5" />;
       colorClass = "bg-amber-100 text-amber-700";
     } else if (s.includes('website')) {
       icon = <Globe className="w-3.5 h-3.5" />;
-      colorClass = "bg-emerald-100 text-emerald-700";
+      colorClass = "bg-[#9face6]/20 text-[#7a8ece]";
     }
 
     return (
@@ -241,13 +209,13 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
 
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
-      case 'New': return 'bg-emerald-100 text-emerald-800';
+      case 'New': return 'bg-[#74ebd5]/20 text-[#4cb8a5]';
       case 'Attempted Contact': return 'bg-blue-50 text-blue-700';
-      case 'Connected / Warm': return 'bg-blue-100 text-blue-800';
+      case 'Connected / Warm': return 'bg-[#9face6]/20 text-[#7a8ece]';
       case 'Site Visit Scheduled': return 'bg-purple-50 text-purple-700';
       case 'Site Visit Completed': return 'bg-purple-100 text-purple-800';
       case 'Negotiation': return 'bg-amber-100 text-amber-800';
-      case 'Closed Won': return 'bg-slate-900 text-white shadow-md';
+      case 'Closed Won': return 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white shadow-md';
       case 'Closed Lost': return 'bg-red-50 text-red-700';
       case 'Junk / Invalid': return 'bg-slate-100 text-slate-600';
       default: return 'bg-slate-50 text-slate-700';
@@ -256,16 +224,11 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
 
   const formatDate = (date: any) => {
     if (!date) return 'Unknown';
-    if (date.toDate) {
-      return new Date(date.toDate()).toLocaleString('en-US', { 
-        month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
-      });
-    }
-    return new Date(date).toLocaleString('en-US', { 
-      month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
-    });
+    if (date.toDate) return new Date(date.toDate()).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   };
 
+  // 👇 FIX: Re-added the missing timestamp formatting function here 👇
   const formatTimestamp = (isoString: string) => {
     const date = new Date(isoString);
     const datePart = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -273,22 +236,20 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
     return `${datePart} at ${timePart}`;
   };
 
-  // Add the new fields to standardFields so they don't show up in the raw JSON table
+  const sortedNotes = [...(lead.notes || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  // Exclude standard fields from the "Advanced Tracking" raw JSON dump at the bottom
   const standardFields = [
     'id', 'firstName', 'lastName', 'email', 'phone', 'projectProperty', 'status', 
     'source', 'subSource', 'assignedTo', 'assignedToId', 'assignedToName', 
     'isDuplicate', 'createdAt', 'notes', 'clientId', 'tags',
     'designation', 'location', 'linkedin', 'formId', 'adId', 'adName', 'campaignId', 'campaignName',
-    'truecallerName', 'truecallerEmail', 'adsetId'
+    'truecallerName', 'truecallerEmail', 'customAnswers', 'utm_source', 'utm_medium', 'utm_campaign'
   ];
   const advancedParams = Object.keys(lead).filter(key => !standardFields.includes(key));
-  const sortedNotes = [...(lead.notes || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   return (
-    // ✨ UI UPGRADE: Glass overlay background
     <div className="fixed inset-0 z-[60] flex justify-end bg-slate-900/30 backdrop-blur-sm transition-opacity">
-      
-      {/* ✨ UI UPGRADE: Frosted Glass Sidebar Panel */}
       <div className="w-full max-w-2xl bg-white/90 backdrop-blur-2xl h-full shadow-[-8px_0_30px_rgba(0,0,0,0.05)] border-l border-white flex flex-col animate-slide-in-right">
         
         {/* Header */}
@@ -298,12 +259,10 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
             <select
               value={lead.status}
               onChange={(e) => handleStatusChange(e.target.value)}
-              className={`text-xs font-bold px-3 py-1.5 rounded-lg border-none focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer appearance-none pr-8 bg-no-repeat bg-[right_0.5rem_center] bg-[length:1em_1em] ${getStatusBadgeClass(lead.status)}`}
+              className={`text-xs font-bold px-3 py-1.5 rounded-lg border-none focus:ring-2 focus:ring-[#74ebd5]/30 outline-none cursor-pointer appearance-none pr-8 bg-no-repeat bg-[right_0.5rem_center] bg-[length:1em_1em] ${getStatusBadgeClass(lead.status)}`}
               style={{ backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22currentColor%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")` }}
             >
-              {PIPELINE_STATUSES.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
+              {PIPELINE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             {lead.isDuplicate && (
               <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold bg-red-100 text-red-700 uppercase tracking-widest">
@@ -311,10 +270,7 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
               </span>
             )}
           </div>
-          <button 
-            onClick={onClose}
-            className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-full transition-all shadow-sm border border-transparent hover:border-slate-200"
-          >
+          <button onClick={onClose} className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-full transition-all shadow-sm border border-transparent hover:border-slate-200">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -331,22 +287,17 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                     {lead.firstName} {lead.lastName}
                   </h1>
                   
-                  {/* 👇 APOLLO & TRUECALLER ENRICHMENT UI 👇 */}
+                  {/* APOLLO & TRUECALLER ENRICHMENT UI */}
                   {((lead.designation && lead.designation !== "Unknown") || (lead.location && lead.location !== "Unknown") || lead.linkedin || (lead.truecallerName && lead.truecallerName !== "Unknown")) && (
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-700 font-medium bg-white/60 p-2 rounded-xl border border-white shadow-sm">
-                      {lead.designation && lead.designation !== "Unknown" && (
-                        <div className="flex items-center gap-1.5 px-2">💼 {lead.designation}</div>
-                      )}
-                      {lead.location && lead.location !== "Unknown" && (
-                        <div className="flex items-center gap-1.5 px-2">📍 {lead.location}</div>
-                      )}
+                      {lead.designation && lead.designation !== "Unknown" && <div className="px-2">💼 {lead.designation}</div>}
+                      {lead.location && lead.location !== "Unknown" && <div className="px-2">📍 {lead.location}</div>}
                       
                       {/* TRUECALLER BADGE */}
                       {lead.truecallerName && lead.truecallerName !== "Unknown" && (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-100/80 text-blue-700 rounded-lg text-xs font-bold border border-blue-200/50 shadow-sm">
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#9face6]/10 text-[#7a8ece] rounded-lg text-xs font-bold border border-[#9face6]/30 shadow-sm">
                           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/>
-                            <path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/>
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/><path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/>
                           </svg>
                           {lead.truecallerName}
                         </div>
@@ -357,44 +308,32 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                       )}
                     </div>
                   )}
-                  {/* 👆 END ENRICHMENT UI 👆 */}
 
                   <div className="mt-4 flex items-center gap-4 text-sm text-slate-500 font-medium">
-                    <div className="flex items-center gap-1.5">
-                      <Calendar className="w-4 h-4" />
-                      {formatDate(lead.createdAt)}
-                    </div>
+                    <div className="flex items-center gap-1.5"><Calendar className="w-4 h-4" />{formatDate(lead.createdAt)}</div>
                   </div>
                 </div>
                 {getSourceBadge(lead.source, lead.subSource)}
               </div>
 
-              {/* ✨ UI UPGRADE: Glassmorphism Contact Cards */}
+              {/* Glassmorphism Contact Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white/60 backdrop-blur-sm p-5 rounded-2xl border border-white shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex items-center gap-4">
-                  <div className="p-3 bg-gradient-to-br from-emerald-100 to-teal-50 rounded-xl text-emerald-600 shadow-inner">
-                    <Phone className="w-5 h-5" />
-                  </div>
+                  <div className="p-3 bg-gradient-to-br from-[#74ebd5]/20 to-[#9face6]/10 rounded-xl text-[#4cb8a5] shadow-inner"><Phone className="w-5 h-5" /></div>
                   <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Phone Number</p>
                     <p className="text-slate-800 font-bold">{lead.phone || 'Not provided'}</p>
                   </div>
                 </div>
-                
                 <div className="bg-white/60 backdrop-blur-sm p-5 rounded-2xl border border-white shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex items-center gap-4">
-                  <div className="p-3 bg-gradient-to-br from-blue-100 to-indigo-50 rounded-xl text-blue-600 shadow-inner">
-                    <Mail className="w-5 h-5" />
-                  </div>
+                  <div className="p-3 bg-gradient-to-br from-[#9face6]/20 to-indigo-50 rounded-xl text-[#7a8ece] shadow-inner"><Mail className="w-5 h-5" /></div>
                   <div className="overflow-hidden">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Email Address</p>
                     <p className="text-slate-800 font-bold truncate" title={lead.email}>{lead.email || 'Not provided'}</p>
                   </div>
                 </div>
-
                 <div className="bg-white/60 backdrop-blur-sm p-5 rounded-2xl border border-white shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex items-center gap-4 md:col-span-2">
-                  <div className="p-3 bg-gradient-to-br from-amber-100 to-orange-50 rounded-xl text-amber-600 shadow-inner">
-                    <Home className="w-5 h-5" />
-                  </div>
+                  <div className="p-3 bg-gradient-to-br from-amber-100 to-orange-50 rounded-xl text-amber-600 shadow-inner"><Home className="w-5 h-5" /></div>
                   <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Project / Property</p>
                     <p className="text-slate-800 font-bold">{lead.projectProperty || 'Not specified'}</p>
@@ -440,10 +379,7 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 shadow-sm"
                     >
                       {tag}
-                      <button 
-                        onClick={() => handleRemoveTag(tag)}
-                        className="p-0.5 hover:bg-slate-100 rounded-md transition-colors text-slate-400 hover:text-red-500"
-                      >
+                      <button onClick={() => handleRemoveTag(tag)} className="p-0.5 hover:bg-slate-100 rounded-md transition-colors text-slate-400 hover:text-red-500">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -459,7 +395,7 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                     value={tagInput}
                     onChange={(e) => setTagInput(e.target.value)}
                     placeholder="Add a tag (e.g. Hot Lead, NRI)..."
-                    className="flex-1 text-sm font-medium bg-white border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none shadow-sm"
+                    className="flex-1 text-sm font-medium bg-white border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#74ebd5]/30 outline-none shadow-sm"
                   />
                   <button
                     type="submit"
@@ -472,11 +408,31 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                 </form>
               </div>
 
-              {/* 👇 FULLY UPGRADED MARKETING ATTRIBUTION DATA 👇 */}
-              {(lead.adName || lead.campaignName || lead.formId || lead.adId || lead.campaignId) && (
+              {/* CUSTOM FORM QUESTIONS (CONDITIONAL FIELDS) */}
+              {lead.customAnswers && Object.keys(lead.customAnswers).length > 0 && (
                 <div className="bg-white/60 backdrop-blur-sm p-6 rounded-2xl border border-white shadow-[0_4px_20px_rgba(0,0,0,0.02)] mt-6">
                   <div className="flex items-center gap-3 mb-5">
-                    <div className="p-2 bg-blue-100 rounded-xl text-blue-600"><Facebook className="w-5 h-5"/></div>
+                    <div className="p-2 bg-[#9face6]/20 rounded-xl text-[#7a8ece]"><HelpCircle className="w-5 h-5"/></div>
+                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Form Questions</h3>
+                  </div>
+                  <div className="space-y-3 bg-white/80 p-5 rounded-xl border border-slate-100">
+                    {Object.entries(lead.customAnswers).map(([question, answer]) => (
+                      <div key={question} className="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                          {question.replace(/_/g, ' ')}
+                        </span>
+                        <span className="text-sm font-bold text-slate-800 whitespace-pre-wrap">{answer}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* MARKETING ATTRIBUTION & UTM */}
+              {(lead.adName || lead.campaignName || lead.formId || lead.adId || lead.campaignId || lead.utm_source) && (
+                <div className="bg-white/60 backdrop-blur-sm p-6 rounded-2xl border border-white shadow-[0_4px_20px_rgba(0,0,0,0.02)] mt-6">
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="p-2 bg-[#74ebd5]/20 rounded-xl text-[#4cb8a5]"><Facebook className="w-5 h-5"/></div>
                     <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Marketing Attribution</h3>
                   </div>
                   
@@ -487,22 +443,10 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                         <span className="text-sm text-slate-800 font-bold">{lead.campaignName}</span>
                       </div>
                     )}
-                    {lead.campaignId && (
-                      <div>
-                        <span className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-widest">Campaign ID</span>
-                        <span className="text-xs font-mono text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/60 shadow-sm">{lead.campaignId}</span>
-                      </div>
-                    )}
                     {lead.adName && (
                       <div>
                         <span className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-widest">Ad Name</span>
                         <span className="text-sm text-slate-800 font-bold">{lead.adName}</span>
-                      </div>
-                    )}
-                    {lead.adId && (
-                      <div>
-                        <span className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-widest">Ad ID</span>
-                        <span className="text-xs font-mono text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/60 shadow-sm">{lead.adId}</span>
                       </div>
                     )}
                     {lead.formId && (
@@ -511,37 +455,63 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                         <span className="text-xs font-mono text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/60 shadow-sm">{lead.formId}</span>
                       </div>
                     )}
-                  </div>
-                </div>
-              )}
-              {/* 👆 END META CAMPAIGN TRACKING DATA 👆 */}
+                    {lead.adId && (
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-widest">Ad ID</span>
+                        <span className="text-xs font-mono text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/60 shadow-sm">{lead.adId}</span>
+                      </div>
+                    )}
 
-              {/* Advanced Tracking Parameters */}
-              {advancedParams.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 pl-2">Advanced Tracking</h3>
-                  <div className="bg-white/60 backdrop-blur-sm rounded-2xl border border-white shadow-sm overflow-hidden">
-                    <table className="w-full text-left text-sm">
-                      <tbody className="divide-y divide-slate-100">
-                        {advancedParams.map(key => (
-                          <tr key={key}>
-                            <td className="px-5 py-3 font-bold text-slate-500 bg-slate-50/50 w-1/3">{key}</td>
-                            <td className="px-5 py-3 text-slate-800 font-medium break-all">{String(lead[key])}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    {/* UTM Parameters */}
+                    {lead.utm_source && (
+                      <div className="col-span-1 sm:col-span-2 grid grid-cols-3 gap-4 pt-4 border-t border-slate-200/60">
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">UTM Source</span>
+                          <span className="text-xs font-mono font-bold text-slate-700">{lead.utm_source}</span>
+                        </div>
+                        {lead.utm_medium && (
+                          <div>
+                            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">UTM Medium</span>
+                            <span className="text-xs font-mono font-bold text-slate-700">{lead.utm_medium}</span>
+                          </div>
+                        )}
+                        {lead.utm_campaign && (
+                          <div>
+                            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">UTM Campaign</span>
+                            <span className="text-xs font-mono font-bold text-slate-700">{lead.utm_campaign}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
             </div>
 
+            {/* Advanced Tracking Parameters (Raw JSON fallback) */}
+            {advancedParams.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 pl-2">Developer Data</h3>
+                <div className="bg-white/60 backdrop-blur-sm rounded-2xl border border-white shadow-sm overflow-hidden">
+                  <table className="w-full text-left text-sm">
+                    <tbody className="divide-y divide-slate-100">
+                      {advancedParams.map(key => (
+                        <tr key={key}>
+                          <td className="px-5 py-3 font-bold text-slate-500 bg-slate-50/50 w-1/3">{key}</td>
+                          <td className="px-5 py-3 text-slate-800 font-medium break-all">{String(lead[key])}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* Notes & Activity Timeline */}
             <div className="bg-white/60 backdrop-blur-sm p-6 rounded-2xl border border-white shadow-[0_4px_20px_rgba(0,0,0,0.02)] mt-8">
               <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest mb-5">Activity & Notes</h3>
               
-              {/* Note Input */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-8 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20 transition-all">
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-8 focus-within:border-[#74ebd5] focus-within:ring-2 focus-within:ring-[#74ebd5]/30 transition-all">
                 <textarea
                   value={noteText}
                   onChange={(e) => setNoteText(e.target.value)}
@@ -555,66 +525,34 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                   <button
                     onClick={handleSaveNote}
                     disabled={isSaving || !noteText.trim()}
-                    className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-emerald-500/20"
+                    className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white text-sm font-bold rounded-xl hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#74ebd5]/30"
                   >
-                    {isSaving ? (
-                      <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
+                    {isSaving ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <Send className="w-4 h-4" />}
                     Save Note
                   </button>
                 </div>
               </div>
 
-              {/* Timeline */}
               <div className="relative space-y-8 pl-2 sm:pl-0 mt-4">
-                {/* Continuous Vertical Line */}
                 <div className="absolute top-4 bottom-0 left-[1.75rem] sm:left-[2.25rem] w-0.5 bg-slate-200" />
-                
                 {sortedNotes.length === 0 ? (
-                  <div className="text-center py-10 text-slate-400 font-medium text-sm relative z-10 bg-transparent">
-                    No activity notes yet. Be the first to add one!
-                  </div>
+                  <div className="text-center py-10 text-slate-400 font-medium text-sm relative z-10 bg-transparent">No activity notes yet. Be the first to add one!</div>
                 ) : (
                   sortedNotes.map((note, idx) => {
                     const isClientAdmin = note.authorRole === 'client_admin' || note.authorRole === 'CLIENT_ADMIN';
                     const initial = note.authorEmail ? note.authorEmail.charAt(0).toUpperCase() : '?';
-                    
                     return (
                       <div key={idx} className="relative flex items-start gap-4 sm:gap-6">
-                        {/* Avatar on the line */}
-                        <div className={`relative z-10 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full border-4 border-white shrink-0 shadow-sm text-sm sm:text-base font-black ${
-                          isClientAdmin ? 'bg-gradient-to-br from-indigo-100 to-blue-50 text-indigo-700' : 'bg-gradient-to-br from-slate-100 to-slate-50 text-slate-700'
-                        }`}>
-                          {initial}
-                        </div>
-                        
-                        {/* Note Card */}
-                        <div className={`flex-1 p-5 rounded-2xl shadow-sm border ${
-                          isClientAdmin 
-                            ? 'bg-indigo-50/30 border-indigo-100' 
-                            : 'bg-white border-slate-100'
-                        }`}>
+                        <div className={`relative z-10 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full border-4 border-white shrink-0 shadow-sm text-sm sm:text-base font-black ${isClientAdmin ? 'bg-gradient-to-br from-[#74ebd5]/30 to-[#9face6]/30 text-[#50bdaf]' : 'bg-slate-100 text-slate-700'}`}>{initial}</div>
+                        <div className={`flex-1 p-5 rounded-2xl shadow-sm border ${isClientAdmin ? 'bg-[#74ebd5]/5 border-[#74ebd5]/20' : 'bg-white border-slate-100'}`}>
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                             <div className="flex items-center gap-3">
                               <span className="font-bold text-slate-800">{note.authorEmail}</span>
-                              {isClientAdmin && (
-                                <span className="px-2.5 py-1 rounded-md text-[9px] font-black bg-indigo-100 text-indigo-700 uppercase tracking-widest shadow-sm">
-                                  Manager
-                                </span>
-                              )}
+                              {isClientAdmin && <span className="px-2.5 py-1 rounded-md text-[9px] font-black bg-[#9face6]/20 text-[#7a8ece] uppercase tracking-widest shadow-sm">Manager</span>}
                             </div>
-                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                              <Clock className="w-3.5 h-3.5" />
-                              {formatTimestamp(note.timestamp)}
-                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider"><Clock className="w-3.5 h-3.5" />{formatTimestamp(note.timestamp)}</div>
                           </div>
-                          <p className={`text-sm font-medium leading-relaxed whitespace-pre-wrap ${
-                            isClientAdmin ? 'text-slate-700' : 'text-slate-600'
-                          }`}>
-                            {note.text}
-                          </p>
+                          <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap text-slate-700">{note.text}</p>
                         </div>
                       </div>
                     );

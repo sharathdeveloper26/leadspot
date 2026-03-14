@@ -28,6 +28,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
         try {
             let leadData = {};
             let clientId = null;
+            let customAnswers = {}; // 👈 CAPTURES FB CONDITIONAL FIELDS
             // CHECK: Is this from Meta? (Facebook sends a specific structure)
             if (req.body.object === "page" && ((_e = (_d = (_c = (_b = (_a = req.body.entry) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.changes) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.value) === null || _e === void 0 ? void 0 : _e.leadgen_id)) {
                 const changes = req.body.entry[0].changes[0].value;
@@ -40,29 +41,37 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                     .get();
                 if (integrationQuery.empty) {
                     console.error(`No client integration found for Page ID: ${pageId}`);
-                    res.status(404).send("Integration not found");
+                    // 🚨 FIX: Always return 200 to Meta so they don't ban the webhook
+                    res.status(200).send("Ignored: Integration not found");
                     return;
                 }
                 const integrationData = integrationQuery.docs[0].data();
                 clientId = integrationData.clientId;
-                // NEW: Token Safety Check (Checks for both naming conventions)
+                // Token Safety Check
                 const pageAccessToken = integrationData.pageAccessToken || integrationData.accessToken;
                 if (!pageAccessToken) {
                     console.error(`CRITICAL ERROR: No access token found in database for Page ID: ${pageId}`);
-                    res.status(400).send("Missing Access Token in Database");
+                    // 🚨 FIX: Always return 200 to Meta
+                    res.status(200).send("Ignored: Missing Access Token");
                     return;
                 }
                 // Fetch actual lead details AND Campaign Tracking Data from Meta Graph API
                 const fbResponse = await axios_1.default.get(`https://graph.facebook.com/v19.0/${leadgenId}?fields=field_data,form_id,ad_id,ad_name,campaign_id,campaign_name&access_token=${pageAccessToken}`);
                 const fbData = fbResponse.data;
-                const fbFields = fbData.field_data;
+                const fbFields = fbData.field_data || [];
+                // 👇 LOOP TO EXTRACT ALL CUSTOM FACEBOOK QUESTIONS 👇
+                fbFields.forEach((field) => {
+                    if (!['full_name', 'email', 'phone_number'].includes(field.name)) {
+                        customAnswers[field.name] = field.values[0];
+                    }
+                });
                 leadData = {
                     name: ((_f = fbFields.find((f) => f.name === "full_name")) === null || _f === void 0 ? void 0 : _f.values[0]) || "FB Lead",
                     email: ((_g = fbFields.find((f) => f.name === "email")) === null || _g === void 0 ? void 0 : _g.values[0]) || "",
                     phone: ((_h = fbFields.find((f) => f.name === "phone_number")) === null || _h === void 0 ? void 0 : _h.values[0]) || "",
                     source: "Facebook",
-                    project: fbData.campaign_name || "Facebook Ad Campaign", // Maps Project to Campaign Name dynamically!
-                    // New Campaign Tracking Info
+                    project: fbData.campaign_name || "Facebook Ad Campaign",
+                    // Campaign Tracking Info
                     formId: fbData.form_id || "",
                     adId: fbData.ad_id || "",
                     adName: fbData.ad_name || "Unknown Ad",
@@ -74,6 +83,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                 // Fallback: Use your existing manual webhook logic (for Pabbly/Zapier/Direct)
                 const data = Object.assign(Object.assign({}, req.query), req.body);
                 clientId = data.clientId;
+                customAnswers = data.customAnswers || {}; // For custom webhook fields
                 leadData = {
                     name: data.name,
                     email: data.email,
@@ -84,21 +94,25 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                     adId: "",
                     adName: "",
                     campaignId: "",
-                    campaignName: ""
+                    campaignName: "",
+                    // Map manual UTMs
+                    utm_source: data.utm_source || "",
+                    utm_medium: data.utm_medium || "",
+                    utm_campaign: data.utm_campaign || ""
                 };
             }
             if (!clientId) {
-                res.status(400).send("Error: clientId is required.");
+                res.status(200).send("Error: clientId is required.");
                 return;
             }
-            // --- 🚀 START NEW APOLLO ENRICHMENT LOGIC 🚀 ---
+            // --- 🚀 START APOLLO ENRICHMENT LOGIC 🚀 ---
             let designation = "Unknown";
             let location = "Unknown";
             let linkedinUrl = "";
             if (leadData.email) {
                 try {
                     const apolloResponse = await axios_1.default.post('https://api.apollo.io/v1/people/match', {
-                        api_key: 'vWaMRrj2mpju0d1hVAN6RQ', // Your Apollo Master Key
+                        api_key: 'vWaMRrj2mpju0d1hVAN6RQ', // Your Apollo API Key
                         email: leadData.email,
                         name: leadData.name
                     }, {
@@ -115,7 +129,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                     console.error("Apollo API Miss:", enrichmentError.response ? enrichmentError.response.data : enrichmentError.message);
                 }
             }
-            // --- 🚀 END NEW APOLLO ENRICHMENT LOGIC 🚀 ---
+            // --- 🚀 END APOLLO ENRICHMENT LOGIC 🚀 ---
             // --- START ASSIGNMENT LOGIC (Existing) ---
             let assignedToId = null;
             let assignedToName = null;
@@ -140,16 +154,21 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                 assignedTo: assignedToId,
                 assignedToId: assignedToId,
                 assignedToName: assignedToName,
-                // 👇 NEW: APOLLO ENRICHMENT DATA 👇
+                // APOLLO ENRICHMENT DATA
                 designation: designation,
                 location: location,
                 linkedin: linkedinUrl,
-                // 👇 NEW: META CAMPAIGN TRACKING DATA 👇
+                // META CAMPAIGN TRACKING DATA
                 formId: leadData.formId,
                 adId: leadData.adId,
                 adName: leadData.adName,
                 campaignId: leadData.campaignId,
                 campaignName: leadData.campaignName,
+                // 👇 NEW: SAVE CUSTOM QUESTIONS & UTMS TO FIRESTORE 👇
+                customAnswers: customAnswers,
+                utm_source: leadData.utm_source || "",
+                utm_medium: leadData.utm_medium || "",
+                utm_campaign: leadData.utm_campaign || "",
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             };
             await db.collection("leads").add(finalLead);
@@ -157,17 +176,16 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
             res.status(200).json({ success: true, message: "Event processed", received: finalLead });
         }
         catch (error) {
-            if (error.response && error.response.data) {
-                console.error("META GRAPH API REJECTED THE REQUEST. Reason:", JSON.stringify(error.response.data));
-            }
-            else {
-                console.error("Webhook Processing Error:", error.message || error);
-            }
-            res.status(500).send("Internal Server Error");
+            console.error("Webhook Processing Error:", error.message || error);
+            // 🚨 THE MAGIC FIX 🚨
+            // Even if our code crashes completely (database down, API timeout, missing variables),
+            // we MUST tell Facebook "200 OK". If we send 500, Facebook disconnects us.
+            res.status(200).send("EVENT_RECEIVED_BUT_ERRORED");
         }
         return;
     }
-    res.status(405).send("Method Not Allowed");
+    // Handle all other random pings with a safe 200 so Meta doesn't panic
+    res.status(200).send("Method Not Allowed");
 });
 exports.createAgent = (0, https_1.onCall)(async (request) => {
     var _a;
