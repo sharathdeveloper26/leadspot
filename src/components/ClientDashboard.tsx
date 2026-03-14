@@ -3,10 +3,9 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
-import AddLeadModal from './AddLeadModal';
 
 interface Agent {
   id: string;
@@ -68,7 +67,7 @@ export default function ClientDashboard() {
   const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
 
-  // ✨ NEW: Custom Global Dialog State ✨
+  // ✨ Custom Global Dialog Engine ✨
   const [dialogState, setDialogState] = useState<{
     isOpen: boolean;
     type: 'alert' | 'confirm' | 'success' | 'error';
@@ -226,7 +225,6 @@ export default function ClientDashboard() {
 
   const webhookUrl = `https://us-central1-mintage-crm.cloudfunctions.net/incomingLeadWebhook?clientId=${user?.clientId}`;
 
-  // ✨ FIXED: Ref-based stable timeout interval ✨
   const timeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
@@ -477,7 +475,7 @@ export default function ClientDashboard() {
 
   const handleDeleteRule = async (ruleId: string) => {
     if (!ruleId) return;
-    showConfirm('Delete Rule', 'Are you sure you want to delete this auto-assignment rule?', async () => {
+    showDialog('confirm', 'Delete Rule', 'Are you sure you want to delete this auto-assignment rule?', async () => {
       try {
         await deleteDoc(doc(db, 'lead_assignment_rules', ruleId));
         setAssignmentRules(prevRules => prevRules.filter(r => r.id !== ruleId));
@@ -670,7 +668,7 @@ export default function ClientDashboard() {
   };
 
   const handleDeleteAgent = async (agentId: string) => {
-    showConfirm('Delete Agent', 'Are you sure you want to delete this agent? This cannot be undone.', async () => {
+    showDialog('confirm', 'Delete Agent', 'Are you sure you want to delete this agent? This cannot be undone.', async () => {
       try {
         const deleteAgentFn = httpsCallable(functions, 'deleteAgent');
         await deleteAgentFn({ agentId });
@@ -773,7 +771,7 @@ export default function ClientDashboard() {
 
   const handleDisconnectPage = async (pageId: string) => {
     if (!user?.clientId) return;
-    showConfirm('Disconnect Page', 'Are you sure you want to disconnect this Facebook page?', async () => {
+    showDialog('confirm', 'Disconnect Page', 'Are you sure you want to disconnect this Facebook page?', async () => {
       try {
         await deleteDoc(doc(db, 'facebook_integrations', user.clientId));
         fetchLinkedPages();
@@ -1111,7 +1109,7 @@ export default function ClientDashboard() {
   };
 
   const handleDeleteSelected = async () => {
-    showConfirm('Delete Leads', `Are you sure you want to delete ${selectedLeads.length} selected leads? This cannot be undone.`, async () => {
+    showDialog('confirm', 'Delete Leads', `Are you sure you want to delete ${selectedLeads.length} selected leads? This cannot be undone.`, async () => {
       try {
         for (const id of selectedLeads) { await deleteDoc(doc(db, 'leads', id)); }
         setSelectedLeads([]);
@@ -1394,7 +1392,6 @@ export default function ClientDashboard() {
         <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-auto custom-scrollbar">
           <div className="max-w-7xl mx-auto h-full flex flex-col min-w-[800px] md:min-w-0">
             
-            {/* 👇 DASHBOARD TAB VIEW 👇 */}
             {activeTab === 'dashboard' ? (
               <div className="space-y-8 animate-in fade-in duration-500">
                 <div>
@@ -1592,8 +1589,6 @@ export default function ClientDashboard() {
 
               </div>
             ) : activeTab === 'leads' ? (
-            /* 👆 END DASHBOARD TAB VIEW 👆 */
-
               <>
                 <div className="flex justify-between items-center mb-8 shrink-0">
                   <div>
@@ -2948,7 +2943,7 @@ export default function ClientDashboard() {
                             </button>
                             <button
                               onClick={handleTestOutboundWebhook}
-                              disabled={isTestingOutboundWebhook}
+                              disabled={isTestingOutboundWebhook || !outboundWebhookUrl}
                               className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm disabled:opacity-50"
                             >
                               {isTestingOutboundWebhook ? 'Sending...' : 'Send Test Lead'}
