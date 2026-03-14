@@ -3,8 +3,8 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle, ChevronDown, ChevronUp, Menu, Download, MessageSquare } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, XCircle, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 import AddLeadModal from './AddLeadModal';
 
@@ -45,7 +45,8 @@ declare global {
 
 export default function ClientDashboard() {
   const { user, clientId, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'leads' | 'integrations' | 'team' | 'reports'>('leads');
+  // ✨ UI UPGRADE: Added 'dashboard' as the default active tab
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'integrations' | 'team' | 'reports'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('pipeline');
@@ -75,6 +76,65 @@ export default function ClientDashboard() {
     const combined = [...realTimeLeads, ...olderLeads];
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
   }, [realTimeLeads, olderLeads]);
+
+  // 👇 DASHBOARD COMPUTATIONS 👇
+  const dashboardStats = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 6); // Includes today
+
+    let todaysLeadsCount = 0;
+    let activePipelineCount = 0;
+    let closedWonCount = 0;
+    const todaysSources = new Map<string, number>();
+
+    // Trend data initialized for the last 7 days
+    const trendDataMap = new Map<string, number>();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setHours(0,0,0,0);
+      d.setDate(d.getDate() - i);
+      trendDataMap.set(d.toLocaleDateString('en-US', { weekday: 'short' }), 0);
+    }
+
+    leads.forEach(lead => {
+      const leadDate = lead.createdAt?.toDate();
+      if (!leadDate) return;
+
+      // Pipeline & Conversions
+      if (lead.status !== 'Closed Lost' && lead.status !== 'Junk / Invalid') activePipelineCount++;
+      if (lead.status === 'Closed Won') closedWonCount++;
+
+      // Today's Stats
+      if (leadDate >= today) {
+        todaysLeadsCount++;
+        const source = lead.source || 'Manual';
+        todaysSources.set(source, (todaysSources.get(source) || 0) + 1);
+      }
+
+      // 7 Day Trend
+      if (leadDate >= sevenDaysAgo) {
+        const dayStr = leadDate.toLocaleDateString('en-US', { weekday: 'short' });
+        if (trendDataMap.has(dayStr)) {
+          trendDataMap.set(dayStr, trendDataMap.get(dayStr)! + 1);
+        }
+      }
+    });
+
+    const todaysSourceChart = Array.from(todaysSources.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    const trendChart = Array.from(trendDataMap.entries())
+      .map(([name, count]) => ({ name, count }));
+
+    const conversionRate = leads.length > 0 ? Math.round((closedWonCount / leads.length) * 100) : 0;
+
+    return { todaysLeadsCount, activePipelineCount, conversionRate, todaysSourceChart, trendChart };
+  }, [leads]);
+  // 👆 END DASHBOARD COMPUTATIONS 👆
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -646,7 +706,6 @@ export default function ClientDashboard() {
     return matches;
   });
 
-  // 👇 FULLY UPGRADED EXPORT TO CSV LOGIC 👇
   const handleExportCSV = () => {
     if (filteredLeads.length === 0) {
       alert("No leads found for the selected filters.");
@@ -658,7 +717,7 @@ export default function ClientDashboard() {
       "Project/Property", "Status", "Source", "Sub-Source", 
       "Assigned To", "Tags", "Designation", "Location", "LinkedIn",
       "Truecaller Name", "Ad Name", "Campaign Name", "Form ID",
-      "Latest Feedback Note", "Note Author", "Note Date" // Added Feedback Headers
+      "Latest Feedback Note", "Note Author", "Note Date"
     ];
 
     const csvRows = filteredLeads.map(lead => {
@@ -666,14 +725,13 @@ export default function ClientDashboard() {
       const assignedName = lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned';
       const tags = lead.tags ? lead.tags.join(' | ') : '';
       
-      // Get the latest note for the master report
       const sortedNotes = lead.notes ? [...lead.notes].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) : [];
       const latestNote = sortedNotes.length > 0 ? sortedNotes[0] : null;
       
       const escapeCSV = (val: any) => {
          if (val === null || val === undefined) return '""';
          const str = String(val);
-         return `"${str.replace(/"/g, '""').replace(/\n/g, ' ')}"`; // Also replace newlines so it doesn't break Excel
+         return `"${str.replace(/"/g, '""').replace(/\n/g, ' ')}"`;
       };
 
       return [
@@ -713,7 +771,6 @@ export default function ClientDashboard() {
     document.body.removeChild(link);
   };
 
-  // 👇 DEDICATED FEEDBACK EXPORT (Exports ALL notes for filtered leads) 👇
   const handleExportFeedbackCSV = () => {
     if (filteredLeads.length === 0) {
       alert("No leads found for the selected filters.");
@@ -746,7 +803,6 @@ export default function ClientDashboard() {
       ];
 
       if (lead.notes && lead.notes.length > 0) {
-        // If they have notes, create a row for EVERY note
         const sortedNotes = [...lead.notes].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         sortedNotes.forEach(note => {
           csvRows.push([
@@ -757,7 +813,6 @@ export default function ClientDashboard() {
           ].join(','));
         });
       } else {
-        // If they have no notes, just output the lead info with empty note columns
         csvRows.push([
           ...baseRow,
           '""', '""', '""'
@@ -776,7 +831,6 @@ export default function ClientDashboard() {
     link.click();
     document.body.removeChild(link);
   };
-  // 👆 END DEDICATED FEEDBACK EXPORT 👆
 
   const sourceDataMap = new Map<string, number>();
   filteredLeads.forEach(lead => {
@@ -920,7 +974,20 @@ export default function ClientDashboard() {
         </div>
         
         <nav className="flex-1 px-4 space-y-1.5">
-          {/* ✨ UI UPGRADE: Active states use sleek gradients, soft text colors, and subtle inner borders */}
+          {/* 👇 NEW DASHBOARD TAB 👇 */}
+          <button 
+            onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
+              activeTab === 'dashboard' 
+                ? 'bg-gradient-to-r from-emerald-500/15 to-transparent text-emerald-800 font-bold border-l-4 border-emerald-500 rounded-l-none shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]' 
+                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-emerald-700 hover:shadow-sm'
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5" />
+            Dashboard
+          </button>
+          {/* 👆 NEW DASHBOARD TAB 👆 */}
+
           <button 
             onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
@@ -932,6 +999,7 @@ export default function ClientDashboard() {
             <Users className="w-5 h-5" />
             Leads
           </button>
+
           {user?.role === 'client_admin' && (
             <>
               <button 
@@ -958,6 +1026,7 @@ export default function ClientDashboard() {
               </button>
             </>
           )}
+
           <button 
             onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
@@ -966,7 +1035,7 @@ export default function ClientDashboard() {
                 : 'text-slate-600 font-medium hover:bg-white/60 hover:text-emerald-700 hover:shadow-sm'
             }`}
           >
-            <LayoutDashboard className="w-5 h-5" />
+            <BarChart className="w-5 h-5" />
             Reports
           </button>
         </nav>
@@ -988,7 +1057,7 @@ export default function ClientDashboard() {
         {/* ✨ UI UPGRADE: Header frosted glass */}
         <header className="h-20 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
           <h1 className="text-xl font-bold tracking-tight text-slate-800">
-            {activeTab === 'leads' ? 'Leads Management' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Dashboard' : 'Integrations'}
+            {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : 'Integrations'}
           </h1>
           <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-white px-4 py-2 rounded-full shadow-sm">
             <UserCircle2 className="w-4 h-4 text-emerald-600" />
@@ -999,7 +1068,204 @@ export default function ClientDashboard() {
         <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-auto custom-scrollbar">
           <div className="max-w-7xl mx-auto h-full flex flex-col min-w-[800px] md:min-w-0">
             
-            {activeTab === 'leads' ? (
+            {/* 👇 NEW DASHBOARD TAB VIEW 👇 */}
+            {activeTab === 'dashboard' ? (
+              <div className="space-y-8 animate-in fade-in duration-500">
+                <div>
+                  <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">
+                    Welcome back, {user?.email?.split('@')[0]}
+                  </h2>
+                  <p className="text-slate-500 text-sm font-medium">Here is what is happening with your leads today.</p>
+                </div>
+
+                {/* KPI Strip */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Today's Leads</h3>
+                      <div className="p-2.5 bg-emerald-50 rounded-xl text-emerald-600 shadow-inner">
+                        <Zap className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="flex items-end gap-3">
+                      <p className="text-4xl font-black text-slate-800">{dashboardStats.todaysLeadsCount}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">7-Day Volume</h3>
+                      <div className="p-2.5 bg-blue-50 rounded-xl text-blue-600 shadow-inner">
+                        <Activity className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <p className="text-4xl font-black text-slate-800">
+                      {dashboardStats.trendChart.reduce((sum, item) => sum + item.count, 0)}
+                    </p>
+                  </div>
+
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Active Pipeline</h3>
+                      <div className="p-2.5 bg-purple-50 rounded-xl text-purple-600 shadow-inner">
+                        <Target className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <p className="text-4xl font-black text-slate-800">{dashboardStats.activePipelineCount}</p>
+                  </div>
+
+                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Conversion Rate</h3>
+                      <div className="p-2.5 bg-amber-50 rounded-xl text-amber-600 shadow-inner">
+                        <TrendingUp className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <p className="text-4xl font-black text-slate-800">{dashboardStats.conversionRate}%</p>
+                  </div>
+                </div>
+
+                {/* Dashboard Charts */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* 7-Day Trend Line Chart */}
+                  <div className="lg:col-span-2 bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white flex flex-col">
+                    <h3 className="text-lg font-bold text-slate-800 mb-8">Lead Generation Trend (Last 7 Days)</h3>
+                    <div className="flex-1 min-h-[250px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={dashboardStats.trendChart}>
+                          <defs>
+                            <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} dy={10} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} dx={-10} allowDecimals={false} />
+                          <Tooltip 
+                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgb(0 0 0 / 0.1)', padding: '12px 16px', fontWeight: 600 }}
+                            itemStyle={{ color: '#10b981' }}
+                          />
+                          <Area type="monotone" dataKey="count" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorTrend)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Today's Lead Sources Pie Chart */}
+                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white flex flex-col">
+                    <h3 className="text-lg font-bold text-slate-800 mb-6">Today's Lead Sources</h3>
+                    {dashboardStats.todaysSourceChart.length > 0 ? (
+                      <div className="flex-1 flex flex-col justify-center min-h-[250px]">
+                        <ResponsiveContainer width="100%" height={200}>
+                          <PieChart>
+                            <Pie
+                              data={dashboardStats.todaysSourceChart}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={90}
+                              paddingAngle={5}
+                              dataKey="value"
+                              nameKey="name"
+                              stroke="none"
+                            >
+                              {dashboardStats.todaysSourceChart.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgb(0 0 0 / 0.1)', fontWeight: 600 }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4">
+                          {dashboardStats.todaysSourceChart.map((source, index) => (
+                            <div key={source.name} className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                              <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
+                              {source.name} <span className="text-slate-400">({source.value})</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 rounded-2xl border border-slate-100">
+                        <Users className="w-10 h-10 text-slate-300 mb-3" />
+                        <p className="text-sm font-bold text-slate-500">No leads generated today</p>
+                        <p className="text-xs text-slate-400 mt-1">Incoming leads will appear here.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Recent Leads Widget */}
+                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white overflow-hidden">
+                  <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40 flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-slate-800">Recent Lead Activity</h3>
+                    <button 
+                      onClick={() => setActiveTab('leads')}
+                      className="text-xs font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      View All Leads
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto custom-scrollbar">
+                    {leads.length > 0 ? (
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                            <th className="px-8 py-4">Lead Name</th>
+                            <th className="px-8 py-4">Source</th>
+                            <th className="px-8 py-4">Status</th>
+                            <th className="px-8 py-4">Time Arrived</th>
+                            <th className="px-8 py-4 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100/60">
+                          {leads.slice(0, 5).map(lead => (
+                            <tr key={lead.id} className="hover:bg-white/60 transition-colors">
+                              <td className="px-8 py-4 whitespace-nowrap">
+                                <div className="font-bold text-slate-800">{lead.firstName} {lead.lastName}</div>
+                                <div className="text-xs text-slate-500">{lead.phone || lead.email || 'No contact info'}</div>
+                              </td>
+                              <td className="px-8 py-4 whitespace-nowrap">
+                                {getSourceBadge(lead.source, lead.subSource)}
+                              </td>
+                              <td className="px-8 py-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold border ${getStatusBadgeClass(lead.status)}`}>
+                                  {lead.status}
+                                </span>
+                              </td>
+                              <td className="px-8 py-4 whitespace-nowrap text-sm font-medium text-slate-500">
+                                {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now'}
+                                <span className="block text-xs text-slate-400">
+                                  {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString() : ''}
+                                </span>
+                              </td>
+                              <td className="px-8 py-4 whitespace-nowrap text-right">
+                                <button 
+                                  onClick={() => openLeadDetails(lead)}
+                                  className="text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-600 shadow-sm px-4 py-2 rounded-xl transition-all hover:-translate-y-0.5"
+                                >
+                                  View Details
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="p-12 text-center text-slate-400 font-medium text-sm">
+                        No leads available to display.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            ) : activeTab === 'leads' ? (
+            /* 👆 END DASHBOARD TAB VIEW 👆 */
+
               <>
                 {/* Header Actions */}
                 <div className="flex justify-between items-center mb-8 shrink-0">
@@ -1022,19 +1288,33 @@ export default function ClientDashboard() {
                 {/* ✨ UI UPGRADE: Glassmorphism Control Bar */}
                 <div className="flex flex-wrap items-center gap-4 bg-white/60 backdrop-blur-xl p-3 rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-8 shrink-0">
                   <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-3 py-1.5 h-10 shadow-sm">
+                    {/* 👇 DATE VALIDATION FIX FOR LEADS TAB 👇 */}
                     <input
                       type="date"
                       value={leadsStartDate}
-                      onChange={(e) => setLeadsStartDate(e.target.value)}
+                      max={leadsEndDate || undefined}
+                      onChange={(e) => {
+                        setLeadsStartDate(e.target.value);
+                        if (leadsEndDate && e.target.value > leadsEndDate) {
+                          setLeadsEndDate(e.target.value);
+                        }
+                      }}
                       className="text-sm font-medium border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer"
                     />
                     <span className="text-slate-300 text-sm font-light">|</span>
                     <input
                       type="date"
                       value={leadsEndDate}
-                      onChange={(e) => setLeadsEndDate(e.target.value)}
+                      min={leadsStartDate || undefined}
+                      onChange={(e) => {
+                        setLeadsEndDate(e.target.value);
+                        if (leadsStartDate && e.target.value < leadsStartDate) {
+                          setLeadsStartDate(e.target.value);
+                        }
+                      }}
                       className="text-sm font-medium border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer"
                     />
+                    {/* 👆 END DATE VALIDATION FIX 👆 */}
                     {(leadsStartDate || leadsEndDate) && (
                       <button 
                         onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); }}
@@ -1228,26 +1508,61 @@ export default function ClientDashboard() {
                                   )}
                                 </td>
                               </tr>
+                              
+                              {/* 👇 FULLY UPGRADED EXPANDED ROW DATA 👇 */}
                               {expandedLeads.includes(lead.id) && (
                                 <tr className="bg-slate-50/50 backdrop-blur-sm border-b border-slate-200/50">
                                   <td colSpan={10} className="px-6 py-5">
-                                    <div className="grid grid-cols-4 gap-6 text-sm">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 text-sm bg-white/60 p-4 rounded-xl border border-white">
+                                      
+                                      {/* Apollo Enrichment Data */}
+                                      {(lead.designation && lead.designation !== "Unknown") && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Designation</span>
+                                          <span className="text-slate-700 font-medium flex items-center gap-1.5">💼 {lead.designation}</span>
+                                        </div>
+                                      )}
+                                      {(lead.location && lead.location !== "Unknown") && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Location</span>
+                                          <span className="text-slate-700 font-medium flex items-center gap-1.5">📍 {lead.location}</span>
+                                        </div>
+                                      )}
+                                      {lead.linkedin && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">LinkedIn</span>
+                                          <a href={lead.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline text-xs font-bold flex items-center gap-1">🔗 View Profile</a>
+                                        </div>
+                                      )}
+
+                                      {/* Truecaller Verified Data */}
+                                      {(lead.truecallerName && lead.truecallerName !== "Unknown") && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Truecaller Record</span>
+                                          <span className="text-blue-700 font-bold bg-blue-100 px-2 py-0.5 rounded flex items-center gap-1.5 w-fit">
+                                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/><path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/></svg>
+                                            {lead.truecallerName}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Facebook Meta Marketing Data */}
+                                      {lead.adName && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ad Name</span>
+                                          <span className="text-slate-700 font-medium">{lead.adName}</span>
+                                        </div>
+                                      )}
+                                      {lead.campaignName && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Campaign Name</span>
+                                          <span className="text-slate-700 font-medium">{lead.campaignName}</span>
+                                        </div>
+                                      )}
                                       {lead.formId && (
                                         <div>
                                           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Form ID</span>
                                           <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.formId}</span>
-                                        </div>
-                                      )}
-                                      {lead.campaignId && (
-                                        <div>
-                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Campaign ID</span>
-                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.campaignId}</span>
-                                        </div>
-                                      )}
-                                      {lead.adsetId && (
-                                        <div>
-                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Adset ID</span>
-                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.adsetId}</span>
                                         </div>
                                       )}
                                       {lead.adId && (
@@ -1256,15 +1571,25 @@ export default function ClientDashboard() {
                                           <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.adId}</span>
                                         </div>
                                       )}
-                                      {!lead.formId && !lead.campaignId && !lead.adsetId && !lead.adId && (
-                                        <div className="col-span-4 text-slate-400 font-medium italic text-xs">
-                                          No extended marketing data available for this lead.
+                                      {lead.campaignId && (
+                                        <div>
+                                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Campaign ID</span>
+                                          <span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.campaignId}</span>
+                                        </div>
+                                      )}
+
+                                      {/* Empty State Fallback */}
+                                      {!lead.designation && !lead.adName && !lead.formId && !lead.campaignId && !lead.adId && !lead.truecallerName && (
+                                        <div className="col-span-4 text-slate-400 font-medium italic text-xs py-2">
+                                          No extended marketing or enrichment data available for this lead.
                                         </div>
                                       )}
                                     </div>
                                   </td>
                                 </tr>
                               )}
+                              {/* 👆 EXPANDED ROW END 👆 */}
+
                             </React.Fragment>
                           ))}
                         </tbody>
@@ -1359,6 +1684,19 @@ export default function ClientDashboard() {
                                   <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
                                     <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Phone className="w-3.5 h-3.5 shrink-0" /></div>
                                     <span className="truncate">{lead.phone || 'No phone'}</span>
+                                    
+                                    {/* 👇 TRUECALLER VERIFIED BADGE (Pipeline Card) 👇 */}
+                                    {lead.truecallerName && lead.truecallerName !== "Unknown" && (
+                                      <span className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 shrink-0">
+                                        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+                                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/>
+                                          <path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/>
+                                        </svg>
+                                        Verified
+                                      </span>
+                                    )}
+                                    {/* 👆 TRUECALLER VERIFIED BADGE 👆 */}
+
                                   </div>
                                   <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
                                     <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Home className="w-3.5 h-3.5 shrink-0" /></div>
@@ -1681,20 +2019,34 @@ export default function ClientDashboard() {
 
                     <div className="flex flex-wrap items-center gap-4 bg-white/70 backdrop-blur-xl p-2.5 rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
                       <div className="flex items-center gap-2 px-3 bg-white border border-slate-100 rounded-xl py-1.5 shadow-sm">
+                        {/* 👇 DATE VALIDATION FIX FOR REPORTS TAB 👇 */}
                         <Calendar className="w-4 h-4 text-emerald-500" />
                         <input 
                           type="date" 
                           value={startDate}
-                          onChange={(e) => setStartDate(e.target.value)}
+                          max={endDate || undefined}
+                          onChange={(e) => {
+                            setStartDate(e.target.value);
+                            if (endDate && e.target.value > endDate) {
+                              setEndDate(e.target.value);
+                            }
+                          }}
                           className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
                         />
                         <span className="text-slate-300 font-light">|</span>
                         <input 
                           type="date" 
                           value={endDate}
-                          onChange={(e) => setEndDate(e.target.value)}
+                          min={startDate || undefined}
+                          onChange={(e) => {
+                            setEndDate(e.target.value);
+                            if (startDate && e.target.value < startDate) {
+                              setStartDate(e.target.value);
+                            }
+                          }}
                           className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
                         />
+                        {/* 👆 END DATE VALIDATION FIX 👆 */}
                       </div>
                       <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
                       <select 
