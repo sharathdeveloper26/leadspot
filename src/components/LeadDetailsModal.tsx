@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Phone, Mail, Home, Calendar, Globe, Facebook, Search, Clock, Send, Tag, Plus, UserCircle2, HelpCircle, BellRing, CheckSquare } from 'lucide-react';
+import { X, Phone, Mail, Home, Calendar, Globe, Facebook, Search, Clock, Send, Tag, Plus, UserCircle2, HelpCircle, BellRing, CheckSquare, MessageCircle } from 'lucide-react';
 import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -109,17 +109,16 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
     if (isOpen) fetchLeadSources();
   }, [user?.clientId, isOpen]);
 
-  // 👇 BUG FIX: FETCH REMINDERS (Memory cleared to prevent bleed) 👇
   useEffect(() => {
     if (!isOpen || !lead || !user?.clientId) {
-      setReminders([]); // CLEAR MEMORY
+      setReminders([]); 
       return;
     }
 
     const q = query(
       collection(db, 'reminders'),
       where('clientId', '==', user.clientId),
-      where('leadId', '==', lead.id) // ONLY THIS LEAD
+      where('leadId', '==', lead.id) 
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -127,7 +126,6 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
       snapshot.forEach((doc) => {
         fetchedReminders.push({ id: doc.id, ...doc.data() });
       });
-      // Sort chronologically in JS
       fetchedReminders.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
       setReminders(fetchedReminders);
     }, (error) => {
@@ -136,10 +134,9 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
 
     return () => {
       unsubscribe();
-      setReminders([]); // Force wipe memory when modal closes!
+      setReminders([]); 
     };
   }, [isOpen, lead?.id, user?.clientId]);
-  // 👆 END BUG FIX 👆
 
   if (!isOpen || !lead) return null;
 
@@ -310,14 +307,52 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
 
   const sortedNotes = [...(lead.notes || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-  const standardFields = [
-    'id', 'firstName', 'lastName', 'email', 'phone', 'projectProperty', 'status', 
-    'source', 'subSource', 'assignedTo', 'assignedToId', 'assignedToName', 
-    'isDuplicate', 'createdAt', 'notes', 'clientId', 'tags',
-    'designation', 'location', 'linkedin', 'formId', 'adId', 'adName', 'campaignId', 'campaignName',
-    'truecallerName', 'truecallerEmail', 'customAnswers', 'utm_source', 'utm_medium', 'utm_campaign'
-  ];
-  const advancedParams = Object.keys(lead).filter(key => !standardFields.includes(key));
+  // ✨ QUICK ACTION LOGIC ✨
+  const handleWhatsAppClick = () => {
+    if (!lead.phone) {
+      alert("No phone number available for this lead.");
+      return;
+    }
+    // Clean the phone number (remove spaces, dashes)
+    let cleanPhone = lead.phone.replace(/[^0-9+]/g, '');
+    // If it doesn't start with '+', assume Indian code '+91' for Real Estate CRM defaults
+    if (!cleanPhone.startsWith('+') && cleanPhone.length === 10) {
+      cleanPhone = `+91${cleanPhone}`;
+    }
+    // Remove the '+' for the whatsapp URL
+    cleanPhone = cleanPhone.replace('+', '');
+    
+    const leadName = lead.firstName !== "Imported" && lead.firstName !== "FB" ? lead.firstName : "there";
+    const agentName = user?.email?.split('@')[0] || "Mintage";
+    const projectName = lead.projectProperty || "our properties";
+    
+    const message = `Hi ${leadName}, this is ${agentName}. Thank you for your interest in ${projectName}. How can I assist you today?`;
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
+    
+    window.open(whatsappUrl, '_blank');
+  };
+
+  const handleEmailClick = () => {
+    if (!lead.email) {
+      alert("No email available for this lead.");
+      return;
+    }
+    const leadName = lead.firstName !== "Imported" && lead.firstName !== "FB" ? lead.firstName : "";
+    const projectName = lead.projectProperty || "our properties";
+    const subject = `Information regarding ${projectName}`;
+    const body = `Hi ${leadName},\n\nThank you for your interest in ${projectName}.\n\nBest regards,\n${user?.email?.split('@')[0]}`;
+    
+    const mailtoUrl = `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailtoUrl;
+  };
+
+  const handleCallClick = () => {
+    if (!lead.phone) {
+      alert("No phone number available for this lead.");
+      return;
+    }
+    window.location.href = `tel:${lead.phone}`;
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end bg-slate-900/30 backdrop-blur-sm transition-opacity">
@@ -385,6 +420,31 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                 {getSourceBadge(lead.source, lead.subSource)}
               </div>
 
+              {/* ✨ NEW: OMNICHANNEL QUICK ACTIONS BAR ✨ */}
+              <div className="flex flex-wrap items-center gap-3 py-1">
+                <button 
+                  onClick={handleWhatsAppClick}
+                  className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 bg-[#25D366] hover:bg-[#1EBE57] text-white text-sm font-bold rounded-xl shadow-md shadow-[#25D366]/20 transition-all hover:-translate-y-0.5"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  WhatsApp
+                </button>
+                <button 
+                  onClick={handleCallClick}
+                  className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-md shadow-blue-600/20 transition-all hover:-translate-y-0.5"
+                >
+                  <Phone className="w-4 h-4" />
+                  Call Lead
+                </button>
+                <button 
+                  onClick={handleEmailClick}
+                  className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-[#50bdaf] hover:border-[#74ebd5] text-sm font-bold rounded-xl shadow-sm transition-all hover:-translate-y-0.5"
+                >
+                  <Mail className="w-4 h-4" />
+                  Email
+                </button>
+              </div>
+
               {/* Contact Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white/60 backdrop-blur-sm p-5 rounded-2xl border border-white shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex items-center gap-4">
@@ -440,10 +500,7 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                 
                 <div className="flex flex-wrap gap-2 mb-4">
                   {(lead.tags || []).map(tag => (
-                    <span 
-                      key={tag} 
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 shadow-sm"
-                    >
+                    <span key={tag} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 shadow-sm">
                       {tag}
                       <button onClick={() => handleRemoveTag(tag)} className="p-0.5 hover:bg-slate-100 rounded-md transition-colors text-slate-400 hover:text-red-500">
                         <X className="w-3 h-3" />
@@ -523,6 +580,7 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                   </div>
                 </form>
 
+                {/* List Pending Reminders */}
                 <div className="space-y-3">
                   {reminders.filter(r => r.status === 'Pending').length === 0 ? (
                     <div className="text-center py-4 text-xs font-medium text-slate-400 italic">No pending tasks for this lead.</div>
