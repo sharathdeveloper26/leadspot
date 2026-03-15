@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.secureLinkFacebookPage = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
+exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
@@ -8,10 +8,10 @@ const axios_1 = require("axios");
 // Initialize the Firebase Admin SDK
 admin.initializeApp();
 const db = (0, firestore_1.getFirestore)(admin.app(), 'crmdb');
-// OPTIMIZATION: Memory restricted to 256MB, concurrency set to 80, timeout capped at 15s.
+// OPTIMIZATION: Memory restricted to 512MiB, concurrency set to 80, timeout capped at 15s.
 exports.incomingLeadWebhook = (0, https_1.onRequest)({
     cors: true,
-    memory: "512MiB", // <-- Increased from 256MiB for safety during high concurrency
+    memory: "512MiB",
     concurrency: 80,
     maxInstances: 10,
     timeoutSeconds: 15
@@ -300,7 +300,6 @@ exports.secureLinkFacebookPage = (0, https_1.onCall)(functionOpts, async (reques
     const APP_ID = '1439047481212574';
     const APP_SECRET = 'c8ea2e55436a18ecb2ca51ccdeac0937';
     try {
-        // OPTIMIZATION: Strict 4-second timeouts for Meta auth
         const exchangeUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${shortLivedUserToken}`;
         const exchangeRes = await axios_1.default.get(exchangeUrl, { timeout: 4000 });
         const longLivedUserToken = exchangeRes.data.access_token;
@@ -318,6 +317,76 @@ exports.secureLinkFacebookPage = (0, https_1.onCall)(functionOpts, async (reques
     }
     catch (error) {
         throw new https_1.HttpsError("internal", "Failed to secure Facebook connection.");
+    }
+});
+// 👇 NEW: PHASE 22 - WHATSAPP CLOUD API BULK CAMPAIGN ENGINE 👇
+exports.sendBulkWhatsAppCampaign = (0, https_1.onCall)(functionOpts, async (request) => {
+    if (!request.auth)
+        throw new https_1.HttpsError("unauthenticated", "Must be logged in.");
+    const clientId = request.auth.token.clientId;
+    const userEmail = request.auth.token.email || "Unknown Agent";
+    const { templateName, targetPhones } = request.data;
+    if (!clientId || !templateName || !targetPhones || !Array.isArray(targetPhones)) {
+        throw new https_1.HttpsError("invalid-argument", "Missing WhatsApp campaign parameters.");
+    }
+    // NOTE: In production, these should be fetched securely from db.collection('system_settings') 
+    // so you don't hardcode Meta API keys!
+    const META_WHATSAPP_TOKEN = 'YOUR_META_WHATSAPP_SYSTEM_TOKEN';
+    const PHONE_NUMBER_ID = 'YOUR_META_PHONE_NUMBER_ID';
+    try {
+        let successCount = 0;
+        let failCount = 0;
+        // Loop through phones and dispatch via Meta WhatsApp Cloud API
+        // (Using Promise.all for high-speed concurrent execution)
+        const sendPromises = targetPhones.map(async (rawPhone) => {
+            try {
+                // Clean phone number for Meta (must include country code, e.g., 91XXXXXXXXXX)
+                let cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+                if (cleanPhone.length === 10)
+                    cleanPhone = `91${cleanPhone}`;
+                /* 🔥 UNCOMMENT THIS WHEN READY TO FIRE TO META 🔥
+                await axios.post(`https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`, {
+                  messaging_product: "whatsapp",
+                  to: cleanPhone,
+                  type: "template",
+                  template: {
+                    name: templateName,
+                    language: { code: "en_US" }
+                  }
+                }, {
+                  headers: {
+                    'Authorization': `Bearer ${META_WHATSAPP_TOKEN}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+                */
+                successCount++;
+            }
+            catch (e) {
+                failCount++;
+                console.error(`Failed to send to ${rawPhone}:`, e);
+            }
+        });
+        await Promise.all(sendPromises);
+        // Log the campaign to Firestore
+        await db.collection('whatsapp_campaigns').add({
+            clientId: clientId,
+            senderEmail: userEmail,
+            templateName: templateName,
+            totalAttempted: targetPhones.length,
+            successCount: successCount,
+            failCount: failCount,
+            status: "Sent (Mock)",
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return {
+            success: true,
+            message: `WhatsApp Campaign queued. Sent: ${successCount}, Failed: ${failCount}.`
+        };
+    }
+    catch (error) {
+        console.error("WhatsApp Campaign Error:", error);
+        throw new https_1.HttpsError("internal", "Failed to execute WhatsApp campaign.");
     }
 });
 //# sourceMappingURL=index.js.map
