@@ -42,6 +42,9 @@ declare global {
   }
 }
 
+// ✨ ENTERPRISE AUDIO CHIME ✨
+const notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+
 export default function ClientDashboard() {
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'integrations' | 'team' | 'reports'>('dashboard');
@@ -110,9 +113,16 @@ export default function ClientDashboard() {
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
   }, [realTimeLeads, olderLeads]);
 
-  // 👇 BUG FIX: BULLETPROOF TASK SCANNER (2-Minute Pre-Warning) 👇
+  // 👇 ENTERPRISE TASK ENGINE SCANNER (Native OS Notifications + Sound) 👇
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const alertedTasks = useRef<Set<string>>(new Set());
+
+  // 1. Request Browser Permission on Load
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
+  }, []);
 
   useEffect(() => {
     if (!user?.clientId) return;
@@ -131,8 +141,13 @@ export default function ClientDashboard() {
   }, [user?.clientId]);
 
   const myPendingTasks = useMemo(() => {
+    // BUG FIX: If user is Client Admin, show ALL pending tasks to oversee the floor. 
+    // If user is Agent, show only their assigned tasks.
+    if (user?.role === 'client_admin') {
+      return pendingTasks;
+    }
     return pendingTasks.filter(t => t.agentId === user?.uid);
-  }, [pendingTasks, user?.uid]);
+  }, [pendingTasks, user?.uid, user?.role]);
 
   useEffect(() => {
     const checkTasks = () => {
@@ -142,18 +157,33 @@ export default function ClientDashboard() {
         const dueTime = new Date(task.dueDate).getTime();
         const timeDiff = dueTime - now;
         
-        // Trigger if due in the next 2 minutes (120,000ms) OR overdue up to 24 hrs
+        // Trigger if due in the next 2 minutes OR overdue up to 24 hrs
         if (timeDiff <= 120000 && timeDiff > -86400000 && !alertedTasks.current.has(task.id)) {
           
           const isOverdue = timeDiff < 0;
-          
+          const title = isOverdue ? "Task Overdue!" : "Task Due Soon!";
+          const bodyMsg = `${task.type} for ${task.leadName}`;
+
+          // 1. In-App Toast
           setToastData({
             show: true,
-            title: isOverdue ? "Task Overdue!" : "Task Due Soon!",
-            message: `${task.type} for ${task.leadName}`,
+            title: title,
+            message: bodyMsg,
             color: isOverdue ? "from-red-500 to-rose-600" : "from-amber-400 to-orange-500"
           });
           
+          // 2. Play Sound
+          notificationSound.play().catch(e => console.log("Audio auto-play blocked by browser.", e));
+
+          // 3. Native OS Browser Notification
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification(`Mintage CRM: ${title}`, {
+              body: bodyMsg,
+              icon: '/mintage-logo.png'
+            });
+          }
+          
+          // 4. Notification Center Log
           setNotifications(prev => {
             if (prev.some(n => n.id.includes(task.id))) return prev;
             return [{
@@ -167,7 +197,7 @@ export default function ClientDashboard() {
           });
 
           alertedTasks.current.add(task.id);
-          setTimeout(() => setToastData(null), 8000); // Stays on screen for 8 seconds
+          setTimeout(() => setToastData(null), 8000); 
         }
       });
     };
