@@ -110,28 +110,23 @@ export default function ClientDashboard() {
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
   }, [realTimeLeads, olderLeads]);
 
-  // 👇 BUG FIX: TASK ENGINE SCANNER 👇
+  // 👇 BUG FIX: BULLETPROOF TASK SCANNER (2-Minute Pre-Warning) 👇
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const alertedTasks = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user?.clientId) return;
-    
-    // Removed orderBy to prevent Firebase index crashes!
     const q = query(
       collection(db, 'reminders'),
       where('clientId', '==', user.clientId),
       where('status', '==', 'Pending')
     );
-    
     const unsub = onSnapshot(q, (snap) => {
       const tasks: any[] = [];
       snap.forEach(doc => tasks.push({ id: doc.id, ...doc.data() }));
-      // Sort chronologically in JS
       tasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
       setPendingTasks(tasks);
     }, (err) => console.error("Task sync error:", err));
-    
     return () => unsub();
   }, [user?.clientId]);
 
@@ -139,40 +134,46 @@ export default function ClientDashboard() {
     return pendingTasks.filter(t => t.agentId === user?.uid);
   }, [pendingTasks, user?.uid]);
 
-  // Instantly scan tasks on update, and then every 30 seconds
   useEffect(() => {
     const checkTasks = () => {
-      const now = new Date();
+      const now = new Date().getTime();
+      
       myPendingTasks.forEach(task => {
-        const dueDate = new Date(task.dueDate);
-        const timeDiff = dueDate.getTime() - now.getTime();
+        const dueTime = new Date(task.dueDate).getTime();
+        const timeDiff = dueTime - now;
         
-        // Trigger if task is due in next 5 mins, or overdue by less than 24 hours
-        if (timeDiff <= 300000 && timeDiff > -86400000 && !alertedTasks.current.has(task.id)) {
+        // Trigger if due in the next 2 minutes (120,000ms) OR overdue up to 24 hrs
+        if (timeDiff <= 120000 && timeDiff > -86400000 && !alertedTasks.current.has(task.id)) {
+          
+          const isOverdue = timeDiff < 0;
+          
           setToastData({
             show: true,
-            title: "Task Reminder!",
-            message: `${task.type} for ${task.leadName} is due!`,
-            color: "from-amber-400 to-orange-500" // Custom urgent color
+            title: isOverdue ? "Task Overdue!" : "Task Due Soon!",
+            message: `${task.type} for ${task.leadName}`,
+            color: isOverdue ? "from-red-500 to-rose-600" : "from-amber-400 to-orange-500"
           });
           
-          setNotifications(prev => [{
-            id: `task-${task.id}-${Date.now()}`,
-            leadId: task.leadId,
-            title: `Task Due: ${task.type}`,
-            message: `Don't forget to complete your task for ${task.leadName}.`,
-            time: new Date(),
-            isRead: false
-          }, ...prev].slice(0, 30));
+          setNotifications(prev => {
+            if (prev.some(n => n.id.includes(task.id))) return prev;
+            return [{
+              id: `task-${task.id}-${Date.now()}`,
+              leadId: task.leadId,
+              title: isOverdue ? `Overdue: ${task.type}` : `Due Soon: ${task.type}`,
+              message: `Action required for ${task.leadName}.`,
+              time: new Date(),
+              isRead: false
+            }, ...prev].slice(0, 30);
+          });
 
           alertedTasks.current.add(task.id);
-          setTimeout(() => setToastData(null), 6000);
+          setTimeout(() => setToastData(null), 8000); // Stays on screen for 8 seconds
         }
       });
     };
 
-    checkTasks(); // Run instantly so notifications don't wait 30 seconds
-    const interval = setInterval(checkTasks, 30000); 
+    checkTasks(); 
+    const interval = setInterval(checkTasks, 10000); // Scans every 10 seconds reliably
     return () => clearInterval(interval);
   }, [myPendingTasks]);
 
@@ -1292,7 +1293,7 @@ export default function ClientDashboard() {
 
       {/* ✨ LIVE TOAST NOTIFICATION ✨ */}
       {toastData && toastData.show && (
-        <div className="fixed top-6 right-6 z-[90] bg-white/90 backdrop-blur-xl border border-[#74ebd5]/50 shadow-2xl rounded-2xl p-4 animate-in slide-in-from-top-5 fade-in duration-300 flex items-start gap-4 w-80">
+        <div className="fixed top-6 right-6 z-[9999] bg-white/90 backdrop-blur-xl border border-[#74ebd5]/50 shadow-2xl rounded-2xl p-4 animate-in slide-in-from-top-5 fade-in duration-300 flex items-start gap-4 w-80">
           <div className={`p-2.5 bg-gradient-to-br ${toastData.color || 'from-[#74ebd5] to-[#9face6]'} rounded-xl text-white shadow-md shrink-0`}>
              <Zap className="w-5 h-5 animate-pulse" />
           </div>
@@ -2399,7 +2400,7 @@ export default function ClientDashboard() {
                               <td className="px-8 py-5">
                                 <div className="font-bold text-slate-800">
                                   {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
-                                 </div>
+                                </div>
                                 <div className="text-xs font-medium text-slate-500 mt-1">{lead.phone || lead.email}</div>
                               </td>
                               <td className="px-8 py-5 whitespace-nowrap">
@@ -3179,4 +3180,4 @@ export default function ClientDashboard() {
       `}</style>
     </div>
   );
-} 
+}
