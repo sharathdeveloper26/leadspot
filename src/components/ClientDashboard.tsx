@@ -110,43 +110,45 @@ export default function ClientDashboard() {
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
   }, [realTimeLeads, olderLeads]);
 
-  // ✨ NEW: TASK ENGINE STATE & LOGIC ✨
+  // 👇 BUG FIX: TASK ENGINE SCANNER 👇
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const alertedTasks = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user?.clientId) return;
-    // Fetch all pending reminders for this workspace
+    
+    // Removed orderBy to prevent Firebase index crashes!
     const q = query(
       collection(db, 'reminders'),
       where('clientId', '==', user.clientId),
       where('status', '==', 'Pending')
     );
+    
     const unsub = onSnapshot(q, (snap) => {
       const tasks: any[] = [];
       snap.forEach(doc => tasks.push({ id: doc.id, ...doc.data() }));
-      // Sort chronologically (earliest due date first)
+      // Sort chronologically in JS
       tasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
       setPendingTasks(tasks);
-    });
+    }, (err) => console.error("Task sync error:", err));
+    
     return () => unsub();
   }, [user?.clientId]);
 
   const myPendingTasks = useMemo(() => {
-    // Show only tasks assigned to the currently logged-in user
     return pendingTasks.filter(t => t.agentId === user?.uid);
   }, [pendingTasks, user?.uid]);
 
+  // Instantly scan tasks on update, and then every 30 seconds
   useEffect(() => {
-    // Task Alarm Scanner: Checks every 30 seconds if a task is due
-    const interval = setInterval(() => {
+    const checkTasks = () => {
       const now = new Date();
       myPendingTasks.forEach(task => {
         const dueDate = new Date(task.dueDate);
         const timeDiff = dueDate.getTime() - now.getTime();
         
-        // Trigger if task is due in the next 5 mins OR overdue by less than 1 hr, and not alerted yet
-        if (timeDiff <= 300000 && timeDiff > -3600000 && !alertedTasks.current.has(task.id)) {
+        // Trigger if task is due in next 5 mins, or overdue by less than 24 hours
+        if (timeDiff <= 300000 && timeDiff > -86400000 && !alertedTasks.current.has(task.id)) {
           setToastData({
             show: true,
             title: "Task Reminder!",
@@ -167,7 +169,10 @@ export default function ClientDashboard() {
           setTimeout(() => setToastData(null), 6000);
         }
       });
-    }, 30000); 
+    };
+
+    checkTasks(); // Run instantly so notifications don't wait 30 seconds
+    const interval = setInterval(checkTasks, 30000); 
     return () => clearInterval(interval);
   }, [myPendingTasks]);
 
@@ -176,7 +181,6 @@ export default function ClientDashboard() {
     if (leadToOpen) {
       openLeadDetails(leadToOpen);
     } else {
-      // If lead isn't in local state (e.g., an older lead), fetch it quickly
       try {
         const docSnap = await getDoc(doc(db, 'leads', leadId));
         if (docSnap.exists()) {
@@ -205,7 +209,7 @@ export default function ClientDashboard() {
       console.error('Error completing task:', err);
     }
   };
-  // ✨ END TASK ENGINE LOGIC ✨
+  // 👆 END TASK ENGINE SCANNER 👆
 
   const dashboardStats = useMemo(() => {
     const today = new Date();
@@ -500,14 +504,12 @@ export default function ClientDashboard() {
     try {
       const fetched: {id: string, name: string}[] = [];
 
-      // 1. Fetch Client-Specific Sources
       const q = query(collection(db, 'lead_sources'), where('clientId', '==', user.clientId));
       const snapshot = await getDocs(q);
       snapshot.forEach(doc => {
         fetched.push({ id: doc.id, name: doc.data().name });
       });
 
-      // 2. Fetch Super Admin Global Sources
       const globalQ = collection(db, 'global_lead_sources');
       const globalSnapshot = await getDocs(globalQ);
       globalSnapshot.forEach(doc => {
@@ -1558,6 +1560,7 @@ export default function ClientDashboard() {
 
                 {/* Dashboard Charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* 7-Day Trend Line Chart */}
                   <div className="lg:col-span-2 bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col">
                     <h3 className="text-lg font-bold text-slate-800 mb-8">Lead Generation Trend (Last 7 Days)</h3>
                     <div className="flex-1 min-h-[250px]">
@@ -1582,6 +1585,7 @@ export default function ClientDashboard() {
                     </div>
                   </div>
 
+                  {/* Today's Lead Sources Pie Chart */}
                   <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col">
                     <h3 className="text-lg font-bold text-slate-800 mb-6">Today's Lead Sources</h3>
                     {dashboardStats.todaysSourceChart.length > 0 ? (
@@ -2395,7 +2399,7 @@ export default function ClientDashboard() {
                               <td className="px-8 py-5">
                                 <div className="font-bold text-slate-800">
                                   {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
-                                </div>
+                                 </div>
                                 <div className="text-xs font-medium text-slate-500 mt-1">{lead.phone || lead.email}</div>
                               </td>
                               <td className="px-8 py-5 whitespace-nowrap">
@@ -2648,245 +2652,7 @@ export default function ClientDashboard() {
                   </div>
                 )}
               </div>
-            ) : activeTab === 'reports' ? (
-              <div className="max-w-7xl mx-auto space-y-8">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                  <div>
-                    <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Analytics Dashboard</h2>
-                    <p className="text-slate-500 text-sm font-medium">Overview of your lead performance and team metrics.</p>
-                  </div>
-                  
-                  <div className="flex flex-wrap items-center gap-4">
-                    <button
-                      onClick={handleExportCSV}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white text-sm font-bold rounded-xl shadow-lg shadow-[#74ebd5]/30 hover:opacity-90 hover:-translate-y-0.5 transition-all border border-transparent"
-                    >
-                      <Download className="w-4 h-4" />
-                      Export CSV
-                    </button>
-
-                    <div className="flex flex-wrap items-center gap-4 bg-white/70 backdrop-blur-xl p-2.5 rounded-2xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)]">
-                      <div className="flex items-center gap-2 px-3 bg-white border border-slate-100 rounded-xl py-1.5 shadow-sm">
-                        <Calendar className="w-4 h-4 text-[#74ebd5]" />
-                        <input 
-                          type="date" 
-                          value={startDate}
-                          max={endDate || undefined}
-                          onChange={(e) => {
-                            setStartDate(e.target.value);
-                            if (endDate && e.target.value > endDate) {
-                              setEndDate(e.target.value);
-                            }
-                          }}
-                          className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
-                        />
-                        <span className="text-slate-300 font-light">|</span>
-                        <input 
-                          type="date" 
-                          value={endDate}
-                          min={startDate || undefined}
-                          onChange={(e) => {
-                            setEndDate(e.target.value);
-                            if (startDate && e.target.value < startDate) {
-                              setStartDate(e.target.value);
-                            }
-                          }}
-                          className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent cursor-pointer outline-none"
-                        />
-                      </div>
-                      <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
-                      <select 
-                        value={leadSourceFilter}
-                        onChange={(e) => setLeadSourceFilter(e.target.value)}
-                        className="text-sm font-bold border border-slate-100 rounded-xl px-4 py-2 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 text-slate-700 cursor-pointer outline-none transition-all"
-                      >
-                        <option value="All">All Sources</option>
-                        {combinedSources.map(sourceName => (
-                          <option key={sourceName} value={sourceName}>{sourceName}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Total Leads</h3>
-                      <div className="p-2.5 bg-[#9face6]/15 rounded-xl text-[#7b8ed3] shadow-inner">
-                        <Users className="w-5 h-5" />
-                      </div>
-                    </div>
-                    <p className="text-4xl font-black text-slate-800">{filteredLeads.length}</p>
-                  </div>
-                  
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">New Leads</h3>
-                      <div className="p-2.5 bg-[#74ebd5]/15 rounded-xl text-[#50bdaf] shadow-inner">
-                        <Zap className="w-5 h-5" />
-                      </div>
-                    </div>
-                    <p className="text-4xl font-black text-slate-800">
-                      {filteredLeads.filter(l => l.status === 'New').length}
-                    </p>
-                  </div>
-
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Site Visits</h3>
-                      <div className="p-2.5 bg-purple-50 rounded-xl text-purple-500 shadow-inner">
-                        <Building2 className="w-5 h-5" />
-                      </div>
-                    </div>
-                    <p className="text-4xl font-black text-slate-800">
-                      {filteredLeads.filter(l => l.status === 'Site Visit Scheduled' || l.status === 'Site Visit Completed').length}
-                    </p>
-                  </div>
-
-                  <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Closed Won</h3>
-                      <div className="p-2.5 bg-amber-50 rounded-xl text-amber-500 shadow-inner">
-                        <Check className="w-5 h-5" />
-                      </div>
-                    </div>
-                    <p className="text-4xl font-black text-slate-800">
-                      {filteredLeads.filter(l => l.status === 'Closed Won').length}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
-                    <h3 className="text-lg font-bold text-slate-800 mb-8">Leads by Status</h3>
-                    <div className="h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={dynamicStatusData}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} dy={10} />
-                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} dx={-10} />
-                          <Tooltip 
-                            cursor={{ fill: '#f8fafc' }}
-                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', padding: '12px 16px', fontWeight: 600 }}
-                          />
-                          <Bar dataKey="count" fill="url(#colorUvBar)" radius={[6, 6, 0, 0]} maxBarSize={45}>
-                            <defs>
-                              <linearGradient id="colorUvBar" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#74ebd5" stopOpacity={1}/>
-                                <stop offset="95%" stopColor="#9face6" stopOpacity={0.8}/>
-                              </linearGradient>
-                            </defs>
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
-                    <h3 className="text-lg font-bold text-slate-800 mb-8">Leads by Source</h3>
-                    <div className="h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={dynamicSourceData}
-                            cx="50%"
-                            cy="45%"
-                            innerRadius={85}
-                            outerRadius={125}
-                            paddingAngle={3}
-                            dataKey="value"
-                            nameKey="name"
-                            stroke="none"
-                          >
-                            {dynamicSourceData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip 
-                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', fontWeight: 600 }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="flex flex-wrap justify-center gap-x-5 gap-y-3 mt-4">
-                        {dynamicSourceData.map((source, index) => (
-                          <div key={source.name} className="flex items-center gap-2 text-xs font-bold text-slate-600">
-                            <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
-                            {source.name}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
-                  <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40">
-                    <h3 className="text-lg font-bold text-slate-800">Agent Performance</h3>
-                  </div>
-                  <div className="overflow-x-auto custom-scrollbar">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-                          <th className="px-8 py-5">Agent Name</th>
-                          <th className="px-8 py-5">Total Assigned</th>
-                          <th className="px-8 py-5">New</th>
-                          <th className="px-8 py-5">In Progress</th>
-                          <th className="px-8 py-5">Closed Won</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100/60">
-                        {teamMembers.map(agent => {
-                          const agentLeads = filteredLeads.filter(l => (l.assignedToId || l.assignedTo) === agent.id);
-                          return (
-                            <tr key={agent.id} className="hover:bg-white/60 transition-colors">
-                              <td className="px-8 py-5 whitespace-nowrap">
-                                <div className="font-bold text-slate-800 flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 border border-white shadow-sm flex items-center justify-center text-indigo-700 text-xs font-black">
-                                    {agent.name.charAt(0).toUpperCase()}
-                                  </div>
-                                  {agent.name}
-                                </div>
-                              </td>
-                              <td className="px-8 py-5 whitespace-nowrap font-bold text-slate-600">
-                                {agentLeads.length}
-                              </td>
-                              <td className="px-8 py-5 whitespace-nowrap font-medium text-[#50bdaf]">
-                                {agentLeads.filter(l => l.status === 'New').length}
-                              </td>
-                              <td className="px-8 py-5 whitespace-nowrap font-medium text-[#7b8ed3]">
-                                {agentLeads.filter(l => ['Contacted', 'Site Visit', 'Negotiation'].includes(l.status)).length}
-                              </td>
-                              <td className="px-8 py-5 whitespace-nowrap font-bold text-amber-500">
-                                {agentLeads.filter(l => l.status === 'Closed Won').length}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        <tr className="bg-slate-50/30">
-                          <td className="px-8 py-5 whitespace-nowrap">
-                            <div className="font-bold text-slate-400 italic">Unassigned Leads</div>
-                          </td>
-                          <td className="px-8 py-5 whitespace-nowrap font-bold text-slate-400">
-                            {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo)).length}
-                          </td>
-                          <td className="px-8 py-5 whitespace-nowrap font-medium text-slate-400">
-                            {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && l.status === 'New').length}
-                          </td>
-                          <td className="px-8 py-5 whitespace-nowrap font-medium text-slate-400">
-                            {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && ['Contacted', 'Site Visit', 'Negotiation'].includes(l.status)).length}
-                          </td>
-                          <td className="px-8 py-5 whitespace-nowrap font-medium text-slate-400">
-                            {filteredLeads.filter(l => !(l.assignedToId || l.assignedTo) && l.status === 'Closed Won').length}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
             ) : (
-              /* Integrations View */
               <div className="max-w-4xl mx-auto space-y-8">
                 <div className="mb-8">
                   <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">External Integrations</h2>
@@ -3309,6 +3075,91 @@ export default function ClientDashboard() {
         </div>
       )}
 
+      {/* Add Agent Modal */}
+      {isAgentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md transition-all">
+          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-200/60">
+              <h3 className="text-xl font-extrabold text-slate-800">Add New Agent</h3>
+              <button 
+                onClick={() => {
+                  setIsAgentModalOpen(false);
+                  setAgentName('');
+                  setAgentEmail('');
+                  setAgentPassword('');
+                }}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateAgent} className="p-8 space-y-5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={agentName}
+                  onChange={(e) => setAgentName(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={agentEmail}
+                  onChange={(e) => setAgentEmail(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Temporary Password</label>
+                <input
+                  type="password"
+                  required
+                  value={agentPassword}
+                  onChange={(e) => setAgentPassword(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
+                  minLength={6}
+                />
+                <p className="mt-2 text-[11px] font-medium text-slate-400">Must be at least 6 characters long.</p>
+              </div>
+
+              <div className="pt-6 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAgentModalOpen(false);
+                    setAgentName('');
+                    setAgentEmail('');
+                    setAgentPassword('');
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingAgent}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg shadow-[#74ebd5]/30 disabled:opacity-50 flex justify-center items-center"
+                >
+                  {addingAgent ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    'Create Agent'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Internal CSS for custom scrollbars */}
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
@@ -3328,4 +3179,4 @@ export default function ClientDashboard() {
       `}</style>
     </div>
   );
-}
+} 

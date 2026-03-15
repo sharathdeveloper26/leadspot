@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Phone, Mail, Home, Calendar, Globe, Facebook, Search, Clock, Send, Tag, Plus, UserCircle2, HelpCircle, BellRing, CheckSquare } from 'lucide-react';
-import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs, addDoc, serverTimestamp, orderBy, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -109,15 +109,18 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
     if (isOpen) fetchLeadSources();
   }, [user?.clientId, isOpen]);
 
-  // Fetch Reminders for this lead
+  // 👇 BUG FIX: FETCH REMINDERS (Memory cleared, Index requirement removed) 👇
   useEffect(() => {
-    if (!isOpen || !lead || !user?.clientId) return;
+    if (!isOpen || !lead || !user?.clientId) {
+      setReminders([]); // CLEAR MEMORY SO IT DOES NOT BLEED TO OTHER LEADS
+      return;
+    }
 
+    // Removed orderBy() to bypass Firebase Index Crash. We sort manually in JS below.
     const q = query(
       collection(db, 'reminders'),
       where('clientId', '==', user.clientId),
-      where('leadId', '==', lead.id),
-      orderBy('dueDate', 'asc')
+      where('leadId', '==', lead.id)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -125,11 +128,16 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
       snapshot.forEach((doc) => {
         fetchedReminders.push({ id: doc.id, ...doc.data() });
       });
+      // Sort chronologically here!
+      fetchedReminders.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
       setReminders(fetchedReminders);
+    }, (error) => {
+      console.error("Reminders listener failed:", error);
     });
 
     return () => unsubscribe();
-  }, [isOpen, lead, user?.clientId]);
+  }, [isOpen, lead?.id, user?.clientId]);
+  // 👆 END BUG FIX 👆
 
   if (!isOpen || !lead) return null;
 
@@ -192,7 +200,7 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
         leadName: `${lead.firstName} ${lead.lastName === 'Lead' ? '' : lead.lastName}`.trim(),
         agentId: lead.assignedToId || lead.assignedTo || user.uid,
         type: reminderType,
-        dueDate: new Date(reminderDate).toISOString(), // Store as ISO for reliable sorting
+        dueDate: new Date(reminderDate).toISOString(),
         note: reminderNote.trim(),
         status: 'Pending',
         createdBy: user.email,
@@ -299,15 +307,6 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
   };
 
   const sortedNotes = [...(lead.notes || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-  const standardFields = [
-    'id', 'firstName', 'lastName', 'email', 'phone', 'projectProperty', 'status', 
-    'source', 'subSource', 'assignedTo', 'assignedToId', 'assignedToName', 
-    'isDuplicate', 'createdAt', 'notes', 'clientId', 'tags',
-    'designation', 'location', 'linkedin', 'formId', 'adId', 'adName', 'campaignId', 'campaignName',
-    'truecallerName', 'truecallerEmail', 'customAnswers', 'utm_source', 'utm_medium', 'utm_campaign'
-  ];
-  const advancedParams = Object.keys(lead).filter(key => !standardFields.includes(key));
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end bg-slate-900/30 backdrop-blur-sm transition-opacity">
@@ -430,7 +429,10 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                 
                 <div className="flex flex-wrap gap-2 mb-4">
                   {(lead.tags || []).map(tag => (
-                    <span key={tag} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 shadow-sm">
+                    <span 
+                      key={tag} 
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 shadow-sm"
+                    >
                       {tag}
                       <button onClick={() => handleRemoveTag(tag)} className="p-0.5 hover:bg-slate-100 rounded-md transition-colors text-slate-400 hover:text-red-500">
                         <X className="w-3 h-3" />
@@ -461,14 +463,13 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                 </form>
               </div>
 
-              {/* 👇 NEW: REAL ESTATE TASKS & REMINDERS ENGINE 👇 */}
+              {/* TASKS & REMINDERS ENGINE */}
               <div className="bg-white/60 backdrop-blur-sm p-6 rounded-2xl border border-white shadow-[0_4px_20px_rgba(0,0,0,0.02)] mt-6">
                 <div className="flex items-center gap-3 mb-5">
                   <div className="p-2 bg-amber-100/50 rounded-xl text-amber-600"><BellRing className="w-5 h-5"/></div>
                   <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Tasks & Reminders</h3>
                 </div>
 
-                {/* Create Reminder Form */}
                 <form onSubmit={handleAddReminder} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -511,7 +512,6 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                   </div>
                 </form>
 
-                {/* List Pending Reminders */}
                 <div className="space-y-3">
                   {reminders.filter(r => r.status === 'Pending').length === 0 ? (
                     <div className="text-center py-4 text-xs font-medium text-slate-400 italic">No pending tasks for this lead.</div>
@@ -523,9 +523,9 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                             <span className="px-2 py-0.5 bg-white text-amber-700 text-[10px] font-black uppercase tracking-widest rounded shadow-sm border border-amber-200">
                               {reminder.type}
                             </span>
-                            <span className="text-xs font-bold text-red-600 flex items-center gap-1">
+                            <span className={`text-xs font-bold flex items-center gap-1 ${new Date(reminder.dueDate) < new Date() ? 'text-red-600' : 'text-amber-600'}`}>
                               <Clock className="w-3 h-3" />
-                              {new Date(reminder.dueDate).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
+                              {new Date(reminder.dueDate) < new Date() ? 'Overdue: ' : ''}{new Date(reminder.dueDate).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
                             </span>
                           </div>
                           {reminder.note && <p className="text-sm font-medium text-slate-700 mt-1.5">{reminder.note}</p>}
@@ -543,7 +543,6 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                   )}
                 </div>
               </div>
-              {/* 👆 END TASK ENGINE 👆 */}
 
               {/* FB Custom Questions */}
               {lead.customAnswers && Object.keys(lead.customAnswers).length > 0 && (
