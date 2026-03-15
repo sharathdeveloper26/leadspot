@@ -8,7 +8,14 @@ const axios_1 = require("axios");
 // Initialize the Firebase Admin SDK
 admin.initializeApp();
 const db = (0, firestore_1.getFirestore)(admin.app(), 'crmdb');
-exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+// OPTIMIZATION: Memory restricted to 256MB, concurrency set to 80, timeout capped at 15s.
+exports.incomingLeadWebhook = (0, https_1.onRequest)({
+    cors: true,
+    memory: "512MiB", // <-- Increased from 256MiB for safety during high concurrency
+    concurrency: 80,
+    maxInstances: 10,
+    timeoutSeconds: 15
+}, async (req, res) => {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     // 1. HANDSHAKE: Handle Meta Verification (GET Request)
     if (req.method === "GET") {
@@ -47,7 +54,8 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                     res.status(200).send("Ignored: Missing Access Token");
                     return;
                 }
-                const fbResponse = await axios_1.default.get(`https://graph.facebook.com/v19.0/${leadgenId}?fields=field_data,form_id,ad_id,ad_name,campaign_id,campaign_name&access_token=${pageAccessToken}`);
+                // OPTIMIZATION: 4-second timeout for Facebook Graph API
+                const fbResponse = await axios_1.default.get(`https://graph.facebook.com/v19.0/${leadgenId}?fields=field_data,form_id,ad_id,ad_name,campaign_id,campaign_name&access_token=${pageAccessToken}`, { timeout: 4000 });
                 const fbData = fbResponse.data;
                 const fbFields = fbData.field_data || [];
                 fbFields.forEach((field) => {
@@ -89,11 +97,15 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
             let linkedinUrl = "";
             if (leadData.email) {
                 try {
+                    // OPTIMIZATION: Strict 3-second timeout for Apollo API so it doesn't hold the function hostage
                     const apolloResponse = await axios_1.default.post('https://api.apollo.io/v1/people/match', {
                         api_key: 'vWaMRrj2mpju0d1hVAN6RQ',
                         email: leadData.email,
                         name: leadData.name
-                    }, { headers: { 'Content-Type': 'application/json' } });
+                    }, {
+                        headers: { 'Content-Type': 'application/json' },
+                        timeout: 3000
+                    });
                     if (apolloResponse.data && apolloResponse.data.person) {
                         const person = apolloResponse.data.person;
                         designation = person.title || "Unknown";
@@ -102,7 +114,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
                     }
                 }
                 catch (enrichmentError) {
-                    console.error("Apollo API Miss:", enrichmentError.message);
+                    console.error("Apollo API Miss/Timeout:", enrichmentError.message);
                 }
             }
             let assignedToId = null;
@@ -153,37 +165,38 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({ cors: true }, async (req,
             };
             // 1. SAVE TO CRM DATABASE
             await db.collection("leads").add(finalLead);
-            // 👇 2. NEW: MULTI-TENANT DYNAMIC OUTBOUND PUSH 👇
+            // 2. MULTI-TENANT DYNAMIC OUTBOUND PUSH
             try {
-                // Check if this specific client has configured an Outbound Webhook
                 const outboundDoc = await db.collection("outbound_integrations").doc(clientId).get();
                 if (outboundDoc.exists) {
                     const clientWebhookUrl = (_j = outboundDoc.data()) === null || _j === void 0 ? void 0 : _j.webhookUrl;
                     if (clientWebhookUrl) {
-                        // We need to convert Firestore Timestamp to a normal ISO string for the HTTP push
                         const webhookPayload = Object.assign(Object.assign({}, finalLead), { createdAt: new Date().toISOString() });
+                        // OPTIMIZATION: Strict 3-second timeout for Client Outbound webhook to prevent slow client servers from billing you
                         await axios_1.default.post(clientWebhookUrl, webhookPayload, {
-                            headers: { 'Content-Type': 'application/json' }
+                            headers: { 'Content-Type': 'application/json' },
+                            timeout: 3000
                         });
-                        console.log(`Successfully pushed lead to Client (${clientId}) Webhook: ${clientWebhookUrl}`);
+                        console.log(`Successfully pushed lead to Client (${clientId}) Webhook`);
                     }
                 }
             }
             catch (webhookError) {
                 console.error(`Failed to push to Client (${clientId}) webhook:`, webhookError.message);
             }
-            // 👆 END MULTI-TENANT PUSH 👆
             res.status(200).json({ success: true, message: "Event processed" });
         }
         catch (error) {
             console.error("Webhook Processing Error:", error.message || error);
-            res.status(200).send("EVENT_RECEIVED_BUT_ERRORED");
+            res.status(200).send("EVENT_RECEIVED_BUT_ERRORED"); // Fast return prevents Meta from retrying and charging us again
         }
         return;
     }
     res.status(200).send("Method Not Allowed");
 });
-exports.createAgent = (0, https_1.onCall)(async (request) => {
+// OPTIMIZATION: Applied concurrency and memory limits to all callable UI functions
+const functionOpts = { memory: "256MiB", concurrency: 80, maxInstances: 10 };
+exports.createAgent = (0, https_1.onCall)(functionOpts, async (request) => {
     var _a;
     if (!request.auth)
         throw new https_1.HttpsError("unauthenticated", "You must be logged in to create an agent.");
@@ -216,7 +229,7 @@ exports.createAgent = (0, https_1.onCall)(async (request) => {
         throw new https_1.HttpsError("internal", error.message || "Failed to create agent.");
     }
 });
-exports.deleteAgent = (0, https_1.onCall)(async (request) => {
+exports.deleteAgent = (0, https_1.onCall)(functionOpts, async (request) => {
     var _a, _b;
     if (!request.auth || request.auth.token.role !== "client_admin")
         throw new https_1.HttpsError("permission-denied", "Only Client Admins can delete agents.");
@@ -237,7 +250,7 @@ exports.deleteAgent = (0, https_1.onCall)(async (request) => {
         throw new https_1.HttpsError("internal", error.message || "Failed to delete agent.");
     }
 });
-exports.updateAgent = (0, https_1.onCall)(async (request) => {
+exports.updateAgent = (0, https_1.onCall)(functionOpts, async (request) => {
     var _a, _b;
     if (!request.auth || request.auth.token.role !== "client_admin")
         throw new https_1.HttpsError("permission-denied", "Only Client Admins can update agents.");
@@ -258,7 +271,7 @@ exports.updateAgent = (0, https_1.onCall)(async (request) => {
         throw new https_1.HttpsError("internal", error.message || "Failed to update agent.");
     }
 });
-exports.registerNewClient = (0, https_1.onCall)(async (request) => {
+exports.registerNewClient = (0, https_1.onCall)(functionOpts, async (request) => {
     const { email, password, companyName } = request.data;
     if (!email || !password || !companyName)
         throw new https_1.HttpsError("invalid-argument", "Missing parameters.");
@@ -277,7 +290,7 @@ exports.registerNewClient = (0, https_1.onCall)(async (request) => {
         throw new https_1.HttpsError("internal", error.message || "Failed to register new client.");
     }
 });
-exports.secureLinkFacebookPage = (0, https_1.onCall)(async (request) => {
+exports.secureLinkFacebookPage = (0, https_1.onCall)(functionOpts, async (request) => {
     if (!request.auth)
         throw new https_1.HttpsError("unauthenticated", "Must be logged in.");
     const clientId = request.auth.token.clientId;
@@ -287,16 +300,17 @@ exports.secureLinkFacebookPage = (0, https_1.onCall)(async (request) => {
     const APP_ID = '1439047481212574';
     const APP_SECRET = 'c8ea2e55436a18ecb2ca51ccdeac0937';
     try {
+        // OPTIMIZATION: Strict 4-second timeouts for Meta auth
         const exchangeUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${shortLivedUserToken}`;
-        const exchangeRes = await axios_1.default.get(exchangeUrl);
+        const exchangeRes = await axios_1.default.get(exchangeUrl, { timeout: 4000 });
         const longLivedUserToken = exchangeRes.data.access_token;
         const pagesUrl = `https://graph.facebook.com/v19.0/me/accounts?access_token=${longLivedUserToken}`;
-        const pagesRes = await axios_1.default.get(pagesUrl);
+        const pagesRes = await axios_1.default.get(pagesUrl, { timeout: 4000 });
         const pageData = pagesRes.data.data.find((p) => p.id === pageId);
         if (!pageData)
             throw new Error("Could not find the requested page. Check permissions.");
         const permanentPageToken = pageData.access_token;
-        await axios_1.default.post(`https://graph.facebook.com/v19.0/${pageId}/subscribed_apps`, new URLSearchParams({ subscribed_fields: 'leadgen', access_token: permanentPageToken }).toString(), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+        await axios_1.default.post(`https://graph.facebook.com/v19.0/${pageId}/subscribed_apps`, new URLSearchParams({ subscribed_fields: 'leadgen', access_token: permanentPageToken }).toString(), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 4000 });
         await db.collection('facebook_integrations').doc(clientId).set({
             clientId: clientId, pageId: pageId, pageName: pageName, pageAccessToken: permanentPageToken, status: 'active', createdAt: admin.firestore.FieldValue.serverTimestamp()
         });

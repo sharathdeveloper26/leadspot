@@ -109,18 +109,17 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
     if (isOpen) fetchLeadSources();
   }, [user?.clientId, isOpen]);
 
-  // 👇 BUG FIX: FETCH REMINDERS (Memory cleared, Index requirement removed) 👇
+  // 👇 BUG FIX: FETCH REMINDERS (Memory cleared to prevent bleed) 👇
   useEffect(() => {
     if (!isOpen || !lead || !user?.clientId) {
-      setReminders([]); // CLEAR MEMORY SO IT DOES NOT BLEED TO OTHER LEADS
+      setReminders([]); // CLEAR MEMORY
       return;
     }
 
-    // Removed orderBy() to bypass Firebase Index Crash. We sort manually in JS below.
     const q = query(
       collection(db, 'reminders'),
       where('clientId', '==', user.clientId),
-      where('leadId', '==', lead.id)
+      where('leadId', '==', lead.id) // ONLY THIS LEAD
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -128,14 +127,17 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
       snapshot.forEach((doc) => {
         fetchedReminders.push({ id: doc.id, ...doc.data() });
       });
-      // Sort chronologically here!
+      // Sort chronologically in JS
       fetchedReminders.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
       setReminders(fetchedReminders);
     }, (error) => {
       console.error("Reminders listener failed:", error);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      setReminders([]); // Force wipe memory when modal closes!
+    };
   }, [isOpen, lead?.id, user?.clientId]);
   // 👆 END BUG FIX 👆
 
@@ -307,6 +309,15 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
   };
 
   const sortedNotes = [...(lead.notes || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  const standardFields = [
+    'id', 'firstName', 'lastName', 'email', 'phone', 'projectProperty', 'status', 
+    'source', 'subSource', 'assignedTo', 'assignedToId', 'assignedToName', 
+    'isDuplicate', 'createdAt', 'notes', 'clientId', 'tags',
+    'designation', 'location', 'linkedin', 'formId', 'adId', 'adName', 'campaignId', 'campaignName',
+    'truecallerName', 'truecallerEmail', 'customAnswers', 'utm_source', 'utm_medium', 'utm_campaign'
+  ];
+  const advancedParams = Object.keys(lead).filter(key => !standardFields.includes(key));
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end bg-slate-900/30 backdrop-blur-sm transition-opacity">

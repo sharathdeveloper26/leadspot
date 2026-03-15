@@ -7,7 +7,15 @@ import axios from "axios";
 admin.initializeApp();
 const db = getFirestore(admin.app(), 'crmdb');
 
-export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) => {
+// OPTIMIZATION: Memory restricted to 256MB, concurrency set to 80, timeout capped at 15s.
+export const incomingLeadWebhook = onRequest({ 
+  cors: true,
+  memory: "512MiB", // <-- Increased from 256MiB for safety during high concurrency
+  concurrency: 80,
+  maxInstances: 10,
+  timeoutSeconds: 15 
+}, async (req, res) => {
+  
   // 1. HANDSHAKE: Handle Meta Verification (GET Request)
   if (req.method === "GET") {
     const mode = req.query["hub.mode"];
@@ -53,8 +61,10 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
           return;
         }
 
+        // OPTIMIZATION: 4-second timeout for Facebook Graph API
         const fbResponse = await axios.get(
-          `https://graph.facebook.com/v19.0/${leadgenId}?fields=field_data,form_id,ad_id,ad_name,campaign_id,campaign_name&access_token=${pageAccessToken}`
+          `https://graph.facebook.com/v19.0/${leadgenId}?fields=field_data,form_id,ad_id,ad_name,campaign_id,campaign_name&access_token=${pageAccessToken}`,
+          { timeout: 4000 }
         );
         
         const fbData = fbResponse.data;
@@ -103,11 +113,15 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
 
       if (leadData.email) {
           try {
+              // OPTIMIZATION: Strict 3-second timeout for Apollo API so it doesn't hold the function hostage
               const apolloResponse = await axios.post('https://api.apollo.io/v1/people/match', {
                   api_key: 'vWaMRrj2mpju0d1hVAN6RQ', 
                   email: leadData.email,
                   name: leadData.name
-              }, { headers: { 'Content-Type': 'application/json' }});
+              }, { 
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 3000 
+              });
 
               if (apolloResponse.data && apolloResponse.data.person) {
                   const person = apolloResponse.data.person;
@@ -116,7 +130,7 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
                   linkedinUrl = person.linkedin_url || "";
               }
           } catch (enrichmentError: any) {
-              console.error("Apollo API Miss:", enrichmentError.message);
+              console.error("Apollo API Miss/Timeout:", enrichmentError.message);
           }
       }
 
@@ -172,42 +186,44 @@ export const incomingLeadWebhook = onRequest({ cors: true }, async (req, res) =>
       // 1. SAVE TO CRM DATABASE
       await db.collection("leads").add(finalLead);
 
-      // 👇 2. NEW: MULTI-TENANT DYNAMIC OUTBOUND PUSH 👇
+      // 2. MULTI-TENANT DYNAMIC OUTBOUND PUSH
       try {
-        // Check if this specific client has configured an Outbound Webhook
         const outboundDoc = await db.collection("outbound_integrations").doc(clientId).get();
         if (outboundDoc.exists) {
           const clientWebhookUrl = outboundDoc.data()?.webhookUrl;
           if (clientWebhookUrl) {
-            // We need to convert Firestore Timestamp to a normal ISO string for the HTTP push
             const webhookPayload = {
               ...finalLead,
               createdAt: new Date().toISOString() 
             };
             
+            // OPTIMIZATION: Strict 3-second timeout for Client Outbound webhook to prevent slow client servers from billing you
             await axios.post(clientWebhookUrl, webhookPayload, {
-              headers: { 'Content-Type': 'application/json' }
+              headers: { 'Content-Type': 'application/json' },
+              timeout: 3000
             });
-            console.log(`Successfully pushed lead to Client (${clientId}) Webhook: ${clientWebhookUrl}`);
+            console.log(`Successfully pushed lead to Client (${clientId}) Webhook`);
           }
         }
       } catch (webhookError: any) {
         console.error(`Failed to push to Client (${clientId}) webhook:`, webhookError.message);
       }
-      // 👆 END MULTI-TENANT PUSH 👆
 
       res.status(200).json({ success: true, message: "Event processed" });
 
     } catch (error: any) {
       console.error("Webhook Processing Error:", error.message || error);
-      res.status(200).send("EVENT_RECEIVED_BUT_ERRORED"); 
+      res.status(200).send("EVENT_RECEIVED_BUT_ERRORED"); // Fast return prevents Meta from retrying and charging us again
     }
     return;
   }
   res.status(200).send("Method Not Allowed");
 });
 
-export const createAgent = onCall(async (request) => {
+// OPTIMIZATION: Applied concurrency and memory limits to all callable UI functions
+const functionOpts = { memory: "256MiB" as const, concurrency: 80, maxInstances: 10 };
+
+export const createAgent = onCall(functionOpts, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "You must be logged in to create an agent.");
   if (request.auth.token.role !== "client_admin") throw new HttpsError("permission-denied", "Only Client Admins can create agents.");
   
@@ -241,7 +257,7 @@ export const createAgent = onCall(async (request) => {
   }
 });
 
-export const deleteAgent = onCall(async (request) => {
+export const deleteAgent = onCall(functionOpts, async (request) => {
   if (!request.auth || request.auth.token.role !== "client_admin") throw new HttpsError("permission-denied", "Only Client Admins can delete agents.");
   const clientId = request.auth.token.clientId;
   const { agentId } = request.data;
@@ -260,7 +276,7 @@ export const deleteAgent = onCall(async (request) => {
   }
 });
 
-export const updateAgent = onCall(async (request) => {
+export const updateAgent = onCall(functionOpts, async (request) => {
   if (!request.auth || request.auth.token.role !== "client_admin") throw new HttpsError("permission-denied", "Only Client Admins can update agents.");
   const clientId = request.auth.token.clientId;
   const { agentId, name } = request.data;
@@ -279,7 +295,7 @@ export const updateAgent = onCall(async (request) => {
   }
 });
 
-export const registerNewClient = onCall(async (request) => {
+export const registerNewClient = onCall(functionOpts, async (request) => {
   const { email, password, companyName } = request.data;
   if (!email || !password || !companyName) throw new HttpsError("invalid-argument", "Missing parameters.");
 
@@ -302,7 +318,7 @@ export const registerNewClient = onCall(async (request) => {
   }
 });
 
-export const secureLinkFacebookPage = onCall(async (request) => {
+export const secureLinkFacebookPage = onCall(functionOpts, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be logged in.");
   
   const clientId = request.auth.token.clientId;
@@ -314,12 +330,13 @@ export const secureLinkFacebookPage = onCall(async (request) => {
   const APP_SECRET = 'c8ea2e55436a18ecb2ca51ccdeac0937'; 
 
   try {
+    // OPTIMIZATION: Strict 4-second timeouts for Meta auth
     const exchangeUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${shortLivedUserToken}`;
-    const exchangeRes = await axios.get(exchangeUrl);
+    const exchangeRes = await axios.get(exchangeUrl, { timeout: 4000 });
     const longLivedUserToken = exchangeRes.data.access_token;
 
     const pagesUrl = `https://graph.facebook.com/v19.0/me/accounts?access_token=${longLivedUserToken}`;
-    const pagesRes = await axios.get(pagesUrl);
+    const pagesRes = await axios.get(pagesUrl, { timeout: 4000 });
     const pageData = pagesRes.data.data.find((p: any) => p.id === pageId);
 
     if (!pageData) throw new Error("Could not find the requested page. Check permissions.");
@@ -328,7 +345,7 @@ export const secureLinkFacebookPage = onCall(async (request) => {
 
     await axios.post(`https://graph.facebook.com/v19.0/${pageId}/subscribed_apps`, 
       new URLSearchParams({ subscribed_fields: 'leadgen', access_token: permanentPageToken }).toString(),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 4000 }
     );
 
     await db.collection('facebook_integrations').doc(clientId).set({
