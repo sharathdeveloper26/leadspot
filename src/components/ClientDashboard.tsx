@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2 } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 
@@ -67,7 +67,7 @@ export default function ClientDashboard() {
   const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
 
-  // ✨ Custom Global Dialog Engine ✨
+  // Dialog State
   const [dialogState, setDialogState] = useState<{
     isOpen: boolean;
     type: 'alert' | 'confirm' | 'success' | 'error';
@@ -82,9 +82,7 @@ export default function ClientDashboard() {
   };
 
   const closeDialog = () => {
-    if (dialogState.onCloseAction && dialogState.type !== 'confirm') {
-      dialogState.onCloseAction();
-    }
+    if (dialogState.onCloseAction && dialogState.type !== 'confirm') dialogState.onCloseAction();
     setDialogState(prev => ({ ...prev, isOpen: false }));
   };
 
@@ -92,7 +90,7 @@ export default function ClientDashboard() {
   const isInitialMount = useRef(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [toastData, setToastData] = useState<{show: boolean, title: string, message: string} | null>(null);
+  const [toastData, setToastData] = useState<{show: boolean, title: string, message: string, color?: string} | null>(null);
 
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,6 +109,103 @@ export default function ClientDashboard() {
     const combined = [...realTimeLeads, ...olderLeads];
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
   }, [realTimeLeads, olderLeads]);
+
+  // ✨ NEW: TASK ENGINE STATE & LOGIC ✨
+  const [pendingTasks, setPendingTasks] = useState<any[]>([]);
+  const alertedTasks = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!user?.clientId) return;
+    // Fetch all pending reminders for this workspace
+    const q = query(
+      collection(db, 'reminders'),
+      where('clientId', '==', user.clientId),
+      where('status', '==', 'Pending')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const tasks: any[] = [];
+      snap.forEach(doc => tasks.push({ id: doc.id, ...doc.data() }));
+      // Sort chronologically (earliest due date first)
+      tasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+      setPendingTasks(tasks);
+    });
+    return () => unsub();
+  }, [user?.clientId]);
+
+  const myPendingTasks = useMemo(() => {
+    // Show only tasks assigned to the currently logged-in user
+    return pendingTasks.filter(t => t.agentId === user?.uid);
+  }, [pendingTasks, user?.uid]);
+
+  useEffect(() => {
+    // Task Alarm Scanner: Checks every 30 seconds if a task is due
+    const interval = setInterval(() => {
+      const now = new Date();
+      myPendingTasks.forEach(task => {
+        const dueDate = new Date(task.dueDate);
+        const timeDiff = dueDate.getTime() - now.getTime();
+        
+        // Trigger if task is due in the next 5 mins OR overdue by less than 1 hr, and not alerted yet
+        if (timeDiff <= 300000 && timeDiff > -3600000 && !alertedTasks.current.has(task.id)) {
+          setToastData({
+            show: true,
+            title: "Task Reminder!",
+            message: `${task.type} for ${task.leadName} is due!`,
+            color: "from-amber-400 to-orange-500" // Custom urgent color
+          });
+          
+          setNotifications(prev => [{
+            id: `task-${task.id}-${Date.now()}`,
+            leadId: task.leadId,
+            title: `Task Due: ${task.type}`,
+            message: `Don't forget to complete your task for ${task.leadName}.`,
+            time: new Date(),
+            isRead: false
+          }, ...prev].slice(0, 30));
+
+          alertedTasks.current.add(task.id);
+          setTimeout(() => setToastData(null), 6000);
+        }
+      });
+    }, 30000); 
+    return () => clearInterval(interval);
+  }, [myPendingTasks]);
+
+  const handleOpenTaskLead = async (leadId: string) => {
+    let leadToOpen = leads.find(l => l.id === leadId);
+    if (leadToOpen) {
+      openLeadDetails(leadToOpen);
+    } else {
+      // If lead isn't in local state (e.g., an older lead), fetch it quickly
+      try {
+        const docSnap = await getDoc(doc(db, 'leads', leadId));
+        if (docSnap.exists()) {
+          openLeadDetails({ id: docSnap.id, ...docSnap.data() } as Lead);
+        } else {
+          showDialog('error', 'Not Found', 'Lead data could not be found.');
+        }
+      } catch (err) {
+        console.error("Error fetching lead:", err);
+      }
+    }
+  };
+
+  const completeTask = async (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation();
+    try {
+      await updateDoc(doc(db, 'reminders', taskId), { status: 'Completed' });
+      setToastData({
+        show: true,
+        title: "Task Completed",
+        message: "Great job checking that off!",
+        color: "from-emerald-400 to-teal-500"
+      });
+      setTimeout(() => setToastData(null), 3000);
+    } catch (err) {
+      console.error('Error completing task:', err);
+    }
+  };
+  // ✨ END TASK ENGINE LOGIC ✨
 
   const dashboardStats = useMemo(() => {
     const today = new Date();
@@ -234,7 +329,7 @@ export default function ClientDashboard() {
         showDialog('alert', 'Session Expired', 'Your session has expired due to 15 minutes of inactivity. Please log in again to continue.', undefined, () => {
           logout();
         });
-      }, 900000); // 15 minutes
+      }, 900000); 
     };
 
     resetTimer();
@@ -400,7 +495,7 @@ export default function ClientDashboard() {
     }
   };
 
- const fetchLeadSources = async () => {
+  const fetchLeadSources = async () => {
     if (!user?.clientId) return;
     try {
       const fetched: {id: string, name: string}[] = [];
@@ -416,13 +511,11 @@ export default function ClientDashboard() {
       const globalQ = collection(db, 'global_lead_sources');
       const globalSnapshot = await getDocs(globalQ);
       globalSnapshot.forEach(doc => {
-        // Smart check: Don't add it if the client already made a custom source with the exact same name!
         if (!fetched.some(s => s.name.toLowerCase() === doc.data().name.toLowerCase())) {
           fetched.push({ id: doc.id, name: doc.data().name });
         }
       });
 
-      // Sort alphabetically and set
       fetched.sort((a, b) => a.name.localeCompare(b.name));
       setLeadSources(fetched);
       
@@ -430,7 +523,6 @@ export default function ClientDashboard() {
         setSource(fetched[0].name);
       }
 
-      // Fetch Sub-Sources (Remains unchanged)
       const qSub = query(collection(db, 'lead_sub_sources'), where('clientId', '==', user.clientId));
       const snapshotSub = await getDocs(qSub);
       const fetchedSub: {id: string, name: string}[] = [];
@@ -1199,7 +1291,7 @@ export default function ClientDashboard() {
       {/* ✨ LIVE TOAST NOTIFICATION ✨ */}
       {toastData && toastData.show && (
         <div className="fixed top-6 right-6 z-[90] bg-white/90 backdrop-blur-xl border border-[#74ebd5]/50 shadow-2xl rounded-2xl p-4 animate-in slide-in-from-top-5 fade-in duration-300 flex items-start gap-4 w-80">
-          <div className="p-2.5 bg-gradient-to-br from-[#74ebd5] to-[#9face6] rounded-xl text-white shadow-md shrink-0">
+          <div className={`p-2.5 bg-gradient-to-br ${toastData.color || 'from-[#74ebd5] to-[#9face6]'} rounded-xl text-white shadow-md shrink-0`}>
              <Zap className="w-5 h-5 animate-pulse" />
           </div>
           <div className="flex-1 pt-0.5">
@@ -1322,7 +1414,7 @@ export default function ClientDashboard() {
           >
             <BarChart2 className="w-5 h-5" />
             Reports
-          </button> 
+          </button>
         </nav>
 
         <div className="p-5 border-t border-slate-100/50 bg-white/20">
@@ -1377,7 +1469,7 @@ export default function ClientDashboard() {
                           <div 
                             key={notif.id} 
                             onClick={() => {
-                              openLeadDetails(notif.leadRef);
+                              handleOpenTaskLead(notif.leadId);
                               setIsNotificationOpen(false);
                             }}
                             className={`p-4 border-b border-slate-50 hover:bg-slate-50/80 cursor-pointer transition-colors ${!notif.isRead ? 'bg-[#74ebd5]/5' : ''}`}
@@ -1466,7 +1558,6 @@ export default function ClientDashboard() {
 
                 {/* Dashboard Charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* 7-Day Trend Line Chart */}
                   <div className="lg:col-span-2 bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col">
                     <h3 className="text-lg font-bold text-slate-800 mb-8">Lead Generation Trend (Last 7 Days)</h3>
                     <div className="flex-1 min-h-[250px]">
@@ -1491,7 +1582,6 @@ export default function ClientDashboard() {
                     </div>
                   </div>
 
-                  {/* Today's Lead Sources Pie Chart */}
                   <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col">
                     <h3 className="text-lg font-bold text-slate-800 mb-6">Today's Lead Sources</h3>
                     {dashboardStats.todaysSourceChart.length > 0 ? (
@@ -1537,69 +1627,121 @@ export default function ClientDashboard() {
                   </div>
                 </div>
 
-                {/* Recent Leads Widget */}
-                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
-                  <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40 flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-slate-800">Recent Lead Activity</h3>
-                    <button 
-                      onClick={() => setActiveTab('leads')}
-                      className="text-xs font-bold text-[#50bdaf] hover:text-[#419c90] bg-[#74ebd5]/10 hover:bg-[#74ebd5]/20 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      View All Leads
-                    </button>
-                  </div>
-                  <div className="overflow-x-auto custom-scrollbar">
-                    {leads.length > 0 ? (
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-                            <th className="px-8 py-4">Lead Name</th>
-                            <th className="px-8 py-4">Source</th>
-                            <th className="px-8 py-4">Status</th>
-                            <th className="px-8 py-4">Time Arrived</th>
-                            <th className="px-8 py-4 text-right">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100/60">
-                          {leads.slice(0, 5).map(lead => (
-                            <tr key={lead.id} className="hover:bg-white/60 transition-colors">
-                              <td className="px-8 py-4 whitespace-nowrap">
-                                <div className="font-bold text-slate-800">
-                                  {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
-                                </div>
-                                <div className="text-xs text-slate-500">{lead.phone || lead.email || 'No contact info'}</div>
-                              </td>
-                              <td className="px-8 py-4 whitespace-nowrap">
-                                {getSourceBadge(lead.source, lead.subSource)}
-                              </td>
-                              <td className="px-8 py-4 whitespace-nowrap">
-                                <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold border ${getStatusBadgeClass(lead.status)}`}>
-                                  {lead.status}
-                                </span>
-                              </td>
-                              <td className="px-8 py-4 whitespace-nowrap text-sm font-medium text-slate-500">
-                                {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now'}
-                                <span className="block text-xs text-slate-400">
-                                  {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString() : ''}
-                                </span>
-                              </td>
-                              <td className="px-8 py-4 whitespace-nowrap text-right">
-                                <button 
-                                  onClick={() => openLeadDetails(lead)}
-                                  className="text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:border-[#74ebd5] hover:text-[#50bdaf] shadow-sm px-4 py-2 rounded-xl transition-all hover:-translate-y-0.5"
-                                >
-                                  View Details
-                                </button>
-                              </td>
+                {/* 👇 NEW GRID ROW: Recent Leads & Priority Tasks 👇 */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  
+                  {/* Recent Leads Widget */}
+                  <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden flex flex-col">
+                    <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40 flex justify-between items-center shrink-0">
+                      <h3 className="text-lg font-bold text-slate-800">Recent Leads</h3>
+                      <button 
+                        onClick={() => setActiveTab('leads')}
+                        className="text-xs font-bold text-[#50bdaf] hover:text-[#419c90] bg-[#74ebd5]/10 hover:bg-[#74ebd5]/20 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        View All
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-x-auto custom-scrollbar">
+                      {leads.length > 0 ? (
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                              <th className="px-6 py-4">Lead Name</th>
+                              <th className="px-6 py-4">Status</th>
+                              <th className="px-6 py-4 text-right">Action</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="p-12 text-center text-slate-400 font-medium text-sm">
-                        No leads available to display.
-                      </div>
-                    )}
+                          </thead>
+                          <tbody className="divide-y divide-slate-100/60">
+                            {leads.slice(0, 5).map(lead => (
+                              <tr key={lead.id} className="hover:bg-white/60 transition-colors">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="font-bold text-slate-800 text-sm">
+                                    {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
+                                  </div>
+                                  <div className="text-xs text-slate-500">{lead.phone || lead.email}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[9px] font-bold border ${getStatusBadgeClass(lead.status)}`}>
+                                    {lead.status}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right">
+                                  <button 
+                                    onClick={() => openLeadDetails(lead)}
+                                    className="text-xs font-bold text-slate-600 hover:text-[#50bdaf] bg-white border border-slate-200 hover:border-[#74ebd5] shadow-sm px-3 py-1.5 rounded-lg transition-all"
+                                  >
+                                    View
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <div className="p-12 text-center text-slate-400 font-medium text-sm">
+                          No leads available to display.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ✨ PRIORITY TASKS WIDGET ✨ */}
+                  <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden flex flex-col">
+                    <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40 flex justify-between items-center shrink-0">
+                      <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <BellRing className="w-5 h-5 text-amber-500" /> My Priority Tasks
+                      </h3>
+                      <span className="text-xs font-bold text-amber-700 bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-200 shadow-sm">
+                        {myPendingTasks.length} Pending
+                      </span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-slate-50/30">
+                      {myPendingTasks.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center text-center p-8 h-full">
+                          <CheckSquare className="w-10 h-10 text-slate-300 mb-3" />
+                          <p className="text-sm font-bold text-slate-500">You're all caught up!</p>
+                          <p className="text-xs text-slate-400 mt-1">Schedule new tasks from inside a Lead's profile.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {myPendingTasks.map(task => {
+                            const isOverdue = new Date(task.dueDate) < new Date();
+                            return (
+                              <div 
+                                key={task.id} 
+                                onClick={() => handleOpenTaskLead(task.leadId)}
+                                className="group flex items-start justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-amber-200 transition-all cursor-pointer relative overflow-hidden"
+                              >
+                                {isOverdue && <div className="absolute top-0 left-0 bottom-0 w-1 bg-red-500"></div>}
+                                <div>
+                                  <div className="flex items-center gap-2 mb-1.5">
+                                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest rounded border border-slate-200">
+                                      {task.type}
+                                    </span>
+                                    <span className={`text-xs font-bold flex items-center gap-1 ${isOverdue ? 'text-red-600' : 'text-amber-600'}`}>
+                                      <Clock className="w-3 h-3" />
+                                      {isOverdue ? 'Overdue: ' : ''}{new Date(task.dueDate).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm font-bold text-slate-800">
+                                    {task.leadName}
+                                  </p>
+                                  {task.note && <p className="text-xs font-medium text-slate-500 mt-1 line-clamp-1">{task.note}</p>}
+                                </div>
+                                <button 
+                                  onClick={(e) => completeTask(e, task.id)}
+                                  className="p-2 bg-slate-50 text-emerald-600 hover:bg-emerald-500 hover:text-white rounded-xl border border-slate-200 hover:border-emerald-500 transition-all shadow-sm shrink-0 flex flex-col items-center gap-1 opacity-0 group-hover:opacity-100"
+                                  title="Mark as Completed"
+                                >
+                                  <Check className="w-4 h-4" />
+                                  <span className="text-[9px] font-bold">Done</span>
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -2120,7 +2262,6 @@ export default function ClientDashboard() {
                 )}
               </>
             ) : activeTab === 'feedback' ? (
-              /* 👇 NEW: LEADS FEEDBACK TAB 👇 */
               <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                   <div>
@@ -2128,7 +2269,6 @@ export default function ClientDashboard() {
                     <p className="text-slate-500 text-sm font-medium">Analyze communication history and agent notes.</p>
                   </div>
                   
-                  {/* Feedback Filters and Export */}
                   <div className="flex flex-wrap items-center gap-4">
                     <button
                       onClick={handleExportFeedbackCSV}
@@ -2182,7 +2322,6 @@ export default function ClientDashboard() {
                   </div>
                 </div>
 
-                {/* Feedback Source Pie Chart */}
                 <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
                   <h3 className="text-lg font-bold text-slate-800 mb-6">Feedback Distribution by Source</h3>
                   {dynamicFeedbackSourceData.length > 0 ? (
@@ -2228,7 +2367,6 @@ export default function ClientDashboard() {
                   )}
                 </div>
 
-                {/* Feedback Report Table */}
                 <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
                   <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40">
                     <h3 className="text-lg font-bold text-slate-800">Lead Feedback Logs</h3>
@@ -2297,7 +2435,6 @@ export default function ClientDashboard() {
                 </div>
               </div>
             ) : activeTab === 'team' ? (
-              /* Team View */
               <div className="max-w-6xl mx-auto space-y-8">
                 <div>
                   <div className="flex items-center justify-between mb-8">
@@ -2409,7 +2546,6 @@ export default function ClientDashboard() {
                   </div>
                 </div>
 
-                {/* Lead Auto-Assignment Rules */}
                 {user?.role === 'client_admin' && (
                   <div>
                     <div className="flex items-center justify-between mb-6 mt-12">
@@ -2513,7 +2649,6 @@ export default function ClientDashboard() {
                 )}
               </div>
             ) : activeTab === 'reports' ? (
-              /* Reports View */
               <div className="max-w-7xl mx-auto space-y-8">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                   <div>
@@ -2521,7 +2656,6 @@ export default function ClientDashboard() {
                     <p className="text-slate-500 text-sm font-medium">Overview of your lead performance and team metrics.</p>
                   </div>
                   
-                  {/* Filters and Export Button */}
                   <div className="flex flex-wrap items-center gap-4">
                     <button
                       onClick={handleExportCSV}
@@ -2575,7 +2709,6 @@ export default function ClientDashboard() {
                   </div>
                 </div>
 
-                {/* KPI Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
                     <div className="flex items-center justify-between mb-6">
@@ -2624,7 +2757,6 @@ export default function ClientDashboard() {
                   </div>
                 </div>
 
-                {/* Charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
                     <h3 className="text-lg font-bold text-slate-800 mb-8">Leads by Status</h3>
@@ -2688,7 +2820,6 @@ export default function ClientDashboard() {
                   </div>
                 </div>
 
-                {/* Agent Performance Table */}
                 <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
                   <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40">
                     <h3 className="text-lg font-bold text-slate-800">Agent Performance</h3>
@@ -2763,7 +2894,6 @@ export default function ClientDashboard() {
                 </div>
 
                 <div className="space-y-6">
-                  {/* Meta / Facebook Ads Card */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
@@ -2803,7 +2933,6 @@ export default function ClientDashboard() {
                         </div>
                       </div>
                       
-                      {/* Linked Pages List */}
                       {linkedPages.length > 0 && (
                         <div className="mt-8 pt-8 border-t border-slate-200/60">
                           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Connected Pages</h4>
@@ -2829,7 +2958,6 @@ export default function ClientDashboard() {
                         </div>
                       )}
 
-                      {/* Available Pages to Link */}
                       {fbPages.length > 0 && linkedPages.length === 0 && (
                         <div className="mt-8 pt-8 border-t border-slate-200/60">
                           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Available Pages to Link</h4>
@@ -2865,7 +2993,6 @@ export default function ClientDashboard() {
                     </div>
                   </div>
 
-                  {/* Webhook URL Card */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
                       <div className="flex items-center gap-4 mb-8">
@@ -2924,7 +3051,6 @@ export default function ClientDashboard() {
                     </div>
                   </div>
 
-                  {/* Export Leads (Outbound Webhook) Card */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
                       <div className="flex items-center gap-4 mb-8">
@@ -2959,7 +3085,7 @@ export default function ClientDashboard() {
                             </button>
                             <button
                               onClick={handleTestOutboundWebhook}
-                              disabled={isTestingOutboundWebhook || !outboundWebhookUrl}
+                              disabled={isTestingOutboundWebhook}
                               className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm disabled:opacity-50"
                             >
                               {isTestingOutboundWebhook ? 'Sending...' : 'Send Test Lead'}
@@ -2970,7 +3096,6 @@ export default function ClientDashboard() {
                     </div>
                   </div>
 
-                  {/* Documentation Card */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden p-8">
                     <h3 className="text-xl font-bold text-slate-900 tracking-tight mb-3">Payload Format</h3>
                     <p className="text-sm font-medium text-slate-500 mb-6">Your external source should send a JSON POST request with the following fields:</p>
@@ -3184,92 +3309,7 @@ export default function ClientDashboard() {
         </div>
       )}
 
-      {/* Add Agent Modal */}
-      {isAgentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md transition-all">
-          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-200/60">
-              <h3 className="text-xl font-extrabold text-slate-800">Add New Agent</h3>
-              <button 
-                onClick={() => {
-                  setIsAgentModalOpen(false);
-                  setAgentName('');
-                  setAgentEmail('');
-                  setAgentPassword('');
-                }}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <form onSubmit={handleCreateAgent} className="p-8 space-y-5">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={agentName}
-                  onChange={(e) => setAgentName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={agentEmail}
-                  onChange={(e) => setAgentEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Temporary Password</label>
-                <input
-                  type="password"
-                  required
-                  value={agentPassword}
-                  onChange={(e) => setAgentPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium"
-                  minLength={6}
-                />
-                <p className="mt-2 text-[11px] font-medium text-slate-400">Must be at least 6 characters long.</p>
-              </div>
-
-              <div className="pt-6 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsAgentModalOpen(false);
-                    setAgentName('');
-                    setAgentEmail('');
-                    setAgentPassword('');
-                  }}
-                  className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addingAgent}
-                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg shadow-[#74ebd5]/30 disabled:opacity-50 flex justify-center items-center"
-                >
-                  {addingAgent ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    'Create Agent'
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Internal CSS for custom scrollbars to match the premium theme */}
+      {/* Internal CSS for custom scrollbars */}
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 6px;
