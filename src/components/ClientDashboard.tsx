@@ -1064,7 +1064,7 @@ export default function ClientDashboard() {
           <div className="max-w-7xl mx-auto h-full flex flex-col min-w-[800px] md:min-w-0">
             
             {activeTab === 'dashboard' ? (
-              <div className="space-y-8 animate-in fade-in duration-500">
+              <div className="w-full space-y-8 animate-in fade-in duration-500">
                 <div><h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Welcome back, {user?.email?.split('@')[0]}</h2><p className="text-slate-500 text-sm font-medium">Here is what is happening with your leads today.</p></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.08)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300"><div className="flex items-center justify-between mb-6"><h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Today's Leads</h3><div className="p-2.5 bg-[#74ebd5]/15 rounded-xl text-[#50bdaf] shadow-inner"><Zap className="w-5 h-5" /></div></div><div className="flex items-end gap-3"><p className="text-4xl font-black text-slate-800">{dashboardStats.todaysLeadsCount}</p></div></div>
@@ -1264,7 +1264,7 @@ export default function ClientDashboard() {
                 {hasMoreLeads && leads.length > 0 && <div className="mt-6 flex justify-center pb-8"><button onClick={loadMoreLeads} disabled={loadingMoreLeads} className="flex items-center gap-2 px-8 py-3 bg-white/80 backdrop-blur-md border border-white rounded-2xl text-sm font-bold text-slate-700 hover:bg-white hover:-translate-y-0.5 hover:shadow-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">{loadingMoreLeads ? <><div className="w-4 h-4 border-2 border-slate-300 border-t-[#74ebd5] rounded-full animate-spin" />Loading...</> : <><Search className="w-4 h-4 text-[#74ebd5]" />Load More Leads</>}</button></div>}
               </>
             ) : activeTab === 'feedback' ? (
-              <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+              <div className="w-full space-y-8 animate-in fade-in duration-500">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                   <div><h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Leads Feedback</h2><p className="text-slate-500 text-sm font-medium">Analyze communication history and agent notes.</p></div>
                   <div className="flex flex-wrap items-center gap-4">
@@ -1317,7 +1317,7 @@ export default function ClientDashboard() {
                 </div>
               </div>
             ) : activeTab === 'team' ? (
-              <div className="max-w-6xl mx-auto space-y-8">
+              <div className="w-full max-w-6xl mx-auto space-y-8">
                 <div>
                   <div className="flex items-center justify-between mb-8"><div><h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Your Team</h2><p className="text-slate-500 text-sm font-medium">Manage your sales agents and their access.</p></div>{user?.role === 'client_admin' && <button onClick={() => setIsAgentModalOpen(true)} className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 transition-all hover:-translate-y-0.5 border border-transparent"><UserPlus className="w-4 h-4" />Add New Agent</button>}</div>
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
@@ -1379,14 +1379,14 @@ export default function ClientDashboard() {
                 )}
               </div>
             ) : activeTab === 'integrations' ? (
-              <div className="max-w-4xl mx-auto space-y-8">
+              <div className="w-full max-w-6xl mx-auto space-y-8">
                 <div className="mb-8">
                   <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">External Integrations</h2>
                   <p className="text-slate-500 text-sm font-medium">Connect your Facebook Ads, Google Ads, or Website to capture leads automatically.</p>
                 </div>
 
                 <div className="space-y-6">
-                  {/* ✨ NEW: WHATSAPP CLOUD API EMBEDDED SIGNUP CARD ✨ */}
+                  {/* ✨ WHATSAPP CLOUD API EMBEDDED SIGNUP CARD ✨ */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
@@ -1502,7 +1502,7 @@ export default function ClientDashboard() {
                 </div>
               </div>
             ) : activeTab === 'reports' ? (
-              <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+              <div className="w-full space-y-8 animate-in fade-in duration-500">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                   <div>
                     <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Analytics Reports</h2>
@@ -1547,11 +1547,11 @@ export default function ClientDashboard() {
                 </div>
 
                 {/* Charts */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-8">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-8 w-full">
                   <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
                     <h3 className="text-lg font-bold text-slate-800 mb-6">Leads by Source</h3>
                     {dynamicSourceData.length > 0 ? (
-                      <div className="h-[250px] w-full">
+                      <div className="h-[250px] w-full flex justify-center">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie data={dynamicSourceData} cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={4} dataKey="value" nameKey="name" stroke="none">
@@ -1566,7 +1566,7 @@ export default function ClientDashboard() {
                   <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
                     <h3 className="text-lg font-bold text-slate-800 mb-6">Leads by Status</h3>
                     {dynamicStatusData.length > 0 ? (
-                      <div className="h-[250px] w-full">
+                      <div className="h-[250px] w-full flex justify-center">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie data={dynamicStatusData} cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={4} dataKey="count" nameKey="name" stroke="none">
