@@ -63,9 +63,7 @@ export default function ClientDashboard() {
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
 
   // Dialog State
-  const [dialogState, setDialogState] = useState<{
-    isOpen: boolean; type: 'alert' | 'confirm' | 'success' | 'error'; title: string; message: string; onConfirm?: () => void; onCloseAction?: () => void;
-  }>({ isOpen: false, type: 'alert', title: '', message: '' });
+  const [dialogState, setDialogState] = useState<{ isOpen: boolean; type: 'alert' | 'confirm' | 'success' | 'error'; title: string; message: string; onConfirm?: () => void; onCloseAction?: () => void; }>({ isOpen: false, type: 'alert', title: '', message: '' });
 
   const showDialog = (type: 'alert' | 'confirm' | 'success' | 'error', title: string, message: string, onConfirm?: () => void, onCloseAction?: () => void) => {
     setDialogState({ isOpen: true, type, title, message, onConfirm, onCloseAction });
@@ -634,7 +632,7 @@ export default function ClientDashboard() {
         }
       } else { setIsLinkingWhatsApp(false); }
     }, {
-      config_id: '1083197781534526', // Your exact Configuration ID
+      config_id: '1083197781534526', // Your Meta Configuration ID
       response_type: 'code', override_default_response_type: true,
       extras: { setup: {}, featureType: '', sessionInfoVersion: '2' }
     });
@@ -1586,6 +1584,72 @@ export default function ClientDashboard() {
         </div>
       </main>
 
+      {/* --- ALL MODALS RESTORED HERE SO THEY DO NOT TRUNCATE --- */}
+      
+      <LeadDetailsModal 
+        lead={selectedLead}
+        isOpen={isLeadModalOpen}
+        onClose={() => { setIsLeadModalOpen(false); setSelectedLead(null); }}
+        onLeadUpdated={handleLeadUpdated}
+        teamMembers={teamMembers}
+      />
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 sm:p-6 transition-all">
+          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-2xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-300">
+            <div className="flex justify-between items-center p-6 border-b border-slate-200/60 shrink-0">
+              <h3 className="text-xl font-extrabold text-slate-800">Add New Lead</h3>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5" /></button>
+            </div>
+            <form id="add-lead-form" onSubmit={handleAddLead} className="p-8 overflow-y-auto flex-1 space-y-5 custom-scrollbar">
+              <div className="grid grid-cols-2 gap-5">
+                <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">First Name</label><input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium" /></div>
+                <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Last Name</label><input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium" /></div>
+              </div>
+              <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Email Address</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium" /></div>
+              <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Phone Number</label><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium" /></div>
+              <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Project / Property</label><input type="text" value={projectProperty} onChange={(e) => setProjectProperty(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium" placeholder="e.g. Sunset Villas" /></div>
+              <div className="grid grid-cols-2 gap-5">
+                <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Status</label><select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium cursor-pointer">{PIPELINE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Source</label><select value={source} onChange={(e) => setSource(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium cursor-pointer">{leadSources.length === 0 && <option value="Manual">Manual</option>}{leadSources.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select></div>
+              </div>
+              <div className="grid grid-cols-2 gap-5">
+                <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Sub-Source</label><select value={subSource} onChange={(e) => setSubSource(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium cursor-pointer"><option value="">None</option>{leadSubSources.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select></div>
+                {user?.role === 'client_admin' && (<div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Assign To</label><select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium cursor-pointer"><option value="">Unassigned</option>{teamMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></div>)}
+              </div>
+            </form>
+            <div className="p-6 border-t border-slate-200/60 flex justify-end gap-3 bg-slate-50/50 rounded-b-3xl shrink-0">
+              <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm">Cancel</button>
+              <button type="submit" form="add-lead-form" disabled={addingLead} className="px-6 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg shadow-[#74ebd5]/30 disabled:opacity-50 flex justify-center items-center min-w-[120px]">{addingLead ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Save Lead'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAgentModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md transition-all">
+          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-200/60"><h3 className="text-xl font-extrabold text-slate-800">Add New Agent</h3><button onClick={() => { setIsAgentModalOpen(false); setAgentName(''); setAgentEmail(''); setAgentPassword(''); }} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5" /></button></div>
+            <form onSubmit={handleCreateAgent} className="p-8 space-y-5">
+              <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Full Name</label><input type="text" required value={agentName} onChange={(e) => setAgentName(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium" /></div>
+              <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Email Address</label><input type="email" required value={agentEmail} onChange={(e) => setAgentEmail(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium" /></div>
+              <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Temporary Password</label><input type="password" required value={agentPassword} onChange={(e) => setAgentPassword(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all sm:text-sm font-medium" minLength={6} /><p className="mt-2 text-[11px] font-medium text-slate-400">Must be at least 6 characters long.</p></div>
+              <div className="pt-6 flex gap-3">
+                <button type="button" onClick={() => { setIsAgentModalOpen(false); setAgentName(''); setAgentEmail(''); setAgentPassword(''); }} className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm">Cancel</button>
+                <button type="submit" disabled={addingAgent} className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg shadow-[#74ebd5]/30 disabled:opacity-50 flex justify-center items-center">{addingAgent ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Create Agent'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Scrollbars */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+      `}</style>
     </div>
   );
 }
