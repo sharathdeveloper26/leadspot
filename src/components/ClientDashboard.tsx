@@ -38,7 +38,29 @@ declare global {
 const notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
 
 export default function ClientDashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout } = useAuth(); 
+  // ✨ NEW: Dynamic IST Greeting State ✨
+  const [greeting, setGreeting] = useState({ text: 'Welcome back', emoji: '👋' });
+
+  useEffect(() => {
+    const getISTGreeting = () => {
+      const now = new Date();
+      // Convert current browser time to IST (UTC + 5:30)
+      const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+      const istDate = new Date(utc + (3600000 * 5.5)); 
+      const hour = istDate.getHours();
+
+      if (hour >= 4 && hour < 12) return { text: 'Good morning', emoji: '🌅' };
+      if (hour >= 12 && hour < 17) return { text: 'Good afternoon', emoji: '☀️' };
+      if (hour >= 17 && hour < 22) return { text: 'Good evening', emoji: '🌙' };
+      return { text: 'Working late', emoji: '🦉' };
+    };
+    setGreeting(getISTGreeting());
+    
+    // Update the greeting every hour so it doesn't get stuck if they leave the tab open
+    const interval = setInterval(() => setGreeting(getISTGreeting()), 3600000);
+    return () => clearInterval(interval);
+  }, []);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'integrations' | 'team' | 'reports'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -1079,7 +1101,16 @@ export default function ClientDashboard() {
             
             {activeTab === 'dashboard' ? (
               <div className="w-full space-y-8 animate-in fade-in duration-500">
-                <div><h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Welcome back, {user?.email?.split('@')[0]}</h2><p className="text-slate-500 text-sm font-medium">Here is what is happening with your leads today.</p></div>
+              {/* ✨ UPDATED: Animated IST Greeting ✨ */}
+                <div>
+                  <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1 flex items-center gap-3">
+                    {greeting.text}, {user?.email?.split('@')[0]} 
+                    <span className="inline-block animate-bounce origin-bottom text-4xl" style={{ animationDuration: '2s' }}>
+                      {greeting.emoji}
+                    </span>
+                  </h2>
+                  <p className="text-slate-500 text-sm font-medium">Here is what is happening with your leads today.</p>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.08)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300"><div className="flex items-center justify-between mb-6"><h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Today's Leads</h3><div className="p-2.5 bg-[#74ebd5]/15 rounded-xl text-[#50bdaf] shadow-inner"><Zap className="w-5 h-5" /></div></div><div className="flex items-end gap-3"><p className="text-4xl font-black text-slate-800">{dashboardStats.todaysLeadsCount}</p></div></div>
                   <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.08)] border border-white hover:-translate-y-1 hover:shadow-lg transition-all duration-300"><div className="flex items-center justify-between mb-6"><h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">7-Day Volume</h3><div className="p-2.5 bg-[#9face6]/15 rounded-xl text-[#7b8ed3] shadow-inner"><Activity className="w-5 h-5" /></div></div><p className="text-4xl font-black text-slate-800">{dashboardStats.trendChart.reduce((sum, item) => sum + item.count, 0)}</p></div>
@@ -1408,7 +1439,7 @@ export default function ClientDashboard() {
                           <div className="p-4 bg-[#25D366]/20 rounded-2xl text-[#1EBE57] shadow-lg shadow-[#25D366]/10"><MessageCircle className="w-8 h-8" /></div>
                           <div>
                             <div className="flex items-center gap-3 mb-1">
-                              <h3 className="text-xl font-bold text-slate-900 tracking-tight">WhatsApp Cloud API</h3>
+                              <h3 className="text-xl font-bold text-slate-900 tracking-tight">   API</h3>
                               {whatsappConnected ? <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black bg-[#25D366]/20 text-[#1a9347] border border-[#25D366]/40 uppercase tracking-widest">Connected</span> : <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-500 border border-slate-200 uppercase tracking-widest">Not Connected</span>}
                             </div>
                             <p className="text-slate-500 text-sm font-medium">Connect your WhatsApp Business number to send automated bulk campaigns directly from the CRM.</p>
