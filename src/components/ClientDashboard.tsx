@@ -874,7 +874,7 @@ export default function ClientDashboard() {
     <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
       
       {dialogState.isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/50 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="p-6 text-center">
               <div className={`mx-auto flex items-center justify-center h-14 w-14 rounded-full mb-5 shadow-inner ${
@@ -908,7 +908,7 @@ export default function ClientDashboard() {
       )}
 
       {isCampaignModalOpen && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 sm:p-6 transition-all">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 sm:p-6 transition-all">
           <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-2xl flex flex-col animate-in fade-in zoom-in-95 duration-300">
             <div className="flex justify-between items-center p-6 border-b border-slate-200/60 shrink-0">
               <div className="flex items-center gap-3">
@@ -1497,7 +1497,7 @@ export default function ClientDashboard() {
                     </div>
                   </div>
 
-                  {/* ✨ RESTORED: FULL PAYLOAD FORMAT CARD WITH UTMs ✨ */}
+                  {/* RESTORED: FULL PAYLOAD FORMAT CARD WITH UTMs */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden p-8">
                     <h3 className="text-xl font-bold text-slate-900 tracking-tight mb-3">Payload Format</h3>
                     <p className="text-sm font-medium text-slate-500 mb-6">Your external source should send a JSON POST request with the following fields. Include UTM tracking parameters to measure campaign ROI.</p>
@@ -1558,7 +1558,6 @@ export default function ClientDashboard() {
                   </div>
                 </div>
 
-                {/* Filters */}
                 <div className="flex flex-wrap items-center gap-4 bg-white/70 backdrop-blur-xl p-3 rounded-2xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)]">
                   <div className="flex items-center gap-2 px-3 bg-white border border-slate-100 rounded-xl py-1.5 shadow-sm">
                     <Calendar className="w-4 h-4 text-[#74ebd5]" />
@@ -1573,7 +1572,6 @@ export default function ClientDashboard() {
                   </select>
                 </div>
 
-                {/* KPI Cards for Reports */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-white/80 backdrop-blur-2xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
                     <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4">Leads in Range</h3>
@@ -1589,7 +1587,6 @@ export default function ClientDashboard() {
                   </div>
                 </div>
 
-                {/* Charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-8 w-full">
                   <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
                     <h3 className="text-lg font-bold text-slate-800 mb-6">Leads by Source</h3>
@@ -1628,6 +1625,17 @@ export default function ClientDashboard() {
           </div>
         </div>
       </main>
+
+      {/* --- ALL MODALS RESTORED AND CONDITIONALLY MOUNTED TO PREVENT NULL CRASHES --- */}
+      {isLeadModalOpen && selectedLead && (
+        <LeadDetailsModal 
+          lead={selectedLead}
+          isOpen={isLeadModalOpen}
+          onClose={() => { setIsLeadModalOpen(false); setSelectedLead(null); }}
+          onLeadUpdated={handleLeadUpdated}
+          teamMembers={teamMembers}
+        />
+      )}
 
     </div>
   );
