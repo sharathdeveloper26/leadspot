@@ -589,20 +589,33 @@ export default function ClientDashboard() {
     } catch (error) { console.error("Error assigning lead:", error); }
   };
 
-  useEffect(() => {
-    if (window.FB) return;
-    window.fbAsyncInit = function() { window.FB.init({ appId: '1439047481212574', cookie: true, xfbml: true, version: 'v19.0' }); };
-    (function(d, s, id){
-       var js, fjs = d.getElementsByTagName(s)[0];
-       if (d.getElementById(id)) {return;}
-       js = d.createElement(s) as any; js.id = id;
-       (js as any).src = "https://connect.facebook.net/en_US/sdk.js";
-       if (fjs && fjs.parentNode) fjs.parentNode.insertBefore(js, fjs); else d.head.appendChild(js);
-     }(document, 'script', 'facebook-jssdk'));
-  }, []);
+// 🚀 DYNAMIC MULTI-APP SDK INJECTOR 🚀
+  const initFacebookSdk = (appId: string): Promise<void> => {
+    return new Promise((resolve) => {
+      if (window.FB) {
+        // If SDK is already loaded, just re-initialize it with the target App ID
+        window.FB.init({ appId: appId, cookie: true, xfbml: true, version: 'v19.0' });
+        resolve();
+        return;
+      }
+      window.fbAsyncInit = function() {
+        window.FB.init({ appId: appId, cookie: true, xfbml: true, version: 'v19.0' });
+        resolve();
+      };
+      const d = document, s = 'script', id = 'facebook-jssdk';
+      let js, fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) return;
+      js = d.createElement(s) as any; js.id = id;
+      (js as any).src = "https://connect.facebook.net/en_US/sdk.js";
+      if (fjs && fjs.parentNode) fjs.parentNode.insertBefore(js, fjs); else d.head.appendChild(js);
+    });
+  };
 
-  const handleConnectFacebook = () => {
+  const handleConnectFacebook = async () => {
     setIsLoadingFb(true);
+    // LOAD APP 1: Dedicated to Facebook Lead Ads
+    await initFacebookSdk('1439047481212574'); 
+
     window.FB.login((response: any) => {
       if (response.authResponse) {
         setFbUserToken(response.authResponse.accessToken); 
@@ -615,8 +628,11 @@ export default function ClientDashboard() {
     }, { scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval' });
   };
 
-  const handleConnectWhatsApp = () => {
+  const handleConnectWhatsApp = async () => {
     setIsLinkingWhatsApp(true);
+    // LOAD APP 2: Dedicated to WhatsApp Cloud API
+    await initFacebookSdk('1263110839094881'); 
+
     window.FB.login((response: any) => {
       if (response.authResponse && response.authResponse.code) {
         const code = response.authResponse.code;
@@ -632,7 +648,7 @@ export default function ClientDashboard() {
         }
       } else { setIsLinkingWhatsApp(false); }
     }, {
-      config_id: '1083197781534526', // Your Meta Configuration ID
+      config_id: '1083197781534526', // Your exact Configuration ID
       response_type: 'code', override_default_response_type: true,
       extras: { setup: {}, featureType: '', sessionInfoVersion: '2' }
     });
