@@ -36,6 +36,11 @@ export const incomingLeadWebhook = onRequest({
       let leadData: any = {};
       let clientId: string | null = null;
       let customAnswers: Record<string, string> = {}; 
+      
+      // Values specifically for Dynamic Auto-Discovery
+      let incomingSource = "";
+      let incomingSubSource = "";
+      let incomingProject = "";
 
       if (req.body.object === "page" && req.body.entry?.[0]?.changes?.[0]?.value?.leadgen_id) {
         const changes = req.body.entry[0].changes[0].value;
@@ -76,12 +81,17 @@ export const incomingLeadWebhook = onRequest({
           }
         });
 
+        incomingSource = "Facebook";
+        incomingProject = fbData.campaign_name || "Facebook Ad Campaign";
+        incomingSubSource = fbData.ad_name || ""; // Use ad name as a sub-source for FB
+
         leadData = {
           name: fbFields.find((f: any) => f.name === "full_name")?.values[0] || "FB Lead",
           email: fbFields.find((f: any) => f.name === "email")?.values[0] || "",
           phone: fbFields.find((f: any) => f.name === "phone_number")?.values[0] || "",
-          source: "Facebook",
-          project: fbData.campaign_name || "Facebook Ad Campaign", 
+          source: incomingSource,
+          subSource: incomingSubSource,
+          project: incomingProject, 
           formId: fbData.form_id || "",
           adId: fbData.ad_id || "",
           adName: fbData.ad_name || "Unknown Ad",
@@ -89,20 +99,41 @@ export const incomingLeadWebhook = onRequest({
           campaignName: fbData.campaign_name || "Unknown Campaign"
         };
       } else {
-        const data = { ...req.query, ...req.body };
+        // 🔥 CUSTOM PAYLOAD PARSING & AUTO-DISCOVERY PREP 🔥
+        let data = req.body;
+        if (typeof data === 'string') {
+          try { data = JSON.parse(data); } catch (e) { /* fallback to req.query below */ }
+        }
+        data = { ...req.query, ...data };
+        
         clientId = data.clientId;
         customAnswers = data.customAnswers || {}; 
+        
+        incomingSource = data.source || "Webhook";
+        incomingSubSource = data.subSource || "";
+        incomingProject = data.projectProperty || data.project || "General Inquiry";
+
+        // Map payload fields to CRM schema, explicitly checking for firstName/lastName split
+        const finalFirstName = data.firstName || data.name || "Unknown";
+        const finalLastName = data.lastName || "";
 
         leadData = {
-          name: data.name, email: data.email, phone: data.phone,
-          source: data.source || "Webhook", project: data.project || "General Inquiry",
-          formId: "", adId: "", adName: "", campaignId: "", campaignName: "",
-          utm_source: data.utm_source || "", utm_medium: data.utm_medium || "", utm_campaign: data.utm_campaign || ""
+          name: finalLastName ? `${finalFirstName} ${finalLastName}`.trim() : finalFirstName,
+          firstName: finalFirstName, // Store separately for cleaner DB
+          lastName: finalLastName,   // Store separately for cleaner DB
+          email: data.email || "", 
+          phone: data.phone || "",
+          source: incomingSource, 
+          subSource: incomingSubSource,
+          project: incomingProject,
+          formId: "", adId: "", adName: data.adName || "", campaignId: "", campaignName: data.campaignName || "",
+          utm_source: data.utm_source || "", utm_medium: data.utm_medium || "", utm_campaign: data.utm_campaign || "",
+          message: data.message || ""
         };
       }
 
       if (!clientId) {
-        res.status(200).send("Error: clientId is required.");
+        res.status(400).send({ error: "Error: clientId is required in the webhook URL." });
         return;
       }
 
@@ -145,15 +176,18 @@ export const incomingLeadWebhook = onRequest({
         assignedToName = ruleData.agentName;
       }
 
-      let fName = leadData.name || "Unknown";
-      let lName = "";
-      if (fName.includes(" ") && fName !== "FB Lead") {
+      // Final Name Formatting (Ensures no "undefined Lead" entries)
+      let fName = leadData.firstName || leadData.name || "Unknown";
+      let lName = leadData.lastName || "";
+      if (fName.includes(" ") && fName !== "FB Lead" && !lName) {
           const parts = fName.trim().split(" ");
           fName = parts[0];
           lName = parts.slice(1).join(" ");
       } else if (fName === "FB Lead") {
           fName = "Facebook";
           lName = "Lead";
+      } else if (!lName) {
+         lName = "Lead";
       }
 
       const finalLead = {
@@ -162,8 +196,9 @@ export const incomingLeadWebhook = onRequest({
         lastName: lName, 
         email: leadData.email || "",
         phone: leadData.phone || "",
-        source: leadData.source,
-        projectProperty: leadData.project, 
+        source: incomingSource,             // From Auto-Discovery
+        subSource: incomingSubSource,       // From Auto-Discovery
+        projectProperty: incomingProject,   // From Auto-Discovery
         status: "New",
         assignedTo: assignedToId,
         assignedToId: assignedToId,
@@ -180,11 +215,32 @@ export const incomingLeadWebhook = onRequest({
         utm_source: leadData.utm_source || "",
         utm_medium: leadData.utm_medium || "",
         utm_campaign: leadData.utm_campaign || "",
+        message: leadData.message || "",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       };
 
       // 1. SAVE TO CRM DATABASE
-      await db.collection("leads").add(finalLead);
+      const newLeadRef = await db.collection("leads").add(finalLead);
+
+      // ==========================================
+      // 🚀 ENTERPRISE AUTO-DISCOVERY ENGINE 🚀
+      // ==========================================
+      // If the source or sub-source doesn't exist in settings, create it automatically.
+      
+      try {
+        if (incomingSource) {
+          const sourceQuery = await db.collection('lead_sources').where('clientId', '==', clientId).where('name', '==', incomingSource).get();
+          if (sourceQuery.empty) { await db.collection('lead_sources').add({ clientId, name: incomingSource, autoDiscovered: true }); }
+        }
+
+        if (incomingSubSource) {
+          const subSourceQuery = await db.collection('lead_sub_sources').where('clientId', '==', clientId).where('name', '==', incomingSubSource).get();
+          if (subSourceQuery.empty) { await db.collection('lead_sub_sources').add({ clientId, name: incomingSubSource, autoDiscovered: true }); }
+        }
+      } catch (autoDiscError) {
+         console.error("Auto-Discovery silent fail:", autoDiscError);
+         // Don't crash the webhook if auto-discovery fails, just swallow error
+      }
 
       // 2. MULTI-TENANT DYNAMIC OUTBOUND PUSH
       try {
@@ -194,10 +250,11 @@ export const incomingLeadWebhook = onRequest({
           if (clientWebhookUrl) {
             const webhookPayload = {
               ...finalLead,
+              id: newLeadRef.id, // Include the new CRM ID
               createdAt: new Date().toISOString() 
             };
             
-            // OPTIMIZATION: Strict 3-second timeout for Client Outbound webhook to prevent slow client servers from billing you
+            // OPTIMIZATION: Strict 3-second timeout for Client Outbound webhook
             await axios.post(clientWebhookUrl, webhookPayload, {
               headers: { 'Content-Type': 'application/json' },
               timeout: 3000
@@ -209,7 +266,7 @@ export const incomingLeadWebhook = onRequest({
         console.error(`Failed to push to Client (${clientId}) webhook:`, webhookError.message);
       }
 
-      res.status(200).json({ success: true, message: "Event processed" });
+      res.status(200).json({ success: true, message: "Event processed", leadId: newLeadRef.id });
 
     } catch (error: any) {
       console.error("Webhook Processing Error:", error.message || error);
@@ -357,7 +414,7 @@ export const secureLinkFacebookPage = onCall(functionOpts, async (request) => {
   }
 });
 
-// 👇 NEW: PHASE 22 - WHATSAPP CLOUD API BULK CAMPAIGN ENGINE 👇
+// 👇 PHASE 22 - WHATSAPP CLOUD API BULK CAMPAIGN ENGINE 👇
 export const sendBulkWhatsAppCampaign = onCall(functionOpts, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be logged in.");
   
@@ -369,24 +426,20 @@ export const sendBulkWhatsAppCampaign = onCall(functionOpts, async (request) => 
     throw new HttpsError("invalid-argument", "Missing WhatsApp campaign parameters.");
   }
 
-  // NOTE: In production, these should be fetched securely from db.collection('system_settings') 
-  // so you don't hardcode Meta API keys!
-  const META_WHATSAPP_TOKEN = 'YOUR_META_WHATSAPP_SYSTEM_TOKEN';
-  const PHONE_NUMBER_ID = 'YOUR_META_PHONE_NUMBER_ID';
+  // FIXED: Commented out the variables so TypeScript doesn't throw a "declared but unread" error (TS6133)
+  // const META_WHATSAPP_TOKEN = 'YOUR_META_WHATSAPP_SYSTEM_TOKEN';
+  // const PHONE_NUMBER_ID = 'YOUR_META_PHONE_NUMBER_ID';
 
   try {
     let successCount = 0;
     let failCount = 0;
 
-    // Loop through phones and dispatch via Meta WhatsApp Cloud API
-    // (Using Promise.all for high-speed concurrent execution)
     const sendPromises = targetPhones.map(async (rawPhone: string) => {
       try {
-        // Clean phone number for Meta (must include country code, e.g., 91XXXXXXXXXX)
         let cleanPhone = rawPhone.replace(/[^0-9]/g, '');
         if (cleanPhone.length === 10) cleanPhone = `91${cleanPhone}`; 
 
-        /* 🔥 UNCOMMENT THIS WHEN READY TO FIRE TO META 🔥
+        /* 🔥 UNCOMMENT THIS AND THE VARIABLES ABOVE WHEN READY TO FIRE TO META 🔥
         await axios.post(`https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`, {
           messaging_product: "whatsapp",
           to: cleanPhone,
@@ -402,6 +455,7 @@ export const sendBulkWhatsAppCampaign = onCall(functionOpts, async (request) => 
           }
         });
         */
+        
         successCount++;
       } catch (e) {
         failCount++;

@@ -35,6 +35,10 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
             let leadData = {};
             let clientId = null;
             let customAnswers = {};
+            // Values specifically for Dynamic Auto-Discovery
+            let incomingSource = "";
+            let incomingSubSource = "";
+            let incomingProject = "";
             if (req.body.object === "page" && ((_e = (_d = (_c = (_b = (_a = req.body.entry) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.changes) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.value) === null || _e === void 0 ? void 0 : _e.leadgen_id)) {
                 const changes = req.body.entry[0].changes[0].value;
                 const pageId = changes.page_id;
@@ -63,12 +67,16 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                         customAnswers[field.name] = field.values[0];
                     }
                 });
+                incomingSource = "Facebook";
+                incomingProject = fbData.campaign_name || "Facebook Ad Campaign";
+                incomingSubSource = fbData.ad_name || ""; // Use ad name as a sub-source for FB
                 leadData = {
                     name: ((_f = fbFields.find((f) => f.name === "full_name")) === null || _f === void 0 ? void 0 : _f.values[0]) || "FB Lead",
                     email: ((_g = fbFields.find((f) => f.name === "email")) === null || _g === void 0 ? void 0 : _g.values[0]) || "",
                     phone: ((_h = fbFields.find((f) => f.name === "phone_number")) === null || _h === void 0 ? void 0 : _h.values[0]) || "",
-                    source: "Facebook",
-                    project: fbData.campaign_name || "Facebook Ad Campaign",
+                    source: incomingSource,
+                    subSource: incomingSubSource,
+                    project: incomingProject,
                     formId: fbData.form_id || "",
                     adId: fbData.ad_id || "",
                     adName: fbData.ad_name || "Unknown Ad",
@@ -77,18 +85,39 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 };
             }
             else {
-                const data = Object.assign(Object.assign({}, req.query), req.body);
+                // 🔥 CUSTOM PAYLOAD PARSING & AUTO-DISCOVERY PREP 🔥
+                let data = req.body;
+                if (typeof data === 'string') {
+                    try {
+                        data = JSON.parse(data);
+                    }
+                    catch (e) { /* fallback to req.query below */ }
+                }
+                data = Object.assign(Object.assign({}, req.query), data);
                 clientId = data.clientId;
                 customAnswers = data.customAnswers || {};
+                incomingSource = data.source || "Webhook";
+                incomingSubSource = data.subSource || "";
+                incomingProject = data.projectProperty || data.project || "General Inquiry";
+                // Map payload fields to CRM schema, explicitly checking for firstName/lastName split
+                const finalFirstName = data.firstName || data.name || "Unknown";
+                const finalLastName = data.lastName || "";
                 leadData = {
-                    name: data.name, email: data.email, phone: data.phone,
-                    source: data.source || "Webhook", project: data.project || "General Inquiry",
-                    formId: "", adId: "", adName: "", campaignId: "", campaignName: "",
-                    utm_source: data.utm_source || "", utm_medium: data.utm_medium || "", utm_campaign: data.utm_campaign || ""
+                    name: finalLastName ? `${finalFirstName} ${finalLastName}`.trim() : finalFirstName,
+                    firstName: finalFirstName, // Store separately for cleaner DB
+                    lastName: finalLastName, // Store separately for cleaner DB
+                    email: data.email || "",
+                    phone: data.phone || "",
+                    source: incomingSource,
+                    subSource: incomingSubSource,
+                    project: incomingProject,
+                    formId: "", adId: "", adName: data.adName || "", campaignId: "", campaignName: data.campaignName || "",
+                    utm_source: data.utm_source || "", utm_medium: data.utm_medium || "", utm_campaign: data.utm_campaign || "",
+                    message: data.message || ""
                 };
             }
             if (!clientId) {
-                res.status(200).send("Error: clientId is required.");
+                res.status(400).send({ error: "Error: clientId is required in the webhook URL." });
                 return;
             }
             // --- APOLLO ENRICHMENT LOGIC ---
@@ -126,9 +155,10 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 assignedToId = ruleData.agentId;
                 assignedToName = ruleData.agentName;
             }
-            let fName = leadData.name || "Unknown";
-            let lName = "";
-            if (fName.includes(" ") && fName !== "FB Lead") {
+            // Final Name Formatting (Ensures no "undefined Lead" entries)
+            let fName = leadData.firstName || leadData.name || "Unknown";
+            let lName = leadData.lastName || "";
+            if (fName.includes(" ") && fName !== "FB Lead" && !lName) {
                 const parts = fName.trim().split(" ");
                 fName = parts[0];
                 lName = parts.slice(1).join(" ");
@@ -137,14 +167,18 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 fName = "Facebook";
                 lName = "Lead";
             }
+            else if (!lName) {
+                lName = "Lead";
+            }
             const finalLead = {
                 clientId: clientId,
                 firstName: fName,
                 lastName: lName,
                 email: leadData.email || "",
                 phone: leadData.phone || "",
-                source: leadData.source,
-                projectProperty: leadData.project,
+                source: incomingSource, // From Auto-Discovery
+                subSource: incomingSubSource, // From Auto-Discovery
+                projectProperty: incomingProject, // From Auto-Discovery
                 status: "New",
                 assignedTo: assignedToId,
                 assignedToId: assignedToId,
@@ -161,18 +195,41 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 utm_source: leadData.utm_source || "",
                 utm_medium: leadData.utm_medium || "",
                 utm_campaign: leadData.utm_campaign || "",
+                message: leadData.message || "",
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             };
             // 1. SAVE TO CRM DATABASE
-            await db.collection("leads").add(finalLead);
+            const newLeadRef = await db.collection("leads").add(finalLead);
+            // ==========================================
+            // 🚀 ENTERPRISE AUTO-DISCOVERY ENGINE 🚀
+            // ==========================================
+            // If the source or sub-source doesn't exist in settings, create it automatically.
+            try {
+                if (incomingSource) {
+                    const sourceQuery = await db.collection('lead_sources').where('clientId', '==', clientId).where('name', '==', incomingSource).get();
+                    if (sourceQuery.empty) {
+                        await db.collection('lead_sources').add({ clientId, name: incomingSource, autoDiscovered: true });
+                    }
+                }
+                if (incomingSubSource) {
+                    const subSourceQuery = await db.collection('lead_sub_sources').where('clientId', '==', clientId).where('name', '==', incomingSubSource).get();
+                    if (subSourceQuery.empty) {
+                        await db.collection('lead_sub_sources').add({ clientId, name: incomingSubSource, autoDiscovered: true });
+                    }
+                }
+            }
+            catch (autoDiscError) {
+                console.error("Auto-Discovery silent fail:", autoDiscError);
+                // Don't crash the webhook if auto-discovery fails, just swallow error
+            }
             // 2. MULTI-TENANT DYNAMIC OUTBOUND PUSH
             try {
                 const outboundDoc = await db.collection("outbound_integrations").doc(clientId).get();
                 if (outboundDoc.exists) {
                     const clientWebhookUrl = (_j = outboundDoc.data()) === null || _j === void 0 ? void 0 : _j.webhookUrl;
                     if (clientWebhookUrl) {
-                        const webhookPayload = Object.assign(Object.assign({}, finalLead), { createdAt: new Date().toISOString() });
-                        // OPTIMIZATION: Strict 3-second timeout for Client Outbound webhook to prevent slow client servers from billing you
+                        const webhookPayload = Object.assign(Object.assign({}, finalLead), { id: newLeadRef.id, createdAt: new Date().toISOString() });
+                        // OPTIMIZATION: Strict 3-second timeout for Client Outbound webhook
                         await axios_1.default.post(clientWebhookUrl, webhookPayload, {
                             headers: { 'Content-Type': 'application/json' },
                             timeout: 3000
@@ -184,7 +241,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
             catch (webhookError) {
                 console.error(`Failed to push to Client (${clientId}) webhook:`, webhookError.message);
             }
-            res.status(200).json({ success: true, message: "Event processed" });
+            res.status(200).json({ success: true, message: "Event processed", leadId: newLeadRef.id });
         }
         catch (error) {
             console.error("Webhook Processing Error:", error.message || error);
@@ -319,7 +376,7 @@ exports.secureLinkFacebookPage = (0, https_1.onCall)(functionOpts, async (reques
         throw new https_1.HttpsError("internal", "Failed to secure Facebook connection.");
     }
 });
-// 👇 NEW: PHASE 22 - WHATSAPP CLOUD API BULK CAMPAIGN ENGINE 👇
+// 👇 PHASE 22 - WHATSAPP CLOUD API BULK CAMPAIGN ENGINE 👇
 exports.sendBulkWhatsAppCampaign = (0, https_1.onCall)(functionOpts, async (request) => {
     if (!request.auth)
         throw new https_1.HttpsError("unauthenticated", "Must be logged in.");
@@ -329,22 +386,18 @@ exports.sendBulkWhatsAppCampaign = (0, https_1.onCall)(functionOpts, async (requ
     if (!clientId || !templateName || !targetPhones || !Array.isArray(targetPhones)) {
         throw new https_1.HttpsError("invalid-argument", "Missing WhatsApp campaign parameters.");
     }
-    // NOTE: In production, these should be fetched securely from db.collection('system_settings') 
-    // so you don't hardcode Meta API keys!
-    const META_WHATSAPP_TOKEN = 'YOUR_META_WHATSAPP_SYSTEM_TOKEN';
-    const PHONE_NUMBER_ID = 'YOUR_META_PHONE_NUMBER_ID';
+    // FIXED: Commented out the variables so TypeScript doesn't throw a "declared but unread" error (TS6133)
+    // const META_WHATSAPP_TOKEN = 'YOUR_META_WHATSAPP_SYSTEM_TOKEN';
+    // const PHONE_NUMBER_ID = 'YOUR_META_PHONE_NUMBER_ID';
     try {
         let successCount = 0;
         let failCount = 0;
-        // Loop through phones and dispatch via Meta WhatsApp Cloud API
-        // (Using Promise.all for high-speed concurrent execution)
         const sendPromises = targetPhones.map(async (rawPhone) => {
             try {
-                // Clean phone number for Meta (must include country code, e.g., 91XXXXXXXXXX)
                 let cleanPhone = rawPhone.replace(/[^0-9]/g, '');
                 if (cleanPhone.length === 10)
                     cleanPhone = `91${cleanPhone}`;
-                /* 🔥 UNCOMMENT THIS WHEN READY TO FIRE TO META 🔥
+                /* 🔥 UNCOMMENT THIS AND THE VARIABLES ABOVE WHEN READY TO FIRE TO META 🔥
                 await axios.post(`https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`, {
                   messaging_product: "whatsapp",
                   to: cleanPhone,
