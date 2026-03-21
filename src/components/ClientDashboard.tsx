@@ -39,13 +39,11 @@ const notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx
 
 export default function ClientDashboard() {
   const { user, logout } = useAuth(); 
-  // ✨ NEW: Dynamic IST Greeting State ✨
   const [greeting, setGreeting] = useState({ text: 'Welcome back', emoji: '👋' });
 
   useEffect(() => {
     const getISTGreeting = () => {
       const now = new Date();
-      // Convert current browser time to IST (UTC + 5:30)
       const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
       const istDate = new Date(utc + (3600000 * 5.5)); 
       const hour = istDate.getHours();
@@ -57,10 +55,10 @@ export default function ClientDashboard() {
     };
     setGreeting(getISTGreeting());
     
-    // Update the greeting every hour so it doesn't get stuck if they leave the tab open
     const interval = setInterval(() => setGreeting(getISTGreeting()), 3600000);
     return () => clearInterval(interval);
   }, []);
+  
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'integrations' | 'team' | 'reports'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -73,10 +71,17 @@ export default function ClientDashboard() {
   const [addingLead, setAddingLead] = useState(false);
   const [addingAgent, setAddingAgent] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // ✨ SEPARATED INTEGRATION STATES ✨
   const [outboundWebhookUrl, setOutboundWebhookUrl] = useState("");
+  const [googleSheetUrl, setGoogleSheetUrl] = useState("");
   const [outboundHeaders, setOutboundHeaders] = useState<{key: string, value: string}[]>([]);
-  const [isSavingOutboundWebhook, setIsSavingOutboundWebhook] = useState(false);
-  const [isTestingOutboundWebhook, setIsTestingOutboundWebhook] = useState(false);
+  
+  const [isSavingSheets, setIsSavingSheets] = useState(false);
+  const [isTestingSheets, setIsTestingSheets] = useState(false);
+  const [isSavingCRM, setIsSavingCRM] = useState(false);
+  const [isTestingCRM, setIsTestingCRM] = useState(false);
+
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
   const [lastVisibleLead, setLastVisibleLead] = useState<any>(null);
@@ -85,7 +90,6 @@ export default function ClientDashboard() {
   const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
 
-  // Dialog State
   const [dialogState, setDialogState] = useState<{ isOpen: boolean; type: 'alert' | 'confirm' | 'success' | 'error'; title: string; message: string; onConfirm?: () => void; onCloseAction?: () => void; }>({ isOpen: false, type: 'alert', title: '', message: '' });
 
   const showDialog = (type: 'alert' | 'confirm' | 'success' | 'error', title: string, message: string, onConfirm?: () => void, onCloseAction?: () => void) => {
@@ -97,7 +101,6 @@ export default function ClientDashboard() {
     setDialogState(prev => ({ ...prev, isOpen: false }));
   };
 
-  // Notifications
   const isInitialMount = useRef(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -115,7 +118,6 @@ export default function ClientDashboard() {
   const [fbUserToken, setFbUserToken] = useState("");
   const [isLinking, setIsLinking] = useState(false);
   
-  // WhatsApp Integration State
   const [isLinkingWhatsApp, setIsLinkingWhatsApp] = useState(false);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean>(false);
   const [whatsappNumberId, setWhatsappNumberId] = useState<string>('');
@@ -125,7 +127,6 @@ export default function ClientDashboard() {
     return Array.from(new Map(combined.map(item => [item.id, item])).values());
   }, [realTimeLeads, olderLeads]);
 
-  // Task Engine Scanner
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const alertedTasks = useRef<Set<string>>(new Set());
 
@@ -488,16 +489,71 @@ export default function ClientDashboard() {
     });
   };
 
- const fetchOutboundWebhook = async () => {
+  const fetchOutboundWebhook = async () => {
     if (!user?.clientId) return;
     try {
       const docRef = doc(db, 'outbound_integrations', user.clientId);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) { 
         setOutboundWebhookUrl(docSnap.data().webhookUrl || "");
-        setOutboundHeaders(docSnap.data().headers || []); // ✨ Load saved headers
+        setGoogleSheetUrl(docSnap.data().googleSheetUrl || "");
+        setOutboundHeaders(docSnap.data().headers || []);
       }
-    } catch (error) { console.error("Error fetching outbound webhook:", error); }
+    } catch (error) { console.error("Error fetching outbound configurations:", error); }
+  };
+
+  // --- GOOGLE SHEETS PIPELINE LOGIC ---
+  const handleSaveGoogleSheet = async () => {
+    if (!user?.clientId) return;
+    setIsSavingSheets(true);
+    try {
+      const docRef = doc(db, 'outbound_integrations', user.clientId);
+      await setDoc(docRef, { clientId: user.clientId, googleSheetUrl: googleSheetUrl, updatedAt: serverTimestamp() }, { merge: true });
+      showDialog('success', 'Saved', 'Google Sheets pipeline connected successfully.');
+    } catch (error) { 
+      showDialog('error', 'Save Failed', 'Failed to save Google Sheets configuration.'); 
+    } finally { setIsSavingSheets(false); }
+  };
+
+  const handleTestGoogleSheet = async () => {
+    if (!googleSheetUrl) { showDialog('alert', 'Missing URL', 'Please enter your Apps Script URL first.'); return; }
+    setIsTestingSheets(true);
+    try {
+      const testPayload = { id: 'test-123', firstName: 'Test', lastName: 'Lead', email: 'test@example.com', phone: '+919876543210', source: 'Test Webhook', status: 'New', createdAt: new Date().toISOString(), clientId: user?.clientId, projectProperty: 'Test Project' };
+      await fetch(googleSheetUrl, { method: 'POST', body: JSON.stringify(testPayload) });
+      showDialog('success', 'Test Sent', 'Test lead fired to Google Sheets!');
+    } catch (error) { 
+      showDialog('error', 'CORS Notice', 'Test fired, but browser security blocked the response view. Check your Google Sheet to confirm receipt.'); 
+    } finally { setIsTestingSheets(false); }
+  };
+
+  // --- CUSTOM CRM API PIPELINE LOGIC ---
+  const handleSaveCustomCRM = async () => {
+    if (!user?.clientId) return;
+    setIsSavingCRM(true);
+    try {
+      const validHeaders = outboundHeaders.filter(h => h.key.trim() !== '');
+      const docRef = doc(db, 'outbound_integrations', user.clientId);
+      await setDoc(docRef, { clientId: user.clientId, webhookUrl: outboundWebhookUrl, headers: validHeaders, updatedAt: serverTimestamp() }, { merge: true });
+      setOutboundHeaders(validHeaders);
+      showDialog('success', 'Saved', 'Enterprise CRM API bridge configured successfully.');
+    } catch (error) { 
+      showDialog('error', 'Save Failed', 'Failed to save CRM API configuration.'); 
+    } finally { setIsSavingCRM(false); }
+  };
+
+  const handleTestCustomCRM = async () => {
+    if (!outboundWebhookUrl) { showDialog('alert', 'Missing URL', 'Please enter your destination API URL first.'); return; }
+    setIsTestingCRM(true);
+    try {
+      const testPayload = { id: 'test-123', firstName: 'Test', lastName: 'Lead', email: 'test@example.com', phone: '+919876543210', source: 'Test Webhook', status: 'New', createdAt: new Date().toISOString(), clientId: user?.clientId, projectProperty: 'Test Project' };
+      const headerObj: Record<string, string> = { 'Content-Type': 'application/json' };
+      outboundHeaders.forEach(h => { if (h.key.trim() !== '' && h.value.trim() !== '') { headerObj[h.key.trim()] = h.value.trim(); } });
+      await fetch(outboundWebhookUrl, { method: 'POST', headers: headerObj, body: JSON.stringify(testPayload) });
+      showDialog('success', 'Test Sent', 'Test lead fired to your Custom CRM!');
+    } catch (error) { 
+      showDialog('error', 'CORS Notice', 'Test fired, but browser security blocked the response view. Check your destination CRM.'); 
+    } finally { setIsTestingCRM(false); }
   };
 
   useEffect(() => {
@@ -615,11 +671,9 @@ export default function ClientDashboard() {
     } catch (error) { console.error("Error assigning lead:", error); }
   };
 
-// 🚀 DYNAMIC MULTI-APP SDK INJECTOR 🚀
   const initFacebookSdk = (appId: string): Promise<void> => {
     return new Promise((resolve) => {
       if (window.FB) {
-        // If SDK is already loaded, just re-initialize it with the target App ID
         window.FB.init({ appId: appId, cookie: true, xfbml: true, version: 'v19.0' });
         resolve();
         return;
@@ -639,7 +693,6 @@ export default function ClientDashboard() {
 
   const handleConnectFacebook = async () => {
     setIsLoadingFb(true);
-    // LOAD APP 1: Dedicated to Facebook Lead Ads
     await initFacebookSdk('1439047481212574'); 
 
     window.FB.login((response: any) => {
@@ -656,7 +709,6 @@ export default function ClientDashboard() {
 
   const handleConnectWhatsApp = async () => {
     setIsLinkingWhatsApp(true);
-    // LOAD APP 2: Dedicated to WhatsApp Cloud API
     await initFacebookSdk('1263110839094881'); 
 
     window.FB.login((response: any) => {
@@ -674,7 +726,7 @@ export default function ClientDashboard() {
         }
       } else { setIsLinkingWhatsApp(false); }
     }, {
-      config_id: '1083197781534526', // Your exact Configuration ID
+      config_id: '1083197781534526', 
       response_type: 'code', override_default_response_type: true,
       extras: { setup: {}, featureType: '', sessionInfoVersion: '2' }
     });
@@ -705,58 +757,6 @@ export default function ClientDashboard() {
   };
 
   const handleCopy = () => { navigator.clipboard.writeText(webhookUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); };
-
- const handleSaveOutboundWebhook = async () => {
-    if (!user?.clientId) return;
-    setIsSavingOutboundWebhook(true);
-    try {
-      // Clean up empty header rows before saving
-      const validHeaders = outboundHeaders.filter(h => h.key.trim() !== '');
-      const docRef = doc(db, 'outbound_integrations', user.clientId);
-      
-      await setDoc(docRef, { 
-        clientId: user.clientId, 
-        webhookUrl: outboundWebhookUrl, 
-        headers: validHeaders, // ✨ Save headers to Firestore
-        updatedAt: serverTimestamp() 
-      });
-      
-      setOutboundHeaders(validHeaders);
-      showDialog('success', 'Saved', 'Outbound webhook and custom headers saved successfully.');
-    } catch (error) { 
-      showDialog('error', 'Save Failed', 'Failed to save outbound webhook configuration.'); 
-    } finally { 
-      setIsSavingOutboundWebhook(false); 
-    }
-  };
-
-  const handleTestOutboundWebhook = async () => {
-    if (!outboundWebhookUrl) { showDialog('alert', 'Wait a minute', 'Please enter a webhook URL first.'); return; }
-    setIsTestingOutboundWebhook(true);
-    try {
-      const testPayload = { id: 'test-123', firstName: 'Test', lastName: 'Lead', email: 'test@example.com', phone: '+919876543210', source: 'Test Webhook', status: 'New', createdAt: new Date().toISOString(), clientId: user?.clientId, projectProperty: 'Test Project' };
-      
-      // Inject custom headers into the test request
-      const headerObj: Record<string, string> = { 'Content-Type': 'application/json' };
-      outboundHeaders.forEach(h => {
-        if (h.key.trim() !== '' && h.value.trim() !== '') {
-          headerObj[h.key.trim()] = h.value.trim();
-        }
-      });
-
-      await fetch(outboundWebhookUrl, { 
-        method: 'POST', 
-        headers: headerObj, 
-        body: JSON.stringify(testPayload) 
-      });
-      showDialog('success', 'Test Sent', 'Test lead sent to your destination URL!');
-    } catch (error) { 
-      // Note: Browsers block API requests to secured endpoints due to CORS. The backend bypasses this.
-      showDialog('error', 'Browser CORS Blocked', 'The test failed from the browser. However, real leads sent from the backend server will bypass this browser security block.'); 
-    } finally { 
-      setIsTestingOutboundWebhook(false); 
-    }
-  };
 
   const filteredLeadsView = leads.filter(lead => {
     let matches = true;
@@ -1564,25 +1564,55 @@ export default function ClientDashboard() {
                     </div>
                   </div>
 
-                  {/* OUTBOUND WEBHOOK CARD */}
-                {/* OUTBOUND WEBHOOK CARD */}
+                  {/* ✨ CARD 1: GOOGLE SHEETS PIPELINE ✨ */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
-                      <div className="flex items-center gap-4 mb-8"><div className="p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-500/30"><Link2 className="w-6 h-6" /></div><div><h3 className="text-xl font-bold text-slate-900 tracking-tight">Export Leads (Native API Bridge)</h3><p className="text-slate-500 text-sm font-medium mt-1">Push leads directly to external CRMs or Webhooks (Salesforce, Zoho, Make.com).</p></div></div>
+                      <div className="flex items-center gap-4 mb-8">
+                        <div className="p-3 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl text-white shadow-lg shadow-emerald-500/30"><Globe className="w-6 h-6" /></div>
+                        <div><h3 className="text-xl font-bold text-slate-900 tracking-tight">Google Sheets Sync</h3><p className="text-slate-500 text-sm font-medium mt-1">Push leads instantly to a Google Sheet using an Apps Script Web App.</p></div>
+                      </div>
                       <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
-                        
+                        <div className="space-y-6">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">Apps Script Web App URL</label>
+                            <input type="url" value={googleSheetUrl} onChange={(e) => setGoogleSheetUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..." className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all shadow-sm" />
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 pt-2">
+                            <button onClick={handleSaveGoogleSheet} disabled={isSavingSheets} className="px-6 py-2.5 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-all shadow-md shadow-emerald-500/20 disabled:opacity-50 flex items-center gap-2">
+                              {isSavingSheets ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} Save Sheets Sync
+                            </button>
+                            <button onClick={handleTestGoogleSheet} disabled={isTestingSheets} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm disabled:opacity-50">
+                              {isTestingSheets ? 'Sending...' : 'Test Connection'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ✨ CARD 2: ENTERPRISE CRM API BRIDGE ✨ */}
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300 mt-6">
+                    <div className="p-8">
+                      <div className="flex items-center gap-4 mb-8">
+                        <div className="p-3 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl text-white shadow-lg shadow-indigo-500/30"><Link2 className="w-6 h-6" /></div>
+                        <div>
+                          <h3 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">Enterprise API Bridge <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] uppercase tracking-widest font-black rounded-md border border-indigo-200">Pro Feature</span></h3>
+                          <p className="text-slate-500 text-sm font-medium mt-1">Route leads directly to external CRMs (Salesforce, Zoho) or Zapier/Make endpoints.</p>
+                        </div>
+                      </div>
+                      <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
                         <div className="space-y-6">
                           <div>
                             <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">Webhook / API Endpoint URL</label>
                             <input type="url" value={outboundWebhookUrl} onChange={(e) => setOutboundWebhookUrl(e.target.value)} placeholder="https://api.salesforce.com/..." className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm" />
                           </div>
                           
-                          {/* ✨ ENTERPRISE HEADER INJECTION UI ✨ */}
+                          {/* ENTERPRISE HEADER INJECTION UI */}
                           <div className="bg-slate-100/50 p-4 rounded-xl border border-slate-200">
                             <div className="flex items-center justify-between mb-3">
                               <div>
                                 <h4 className="text-xs font-bold text-slate-700 uppercase tracking-widest">Custom Headers (Authentication)</h4>
-                                <p className="text-[10px] text-slate-500 font-medium mt-0.5">Add Auth Tokens or API Keys for direct CRM pushes. Leave blank for Zapier/Make.</p>
+                                <p className="text-[10px] text-slate-500 font-medium mt-0.5">Add Auth Tokens or API Keys for direct CRM pushes. Leave blank for Zapier.</p>
                               </div>
                               <button onClick={() => setOutboundHeaders([...outboundHeaders, {key: '', value: ''}])} className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2.5 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors shadow-sm">
                                 <Plus className="w-3 h-3" /> Add Header
@@ -1604,20 +1634,19 @@ export default function ClientDashboard() {
                           </div>
 
                           <div className="flex flex-wrap items-center gap-3 pt-2">
-                            <button onClick={handleSaveOutboundWebhook} disabled={isSavingOutboundWebhook} className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-500/20 disabled:opacity-50 flex items-center gap-2">
-                              {isSavingOutboundWebhook ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} Save Configuration
+                            <button onClick={handleSaveCustomCRM} disabled={isSavingCRM} className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-500/20 disabled:opacity-50 flex items-center gap-2">
+                              {isSavingCRM ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} Save API Bridge
                             </button>
-                            <button onClick={handleTestOutboundWebhook} disabled={isTestingOutboundWebhook} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm disabled:opacity-50">
-                              {isTestingOutboundWebhook ? 'Sending...' : 'Send Test Lead'}
+                            <button onClick={handleTestCustomCRM} disabled={isTestingCRM} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm disabled:opacity-50">
+                              {isTestingCRM ? 'Sending...' : 'Test Connection'}
                             </button>
                           </div>
                         </div>
-
                       </div>
                     </div>
                   </div>
 
-                  {/* RESTORED: FULL PAYLOAD FORMAT CARD WITH UTMs */}
+                  {/* FULL PAYLOAD FORMAT CARD WITH UTMs */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden p-8">
                     <h3 className="text-xl font-bold text-slate-900 tracking-tight mb-3">Payload Format</h3>
                     <p className="text-sm font-medium text-slate-500 mb-6">Your external source should send a JSON POST request with the following fields. Include UTM tracking parameters to measure campaign ROI.</p>

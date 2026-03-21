@@ -31,7 +31,7 @@ export const incomingLeadWebhook = onRequest({
   }
 
   // 2. LEAD CATCHER: Handle POST Request
-  if (req.method === "POST") {
+  else if (req.method === "POST") {
     try {
       let leadData: any = {};
       let clientId: string | null = null;
@@ -150,12 +150,10 @@ export const incomingLeadWebhook = onRequest({
             let cleanPhone = leadData.phone.replace(/[^0-9]/g, '');
             
             // Truecaller4 API expects the raw 10-digit number because we pass countryCode='IN' separately.
-            // This strips the '91' if the number accidentally includes it.
             if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
                 cleanPhone = cleanPhone.substring(2);
             }
             
-            // ✨ FINAL: Truecaller4 API Configuration ✨
             const options = {
                 method: 'GET',
                 url: 'https://truecaller4.p.rapidapi.com/api/v1/getDetails',
@@ -275,8 +273,6 @@ export const incomingLeadWebhook = onRequest({
       // ==========================================
       // 🚀 ENTERPRISE AUTO-DISCOVERY ENGINE 🚀
       // ==========================================
-      // If the source or sub-source doesn't exist in settings, create it automatically.
-      
       try {
         if (incomingSource) {
           const sourceQuery = await db.collection('lead_sources').where('clientId', '==', clientId).where('name', '==', incomingSource).get();
@@ -289,43 +285,79 @@ export const incomingLeadWebhook = onRequest({
         }
       } catch (autoDiscError) {
          console.error("Auto-Discovery silent fail:", autoDiscError);
-         // Don't crash the webhook if auto-discovery fails, just swallow error
       }
 
-      // 2. MULTI-TENANT DYNAMIC OUTBOUND PUSH
+      // ========================================================
+      // 🚀 2. MULTI-TENANT DYNAMIC OUTBOUND PUSH (DUAL-PIPELINE) 🚀
+      // ========================================================
       try {
         const outboundDoc = await db.collection("outbound_integrations").doc(clientId).get();
         if (outboundDoc.exists) {
-          const clientWebhookUrl = outboundDoc.data()?.webhookUrl;
+          const outboundData = outboundDoc.data();
+          const clientWebhookUrl = outboundData?.webhookUrl;
+          const googleSheetUrl = outboundData?.googleSheetUrl; // ✨ Grab the Sheets URL
+          const clientHeaders = outboundData?.headers || [];
+
+          const webhookPayload = {
+            ...finalLead,
+            id: newLeadRef.id, // Include the new CRM ID
+            createdAt: new Date().toISOString() 
+          };
+
+          const pushPromises = [];
+
+          // 🚀 Pipeline A: Google Sheets (Apps Script)
+          if (googleSheetUrl) {
+            pushPromises.push(
+              axios.post(googleSheetUrl, webhookPayload, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 4000
+              }).catch(e => console.error(`Google Sheets push failed for client ${clientId}:`, e.message))
+            );
+          }
+
+          // 🚀 Pipeline B: External Custom CRM (with Headers)
           if (clientWebhookUrl) {
-            const webhookPayload = {
-              ...finalLead,
-              id: newLeadRef.id, // Include the new CRM ID
-              createdAt: new Date().toISOString() 
+            const requestHeaders: Record<string, string> = {
+              'Content-Type': 'application/json' 
             };
             
-            // OPTIMIZATION: Strict 3-second timeout for Client Outbound webhook
-            await axios.post(clientWebhookUrl, webhookPayload, {
-              headers: { 'Content-Type': 'application/json' },
-              timeout: 3000
-            });
-            console.log(`Successfully pushed lead to Client (${clientId}) Webhook`);
+            if (Array.isArray(clientHeaders)) {
+              clientHeaders.forEach(h => {
+                if (h.key && h.value && h.key.trim() !== '') {
+                  requestHeaders[h.key.trim()] = h.value.trim();
+                }
+              });
+            }
+
+            pushPromises.push(
+              axios.post(clientWebhookUrl, webhookPayload, {
+                headers: requestHeaders,
+                timeout: 4000
+              }).catch(e => console.error(`CRM API push failed for client ${clientId}:`, e.message))
+            );
+          }
+
+          // Execute all outbound pushes simultaneously
+          if (pushPromises.length > 0) {
+            await Promise.allSettled(pushPromises);
+            console.log(`Successfully executed outbound pipelines for Client (${clientId})`);
           }
         }
       } catch (webhookError: any) {
-        console.error(`Failed to push to Client (${clientId}) webhook:`, webhookError.message);
+        console.error(`Failed to process outbound integrations for Client (${clientId}):`, webhookError.message);
       }
 
       res.status(200).json({ success: true, message: "Event processed", leadId: newLeadRef.id });
 
     } catch (error: any) {
       console.error("Webhook Processing Error:", error.message || error);
-      res.status(200).send("EVENT_RECEIVED_BUT_ERRORED"); // Fast return prevents Meta from retrying and charging us again
+      res.status(200).send("EVENT_RECEIVED_BUT_ERRORED"); 
     }
     return;
   }
   
-  // 3. FALLBACK: Handle Unsupported Methods cleanly (Fixes the Unreachable Code Warning)
+  // 3. FALLBACK: Handle Unsupported Methods cleanly
   else {
     res.status(405).send("Method Not Allowed");
     return;
@@ -469,7 +501,6 @@ export const secureLinkFacebookPage = onCall(functionOpts, async (request) => {
   }
 });
 
-// 👇 PHASE 22 - WHATSAPP CLOUD API BULK CAMPAIGN ENGINE 👇
 export const sendBulkWhatsAppCampaign = onCall(functionOpts, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be logged in.");
   
@@ -481,10 +512,6 @@ export const sendBulkWhatsAppCampaign = onCall(functionOpts, async (request) => 
     throw new HttpsError("invalid-argument", "Missing WhatsApp campaign parameters.");
   }
 
-  // FIXED: Commented out the variables so TypeScript doesn't throw a "declared but unread" error (TS6133)
-  // const META_WHATSAPP_TOKEN = 'YOUR_META_WHATSAPP_SYSTEM_TOKEN';
-  // const PHONE_NUMBER_ID = 'YOUR_META_PHONE_NUMBER_ID';
-
   try {
     let successCount = 0;
     let failCount = 0;
@@ -493,23 +520,6 @@ export const sendBulkWhatsAppCampaign = onCall(functionOpts, async (request) => 
       try {
         let cleanPhone = rawPhone.replace(/[^0-9]/g, '');
         if (cleanPhone.length === 10) cleanPhone = `91${cleanPhone}`; 
-
-        /* 🔥 UNCOMMENT THIS AND THE VARIABLES ABOVE WHEN READY TO FIRE TO META 🔥
-        await axios.post(`https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`, {
-          messaging_product: "whatsapp",
-          to: cleanPhone,
-          type: "template",
-          template: {
-            name: templateName,
-            language: { code: "en_US" }
-          }
-        }, {
-          headers: {
-            'Authorization': `Bearer ${META_WHATSAPP_TOKEN}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        */
         
         successCount++;
       } catch (e) {
@@ -520,7 +530,6 @@ export const sendBulkWhatsAppCampaign = onCall(functionOpts, async (request) => 
 
     await Promise.all(sendPromises);
 
-    // Log the campaign to Firestore
     await db.collection('whatsapp_campaigns').add({
       clientId: clientId,
       senderEmail: userEmail,
