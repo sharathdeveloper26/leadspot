@@ -31,7 +31,7 @@ export const incomingLeadWebhook = onRequest({
   }
 
   // 2. LEAD CATCHER: Handle POST Request
-  else if (req.method === "POST") {
+  if (req.method === "POST") {
     try {
       let leadData: any = {};
       let clientId: string | null = null;
@@ -137,7 +137,7 @@ export const incomingLeadWebhook = onRequest({
         return;
       }
 
-      // --- PHONE ENRICHMENT LOGIC (Truecaller API via RapidAPI) ---
+      // --- PHONE ENRICHMENT LOGIC (Truecaller4 API via RapidAPI) ---
       let designation = "Unknown";
       let location = "Unknown";
       let linkedinUrl = ""; // Kept for schema backward-compatibility
@@ -145,68 +145,73 @@ export const incomingLeadWebhook = onRequest({
       let truecallerBusiness = "Unknown";
 
       if (leadData.phone) {
-          try {
-              // Extract just the numbers to ensure clean API formatting
-              let cleanPhone = leadData.phone.replace(/[^0-9]/g, '');
-              
-              // If the number doesn't have the 91 country code, add it for this specific API
-              if (cleanPhone.length === 10) {
-                  cleanPhone = '91' + cleanPhone;
-              }
-              
-              // ✨ UPDATED: Truecaller Data API by do3t ✨
-              const options = {
-                  method: 'GET',
-                  // Notice the phone number is now cleanly injected directly into the URL path!
-                  url: `https://truecaller-data2.p.rapidapi.com/search/${cleanPhone}`,
-                  headers: {
-                      'X-RapidAPI-Key': '9b36bedba0msh60363bc45adf442p158081jsn4b5089ee4aec', // Your key
-                      'X-RapidAPI-Host': 'truecaller-data2.p.rapidapi.com'
-                  },
-                  timeout: 3000 // Strict 3-second timeout
-              };
+        try {
+            // Extract just the numbers to ensure clean API formatting
+            let cleanPhone = leadData.phone.replace(/[^0-9]/g, '');
+            
+            // Truecaller4 API expects the raw 10-digit number because we pass countryCode='IN' separately.
+            // This strips the '91' if the number accidentally includes it.
+            if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+                cleanPhone = cleanPhone.substring(2);
+            }
+            
+            // ✨ FINAL: Truecaller4 API Configuration ✨
+            const options = {
+                method: 'GET',
+                url: 'https://truecaller4.p.rapidapi.com/api/v1/getDetails',
+                params: { 
+                    phone: cleanPhone, 
+                    countryCode: 'IN' 
+                },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-rapidapi-host': 'truecaller4.p.rapidapi.com',
+                    'x-rapidapi-key': '9b36bedba0msh60363bc45adf442p158081jsn4b5089ee4aec'
+                },
+                timeout: 3000 // Strict 3-second timeout
+            };
 
-              const phoneResponse = await axios.request(options);
-              const resData = phoneResponse.data;
+            const phoneResponse = await axios.request(options);
+            const resData = phoneResponse.data;
 
-              // Different APIs wrap their JSON differently. This safely finds the person data.
-              let person = null;
-              if (resData.data && Array.isArray(resData.data) && resData.data.length > 0) {
-                  person = resData.data[0];
-              } else if (Array.isArray(resData) && resData.length > 0) {
-                  person = resData[0];
-              } else if (resData.name) {
-                  person = resData;
-              }
+            // Safely extract the person data regardless of how the API wraps the JSON
+            let person = null;
+            if (resData.data && Array.isArray(resData.data) && resData.data.length > 0) {
+                person = resData.data[0];
+            } else if (Array.isArray(resData) && resData.length > 0) {
+                person = resData[0];
+            } else if (resData.name) {
+                person = resData;
+            }
 
-              if (person) {
-                  truecallerName = person.name || "Unknown";
-                  
-                  // Check if Truecaller registered this number as a Business/Company
-                  if (person.badges && person.badges.includes('company')) {
-                      truecallerBusiness = person.name;
-                      designation = "Business Owner / Enterprise";
-                  }
+            if (person) {
+                truecallerName = person.name || "Unknown";
+                
+                // Check if Truecaller registered this number as a Business/Company
+                if (person.badges && person.badges.includes('company')) {
+                    truecallerBusiness = person.name;
+                    designation = "Business Owner / Enterprise";
+                }
 
-                  // Extract City/Location from Truecaller data
-                  if (person.addresses && person.addresses.length > 0) {
-                      location = person.addresses[0].city || person.addresses[0].countryCode || "Unknown";
-                  }
-                  
-                  // Map Truecaller tags if available (e.g., 'Spam', 'Sales', 'Real Estate')
-                  if (person.tags && person.tags.length > 0) {
-                      designation = person.tags[0] || "Unknown";
-                  }
-                  
-                  // Extract email if Truecaller has it attached to the profile
-                  if (person.internetAddresses && person.internetAddresses.length > 0 && !leadData.email) {
-                      leadData.email = person.internetAddresses[0].id;
-                  }
-              }
-          } catch (enrichmentError: any) {
-              console.error("Truecaller API Miss/Timeout:", enrichmentError.message);
-          }
-      } // <----- THIS CLOSING BRACE FIXES THE ISSUE!
+                // Extract City/Location from Truecaller data
+                if (person.addresses && person.addresses.length > 0) {
+                    location = person.addresses[0].city || person.addresses[0].countryCode || "Unknown";
+                }
+                
+                // Map Truecaller tags if available (e.g., 'Spam', 'Sales', 'Real Estate')
+                if (person.tags && person.tags.length > 0) {
+                    designation = person.tags[0] || "Unknown";
+                }
+                
+                // Extract email if Truecaller has it attached to the profile
+                if (person.internetAddresses && person.internetAddresses.length > 0 && !leadData.email) {
+                    leadData.email = person.internetAddresses[0].id;
+                }
+            }
+        } catch (enrichmentError: any) {
+            console.error("Truecaller API Miss/Timeout:", enrichmentError.message);
+        }
+      }
 
       let assignedToId = null;
       let assignedToName = null;
@@ -473,7 +478,7 @@ export const sendBulkWhatsAppCampaign = onCall(functionOpts, async (request) => 
   const { templateName, targetPhones } = request.data;
 
   if (!clientId || !templateName || !targetPhones || !Array.isArray(targetPhones)) {
-   throw new HttpsError("invalid-argument", "Missing WhatsApp campaign parameters.");
+    throw new HttpsError("invalid-argument", "Missing WhatsApp campaign parameters.");
   }
 
   // FIXED: Commented out the variables so TypeScript doesn't throw a "declared but unread" error (TS6133)

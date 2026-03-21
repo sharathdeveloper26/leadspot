@@ -30,7 +30,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
         return;
     }
     // 2. LEAD CATCHER: Handle POST Request
-    else if (req.method === "POST") {
+    if (req.method === "POST") {
         try {
             let leadData = {};
             let clientId = null;
@@ -120,7 +120,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 res.status(400).send({ error: "Error: clientId is required in the webhook URL." });
                 return;
             }
-            // --- PHONE ENRICHMENT LOGIC (Truecaller API via RapidAPI) ---
+            // --- PHONE ENRICHMENT LOGIC (Truecaller4 API via RapidAPI) ---
             let designation = "Unknown";
             let location = "Unknown";
             let linkedinUrl = ""; // Kept for schema backward-compatibility
@@ -130,24 +130,29 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 try {
                     // Extract just the numbers to ensure clean API formatting
                     let cleanPhone = leadData.phone.replace(/[^0-9]/g, '');
-                    // If the number doesn't have the 91 country code, add it for this specific API
-                    if (cleanPhone.length === 10) {
-                        cleanPhone = '91' + cleanPhone;
+                    // Truecaller4 API expects the raw 10-digit number because we pass countryCode='IN' separately.
+                    // This strips the '91' if the number accidentally includes it.
+                    if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+                        cleanPhone = cleanPhone.substring(2);
                     }
-                    // ✨ UPDATED: Truecaller Data API by do3t ✨
+                    // ✨ FINAL: Truecaller4 API Configuration ✨
                     const options = {
                         method: 'GET',
-                        // Notice the phone number is now cleanly injected directly into the URL path!
-                        url: `https://truecaller-data2.p.rapidapi.com/search/${cleanPhone}`,
+                        url: 'https://truecaller4.p.rapidapi.com/api/v1/getDetails',
+                        params: {
+                            phone: cleanPhone,
+                            countryCode: 'IN'
+                        },
                         headers: {
-                            'X-RapidAPI-Key': '9b36bedba0msh60363bc45adf442p158081jsn4b5089ee4aec', // Your key
-                            'X-RapidAPI-Host': 'truecaller-data2.p.rapidapi.com'
+                            'Content-Type': 'application/json',
+                            'x-rapidapi-host': 'truecaller4.p.rapidapi.com',
+                            'x-rapidapi-key': '9b36bedba0msh60363bc45adf442p158081jsn4b5089ee4aec'
                         },
                         timeout: 3000 // Strict 3-second timeout
                     };
                     const phoneResponse = await axios_1.default.request(options);
                     const resData = phoneResponse.data;
-                    // Different APIs wrap their JSON differently. This safely finds the person data.
+                    // Safely extract the person data regardless of how the API wraps the JSON
                     let person = null;
                     if (resData.data && Array.isArray(resData.data) && resData.data.length > 0) {
                         person = resData.data[0];
@@ -182,7 +187,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 catch (enrichmentError) {
                     console.error("Truecaller API Miss/Timeout:", enrichmentError.message);
                 }
-            } // <----- THIS CLOSING BRACE FIXES THE ISSUE!
+            }
             let assignedToId = null;
             let assignedToName = null;
             const rulesSnapshot = await db.collection("lead_assignment_rules")

@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 
@@ -74,6 +74,7 @@ export default function ClientDashboard() {
   const [addingAgent, setAddingAgent] = useState(false);
   const [copied, setCopied] = useState(false);
   const [outboundWebhookUrl, setOutboundWebhookUrl] = useState("");
+  const [outboundHeaders, setOutboundHeaders] = useState<{key: string, value: string}[]>([]);
   const [isSavingOutboundWebhook, setIsSavingOutboundWebhook] = useState(false);
   const [isTestingOutboundWebhook, setIsTestingOutboundWebhook] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -487,12 +488,15 @@ export default function ClientDashboard() {
     });
   };
 
-  const fetchOutboundWebhook = async () => {
+ const fetchOutboundWebhook = async () => {
     if (!user?.clientId) return;
     try {
       const docRef = doc(db, 'outbound_integrations', user.clientId);
       const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) setOutboundWebhookUrl(docSnap.data().webhookUrl || "");
+      if (docSnap.exists()) { 
+        setOutboundWebhookUrl(docSnap.data().webhookUrl || "");
+        setOutboundHeaders(docSnap.data().headers || []); // ✨ Load saved headers
+      }
     } catch (error) { console.error("Error fetching outbound webhook:", error); }
   };
 
@@ -702,14 +706,28 @@ export default function ClientDashboard() {
 
   const handleCopy = () => { navigator.clipboard.writeText(webhookUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); };
 
-  const handleSaveOutboundWebhook = async () => {
+ const handleSaveOutboundWebhook = async () => {
     if (!user?.clientId) return;
     setIsSavingOutboundWebhook(true);
     try {
+      // Clean up empty header rows before saving
+      const validHeaders = outboundHeaders.filter(h => h.key.trim() !== '');
       const docRef = doc(db, 'outbound_integrations', user.clientId);
-      await setDoc(docRef, { clientId: user.clientId, webhookUrl: outboundWebhookUrl, updatedAt: serverTimestamp() });
-      showDialog('success', 'Saved', 'Outbound webhook configuration saved successfully.');
-    } catch (error) { showDialog('error', 'Save Failed', 'Failed to save outbound webhook configuration.'); } finally { setIsSavingOutboundWebhook(false); }
+      
+      await setDoc(docRef, { 
+        clientId: user.clientId, 
+        webhookUrl: outboundWebhookUrl, 
+        headers: validHeaders, // ✨ Save headers to Firestore
+        updatedAt: serverTimestamp() 
+      });
+      
+      setOutboundHeaders(validHeaders);
+      showDialog('success', 'Saved', 'Outbound webhook and custom headers saved successfully.');
+    } catch (error) { 
+      showDialog('error', 'Save Failed', 'Failed to save outbound webhook configuration.'); 
+    } finally { 
+      setIsSavingOutboundWebhook(false); 
+    }
   };
 
   const handleTestOutboundWebhook = async () => {
@@ -717,9 +735,27 @@ export default function ClientDashboard() {
     setIsTestingOutboundWebhook(true);
     try {
       const testPayload = { id: 'test-123', firstName: 'Test', lastName: 'Lead', email: 'test@example.com', phone: '+919876543210', source: 'Test Webhook', status: 'New', createdAt: new Date().toISOString(), clientId: user?.clientId, projectProperty: 'Test Project' };
-      await fetch(outboundWebhookUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(testPayload), });
-      showDialog('success', 'Test Sent', 'Test lead sent! Please check your Google Sheet.');
-    } catch (error) { showDialog('error', 'Failed', 'Failed to send test lead.'); } finally { setIsTestingOutboundWebhook(false); }
+      
+      // Inject custom headers into the test request
+      const headerObj: Record<string, string> = { 'Content-Type': 'application/json' };
+      outboundHeaders.forEach(h => {
+        if (h.key.trim() !== '' && h.value.trim() !== '') {
+          headerObj[h.key.trim()] = h.value.trim();
+        }
+      });
+
+      await fetch(outboundWebhookUrl, { 
+        method: 'POST', 
+        headers: headerObj, 
+        body: JSON.stringify(testPayload) 
+      });
+      showDialog('success', 'Test Sent', 'Test lead sent to your destination URL!');
+    } catch (error) { 
+      // Note: Browsers block API requests to secured endpoints due to CORS. The backend bypasses this.
+      showDialog('error', 'Browser CORS Blocked', 'The test failed from the browser. However, real leads sent from the backend server will bypass this browser security block.'); 
+    } finally { 
+      setIsTestingOutboundWebhook(false); 
+    }
   };
 
   const filteredLeadsView = leads.filter(lead => {
@@ -1439,7 +1475,7 @@ export default function ClientDashboard() {
                           <div className="p-4 bg-[#25D366]/20 rounded-2xl text-[#1EBE57] shadow-lg shadow-[#25D366]/10"><MessageCircle className="w-8 h-8" /></div>
                           <div>
                             <div className="flex items-center gap-3 mb-1">
-                              <h3 className="text-xl font-bold text-slate-900 tracking-tight">   API</h3>
+                              <h3 className="text-xl font-bold text-slate-900 tracking-tight">WhatsApp Cloud API</h3>
                               {whatsappConnected ? <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black bg-[#25D366]/20 text-[#1a9347] border border-[#25D366]/40 uppercase tracking-widest">Connected</span> : <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-500 border border-slate-200 uppercase tracking-widest">Not Connected</span>}
                             </div>
                             <p className="text-slate-500 text-sm font-medium">Connect your WhatsApp Business number to send automated bulk campaigns directly from the CRM.</p>
@@ -1529,17 +1565,54 @@ export default function ClientDashboard() {
                   </div>
 
                   {/* OUTBOUND WEBHOOK CARD */}
+                {/* OUTBOUND WEBHOOK CARD */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
-                      <div className="flex items-center gap-4 mb-8"><div className="p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-500/30"><Link2 className="w-6 h-6" /></div><div><h3 className="text-xl font-bold text-slate-900 tracking-tight">Export Leads (Outbound Webhook)</h3><p className="text-slate-500 text-sm font-medium mt-1">Send incoming leads to external tools like Google Sheets via Pabbly or Make.com.</p></div></div>
+                      <div className="flex items-center gap-4 mb-8"><div className="p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-500/30"><Link2 className="w-6 h-6" /></div><div><h3 className="text-xl font-bold text-slate-900 tracking-tight">Export Leads (Native API Bridge)</h3><p className="text-slate-500 text-sm font-medium mt-1">Push leads directly to external CRMs or Webhooks (Salesforce, Zoho, Make.com).</p></div></div>
                       <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
-                        <div className="space-y-5">
-                          <div><label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">Webhook URL</label><input type="url" value={outboundWebhookUrl} onChange={(e) => setOutboundWebhookUrl(e.target.value)} placeholder="https://hook.us1.make.com/..." className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm" /></div>
-                          <div className="flex flex-wrap items-center gap-3">
-                            <button onClick={handleSaveOutboundWebhook} disabled={isSavingOutboundWebhook} className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-500/20 disabled:opacity-50">{isSavingOutboundWebhook ? 'Saving...' : 'Save Configuration'}</button>
-                            <button onClick={handleTestOutboundWebhook} disabled={isTestingOutboundWebhook} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm disabled:opacity-50">{isTestingOutboundWebhook ? 'Sending...' : 'Send Test Lead'}</button>
+                        
+                        <div className="space-y-6">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">Webhook / API Endpoint URL</label>
+                            <input type="url" value={outboundWebhookUrl} onChange={(e) => setOutboundWebhookUrl(e.target.value)} placeholder="https://api.salesforce.com/..." className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm" />
+                          </div>
+                          
+                          {/* ✨ ENTERPRISE HEADER INJECTION UI ✨ */}
+                          <div className="bg-slate-100/50 p-4 rounded-xl border border-slate-200">
+                            <div className="flex items-center justify-between mb-3">
+                              <div>
+                                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-widest">Custom Headers (Authentication)</h4>
+                                <p className="text-[10px] text-slate-500 font-medium mt-0.5">Add Auth Tokens or API Keys for direct CRM pushes. Leave blank for Zapier/Make.</p>
+                              </div>
+                              <button onClick={() => setOutboundHeaders([...outboundHeaders, {key: '', value: ''}])} className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2.5 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors shadow-sm">
+                                <Plus className="w-3 h-3" /> Add Header
+                              </button>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              {outboundHeaders.map((header, index) => (
+                                <div key={index} className="flex items-center gap-2 animate-in fade-in duration-200">
+                                  <input type="text" placeholder="Key (e.g. Authorization)" value={header.key} onChange={(e) => { const newH = [...outboundHeaders]; newH[index].key = e.target.value; setOutboundHeaders(newH); }} className="flex-1 px-3 py-2 text-xs font-medium bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none shadow-sm" />
+                                  <input type="text" placeholder="Value (e.g. Bearer token123)" value={header.value} onChange={(e) => { const newH = [...outboundHeaders]; newH[index].value = e.target.value; setOutboundHeaders(newH); }} className="flex-1 px-3 py-2 text-xs font-medium bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none shadow-sm" />
+                                  <button onClick={() => setOutboundHeaders(outboundHeaders.filter((_, i) => i !== index))} className="p-2 bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 rounded-lg transition-colors shadow-sm"><Trash2 className="w-3.5 h-3.5"/></button>
+                                </div>
+                              ))}
+                              {outboundHeaders.length === 0 && (
+                                <div className="text-center py-4 text-[11px] font-medium text-slate-400 italic bg-white border border-slate-200 border-dashed rounded-lg">No custom headers added.</div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-3 pt-2">
+                            <button onClick={handleSaveOutboundWebhook} disabled={isSavingOutboundWebhook} className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-500/20 disabled:opacity-50 flex items-center gap-2">
+                              {isSavingOutboundWebhook ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} Save Configuration
+                            </button>
+                            <button onClick={handleTestOutboundWebhook} disabled={isTestingOutboundWebhook} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm disabled:opacity-50">
+                              {isTestingOutboundWebhook ? 'Sending...' : 'Send Test Lead'}
+                            </button>
                           </div>
                         </div>
+
                       </div>
                     </div>
                   </div>
