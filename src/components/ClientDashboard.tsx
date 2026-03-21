@@ -76,7 +76,8 @@ export default function ClientDashboard() {
   const [outboundWebhookUrl, setOutboundWebhookUrl] = useState("");
   const [googleSheetUrl, setGoogleSheetUrl] = useState("");
   const [outboundHeaders, setOutboundHeaders] = useState<{key: string, value: string}[]>([]);
-  
+  const [alertEmails, setAlertEmails] = useState("");
+  const [isSavingAlerts, setIsSavingAlerts] = useState(false);
   const [isSavingSheets, setIsSavingSheets] = useState(false);
   const [isTestingSheets, setIsTestingSheets] = useState(false);
   const [isSavingCRM, setIsSavingCRM] = useState(false);
@@ -501,7 +502,18 @@ export default function ClientDashboard() {
       }
     } catch (error) { console.error("Error fetching outbound configurations:", error); }
   };
-
+// ✨ NEW: Save Alert Emails Function ✨
+  const handleSaveAlertEmails = async () => {
+    if (!user?.clientId) return;
+    setIsSavingAlerts(true);
+    try {
+      const docRef = doc(db, 'outbound_integrations', user.clientId);
+      await setDoc(docRef, { clientId: user.clientId, alertEmails: alertEmails, updatedAt: serverTimestamp() }, { merge: true });
+      showDialog('success', 'Alerts Saved', 'Lead notification emails updated successfully.');
+    } catch (error) { 
+      showDialog('error', 'Save Failed', 'Failed to save email alert configuration.'); 
+    } finally { setIsSavingAlerts(false); }
+  };
   // --- GOOGLE SHEETS PIPELINE LOGIC ---
   const handleSaveGoogleSheet = async () => {
     if (!user?.clientId) return;
@@ -1589,7 +1601,29 @@ export default function ClientDashboard() {
                       </div>
                     </div>
                   </div>
-
+                      {/* ✨ CARD: EMAIL NOTIFICATION ALERTS ✨ */}
+                  <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300 mt-6">
+                    <div className="p-8">
+                      <div className="flex items-center gap-4 mb-8">
+                        <div className="p-3 bg-gradient-to-br from-rose-400 to-red-500 rounded-2xl text-white shadow-lg shadow-red-500/30"><Mail className="w-6 h-6" /></div>
+                        <div><h3 className="text-xl font-bold text-slate-900 tracking-tight">Instant Email Alerts</h3><p className="text-slate-500 text-sm font-medium mt-1">Receive an instant HTML table breakdown in your inbox every time a lead arrives.</p></div>
+                      </div>
+                      <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
+                        <div className="space-y-6">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">Notification Recipients</label>
+                            <input type="text" value={alertEmails} onChange={(e) => setAlertEmails(e.target.value)} placeholder="sales@vamsiramhomes.in, manager@domain.com" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all shadow-sm" />
+                            <p className="text-[10px] text-slate-500 font-medium mt-2">Separate multiple email addresses with a comma.</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 pt-2">
+                            <button onClick={handleSaveAlertEmails} disabled={isSavingAlerts} className="px-6 py-2.5 bg-red-500 text-white text-sm font-bold rounded-xl hover:bg-red-600 transition-all shadow-md shadow-red-500/20 disabled:opacity-50 flex items-center gap-2">
+                              {isSavingAlerts ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} Save Alert Emails
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                   {/* ✨ CARD 2: ENTERPRISE CRM API BRIDGE ✨ */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300 mt-6">
                     <div className="p-8">

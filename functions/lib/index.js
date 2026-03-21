@@ -5,9 +5,18 @@ const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
 const axios_1 = require("axios");
+const nodemailer = require("nodemailer");
 // Initialize the Firebase Admin SDK
 admin.initializeApp();
 const db = (0, firestore_1.getFirestore)(admin.app(), 'crmdb');
+// ✨ GMAIL TRANSPORTER SETUP ✨
+const mailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: 'sharathdeveloper20@gmail.com',
+        pass: 'cnks dslx mgvn tabo'
+    }
+});
 // OPTIMIZATION: Memory restricted to 512MiB, concurrency set to 80, timeout capped at 15s.
 exports.incomingLeadWebhook = (0, https_1.onRequest)({
     cors: true,
@@ -35,7 +44,6 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
             let leadData = {};
             let clientId = null;
             let customAnswers = {};
-            // Values specifically for Dynamic Auto-Discovery
             let incomingSource = "";
             let incomingSubSource = "";
             let incomingProject = "";
@@ -58,7 +66,6 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                     res.status(200).send("Ignored: Missing Access Token");
                     return;
                 }
-                // OPTIMIZATION: 4-second timeout for Facebook Graph API
                 const fbResponse = await axios_1.default.get(`https://graph.facebook.com/v19.0/${leadgenId}?fields=field_data,form_id,ad_id,ad_name,campaign_id,campaign_name&access_token=${pageAccessToken}`, { timeout: 4000 });
                 const fbData = fbResponse.data;
                 const fbFields = fbData.field_data || [];
@@ -69,7 +76,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 });
                 incomingSource = "Facebook";
                 incomingProject = fbData.campaign_name || "Facebook Ad Campaign";
-                incomingSubSource = fbData.ad_name || ""; // Use ad name as a sub-source for FB
+                incomingSubSource = fbData.ad_name || "";
                 leadData = {
                     name: ((_f = fbFields.find((f) => f.name === "full_name")) === null || _f === void 0 ? void 0 : _f.values[0]) || "FB Lead",
                     email: ((_g = fbFields.find((f) => f.name === "email")) === null || _g === void 0 ? void 0 : _g.values[0]) || "",
@@ -91,7 +98,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                     try {
                         data = JSON.parse(data);
                     }
-                    catch (e) { /* fallback to req.query below */ }
+                    catch (e) { }
                 }
                 data = Object.assign(Object.assign({}, req.query), data);
                 clientId = data.clientId;
@@ -99,13 +106,12 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 incomingSource = data.source || "Webhook";
                 incomingSubSource = data.subSource || "";
                 incomingProject = data.projectProperty || data.project || "General Inquiry";
-                // Map payload fields to CRM schema, explicitly checking for firstName/lastName split
                 const finalFirstName = data.firstName || data.name || "Unknown";
                 const finalLastName = data.lastName || "";
                 leadData = {
                     name: finalLastName ? `${finalFirstName} ${finalLastName}`.trim() : finalFirstName,
-                    firstName: finalFirstName, // Store separately for cleaner DB
-                    lastName: finalLastName, // Store separately for cleaner DB
+                    firstName: finalFirstName,
+                    lastName: finalLastName,
                     email: data.email || "",
                     phone: data.phone || "",
                     source: incomingSource,
@@ -123,34 +129,28 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
             // --- PHONE ENRICHMENT LOGIC (Truecaller4 API via RapidAPI) ---
             let designation = "Unknown";
             let location = "Unknown";
-            let linkedinUrl = ""; // Kept for schema backward-compatibility
+            let linkedinUrl = "";
             let truecallerName = "Unknown";
             let truecallerBusiness = "Unknown";
             if (leadData.phone) {
                 try {
-                    // Extract just the numbers to ensure clean API formatting
                     let cleanPhone = leadData.phone.replace(/[^0-9]/g, '');
-                    // Truecaller4 API expects the raw 10-digit number because we pass countryCode='IN' separately.
                     if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
                         cleanPhone = cleanPhone.substring(2);
                     }
                     const options = {
                         method: 'GET',
                         url: 'https://truecaller4.p.rapidapi.com/api/v1/getDetails',
-                        params: {
-                            phone: cleanPhone,
-                            countryCode: 'IN'
-                        },
+                        params: { phone: cleanPhone, countryCode: 'IN' },
                         headers: {
                             'Content-Type': 'application/json',
                             'x-rapidapi-host': 'truecaller4.p.rapidapi.com',
                             'x-rapidapi-key': '9b36bedba0msh60363bc45adf442p158081jsn4b5089ee4aec'
                         },
-                        timeout: 3000 // Strict 3-second timeout
+                        timeout: 3000
                     };
                     const phoneResponse = await axios_1.default.request(options);
                     const resData = phoneResponse.data;
-                    // Safely extract the person data regardless of how the API wraps the JSON
                     let person = null;
                     if (resData.data && Array.isArray(resData.data) && resData.data.length > 0) {
                         person = resData.data[0];
@@ -163,20 +163,16 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                     }
                     if (person) {
                         truecallerName = person.name || "Unknown";
-                        // Check if Truecaller registered this number as a Business/Company
                         if (person.badges && person.badges.includes('company')) {
                             truecallerBusiness = person.name;
                             designation = "Business Owner / Enterprise";
                         }
-                        // Extract City/Location from Truecaller data
                         if (person.addresses && person.addresses.length > 0) {
                             location = person.addresses[0].city || person.addresses[0].countryCode || "Unknown";
                         }
-                        // Map Truecaller tags if available (e.g., 'Spam', 'Sales', 'Real Estate')
                         if (person.tags && person.tags.length > 0) {
                             designation = person.tags[0] || "Unknown";
                         }
-                        // Extract email if Truecaller has it attached to the profile
                         if (person.internetAddresses && person.internetAddresses.length > 0 && !leadData.email) {
                             leadData.email = person.internetAddresses[0].id;
                         }
@@ -195,7 +191,6 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 assignedToId = ruleData.agentId;
                 assignedToName = ruleData.agentName;
             }
-            // Final Name Formatting (Ensures no "undefined Lead" entries)
             let fName = leadData.firstName || leadData.name || "Unknown";
             let lName = leadData.lastName || "";
             if (fName.includes(" ") && fName !== "FB Lead" && !lName) {
@@ -216,18 +211,18 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 lastName: lName,
                 email: leadData.email || "",
                 phone: leadData.phone || "",
-                source: incomingSource, // From Auto-Discovery
-                subSource: incomingSubSource, // From Auto-Discovery
-                projectProperty: incomingProject, // From Auto-Discovery
+                source: incomingSource,
+                subSource: incomingSubSource,
+                projectProperty: incomingProject,
                 status: "New",
                 assignedTo: assignedToId,
                 assignedToId: assignedToId,
                 assignedToName: assignedToName,
-                designation: designation, // From Truecaller
-                location: location, // From Truecaller
-                linkedin: linkedinUrl, // From previous schema
-                truecallerName: truecallerName, // ✨ NEW: Truecaller Real Name
-                truecallerBusiness: truecallerBusiness, // ✨ NEW: Truecaller Business Status
+                designation: designation,
+                location: location,
+                linkedin: linkedinUrl,
+                truecallerName: truecallerName,
+                truecallerBusiness: truecallerBusiness,
                 formId: leadData.formId,
                 adId: leadData.adId,
                 adName: leadData.adName,
@@ -242,9 +237,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
             };
             // 1. SAVE TO CRM DATABASE
             const newLeadRef = await db.collection("leads").add(finalLead);
-            // ==========================================
-            // 🚀 ENTERPRISE AUTO-DISCOVERY ENGINE 🚀
-            // ==========================================
+            // AUTO-DISCOVERY ENGINE
             try {
                 if (incomingSource) {
                     const sourceQuery = await db.collection('lead_sources').where('clientId', '==', clientId).where('name', '==', incomingSource).get();
@@ -263,29 +256,28 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 console.error("Auto-Discovery silent fail:", autoDiscError);
             }
             // ========================================================
-            // 🚀 2. MULTI-TENANT DYNAMIC OUTBOUND PUSH (DUAL-PIPELINE) 🚀
+            // 🚀 2 & 3. OUTBOUND PUSHES & EMAIL ALERTS 🚀
             // ========================================================
             try {
                 const outboundDoc = await db.collection("outbound_integrations").doc(clientId).get();
                 if (outboundDoc.exists) {
                     const outboundData = outboundDoc.data();
                     const clientWebhookUrl = outboundData === null || outboundData === void 0 ? void 0 : outboundData.webhookUrl;
-                    const googleSheetUrl = outboundData === null || outboundData === void 0 ? void 0 : outboundData.googleSheetUrl; // ✨ Grab the Sheets URL
+                    const googleSheetUrl = outboundData === null || outboundData === void 0 ? void 0 : outboundData.googleSheetUrl;
                     const clientHeaders = (outboundData === null || outboundData === void 0 ? void 0 : outboundData.headers) || [];
+                    const alertEmails = outboundData === null || outboundData === void 0 ? void 0 : outboundData.alertEmails; // ✨ Safe Extraction!
                     const webhookPayload = Object.assign(Object.assign({}, finalLead), { id: newLeadRef.id, createdAt: new Date().toISOString() });
                     const pushPromises = [];
-                    // 🚀 Pipeline A: Google Sheets (Apps Script)
+                    // Pipeline A: Google Sheets
                     if (googleSheetUrl) {
                         pushPromises.push(axios_1.default.post(googleSheetUrl, webhookPayload, {
                             headers: { 'Content-Type': 'application/json' },
                             timeout: 4000
                         }).catch(e => console.error(`Google Sheets push failed for client ${clientId}:`, e.message)));
                     }
-                    // 🚀 Pipeline B: External Custom CRM (with Headers)
+                    // Pipeline B: External Custom CRM 
                     if (clientWebhookUrl) {
-                        const requestHeaders = {
-                            'Content-Type': 'application/json'
-                        };
+                        const requestHeaders = { 'Content-Type': 'application/json' };
                         if (Array.isArray(clientHeaders)) {
                             clientHeaders.forEach(h => {
                                 if (h.key && h.value && h.key.trim() !== '') {
@@ -298,15 +290,66 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                             timeout: 4000
                         }).catch(e => console.error(`CRM API push failed for client ${clientId}:`, e.message)));
                     }
-                    // Execute all outbound pushes simultaneously
                     if (pushPromises.length > 0) {
                         await Promise.allSettled(pushPromises);
                         console.log(`Successfully executed outbound pipelines for Client (${clientId})`);
                     }
+                    // ✨ Pipeline C: Instant Email Alert Notifications ✨
+                    if (alertEmails && alertEmails.trim() !== '') {
+                        const emailHtml = `
+              <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                <div style="background-color: #0f172a; padding: 20px; text-align: center;">
+                  <h2 style="color: #74ebd5; margin: 0;">🚨 New Lead Alert</h2>
+                  <p style="color: #cbd5e1; font-size: 14px; margin: 5px 0 0 0;">Generated via ${incomingSource}</p>
+                </div>
+                <div style="padding: 20px;">
+                  <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; text-align: left; font-size: 14px;">
+                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                      <th style="width: 35%; color: #64748b;">Full Name</th>
+                      <td style="font-weight: bold; color: #0f172a;">${finalLead.firstName} ${finalLead.lastName}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #e2e8f0; background-color: #f8fafc;">
+                      <th style="color: #64748b;">Phone Number</th>
+                      <td style="font-weight: bold; color: #0f172a;">
+                        <a href="tel:${finalLead.phone}" style="color: #2563eb; text-decoration: none;">${finalLead.phone}</a>
+                      </td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                      <th style="color: #64748b;">Email Address</th>
+                      <td>${finalLead.email || 'Not provided'}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #e2e8f0; background-color: #f8fafc;">
+                      <th style="color: #64748b;">Project Inquiry</th>
+                      <td style="font-weight: bold; color: #b45309;">${finalLead.projectProperty || 'General Inquiry'}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                      <th style="color: #64748b;">Sub-Source / Ad</th>
+                      <td>${finalLead.subSource || finalLead.adName || 'N/A'}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #e2e8f0; background-color: #eff6ff;">
+                      <th style="color: #1e3a8a;">Truecaller Verify</th>
+                      <td style="color: #1e3a8a; font-weight: bold;">${finalLead.truecallerName}</td>
+                    </tr>
+                  </table>
+                  <div style="margin-top: 20px; text-align: center;">
+                    <a href="https://crm.mintagemarkcomm.com" style="background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; display: inline-block;">View in CRM Dashboard</a>
+                  </div>
+                </div>
+              </div>
+            `;
+                        const mailOptions = {
+                            from: '"Mintage CRM" <sharathdeveloper20@gmail.com>',
+                            to: alertEmails,
+                            subject: `New Lead: ${finalLead.firstName} ${finalLead.lastName} - ${finalLead.projectProperty}`,
+                            html: emailHtml
+                        };
+                        await mailTransporter.sendMail(mailOptions);
+                        console.log(`Alert email successfully sent for Client (${clientId})`);
+                    }
                 }
             }
-            catch (webhookError) {
-                console.error(`Failed to process outbound integrations for Client (${clientId}):`, webhookError.message);
+            catch (integrationError) {
+                console.error(`Failed to process outbound integrations/emails for Client (${clientId}):`, integrationError.message);
             }
             res.status(200).json({ success: true, message: "Event processed", leadId: newLeadRef.id });
         }
@@ -316,7 +359,6 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
         }
         return;
     }
-    // 3. FALLBACK: Handle Unsupported Methods cleanly
     else {
         res.status(405).send("Method Not Allowed");
         return;
