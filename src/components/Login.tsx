@@ -1,161 +1,154 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase';
-import { Mail, Lock, LogIn, AlertCircle } from 'lucide-react';
-import { Navigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Mail, Lock, ArrowRight, ShieldCheck, Zap, TrendingUp, AlertCircle } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { user, role } = useAuth();
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
-  // Redirect if already logged in
-  if (user) {
-    if (role === 'SUPER_ADMIN') return <Navigate to="/super-admin" />;
-    if (role === 'CLIENT_ADMIN' || role === 'client_admin') return <Navigate to="/client-admin" />;
-    if (role === 'client_agent') return <Navigate to="/agent-dashboard" />;
-  }
-
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      setError('');
+      setLoading(true);
+      await login(email, password);
+      // The AuthContext listener usually handles redirecting, but we push to '/' just in case
+      navigate('/');
     } catch (err: any) {
-      console.error('Auth error:', err);
-      if (err.code === 'auth/invalid-credential') {
-        setError('Invalid email or password. Please try again.');
-      } else {
-        setError(err.message || 'An error occurred. Please try again.');
-      }
+      console.error("Login Error:", err);
+      setError('Invalid email or password. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center bg-slate-50 font-sans overflow-hidden px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen w-full flex bg-slate-50 font-sans text-slate-900 overflow-hidden">
       
-      {/* ✨ UI UPGRADE: Pinterest-style background mesh gradient blobs */}
-      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-gradient-to-br from-emerald-200/40 to-teal-100/40 blur-3xl opacity-70 mix-blend-multiply animate-pulse-slow" />
-        <div className="absolute top-[10%] -right-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-blue-200/40 to-indigo-100/40 blur-3xl opacity-70 mix-blend-multiply animate-pulse-slow" style={{ animationDelay: '2s' }} />
-        <div className="absolute -bottom-[20%] left-[20%] w-[70%] h-[70%] rounded-full bg-gradient-to-tr from-purple-200/30 to-pink-100/30 blur-3xl opacity-70 mix-blend-multiply animate-pulse-slow" style={{ animationDelay: '4s' }} />
-      </div>
+      {/* ✨ LEFT PANE: ENTERPRISE VALUE PROP (Hidden on mobile) ✨ */}
+      <div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between p-16 overflow-hidden border-r border-slate-800">
+        {/* Animated Background Glowing Orbs using Brand Colors */}
+        <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-[#74ebd5] rounded-full mix-blend-screen filter blur-[120px] opacity-20 animate-pulse" style={{ animationDuration: '4s' }}></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-[#9face6] rounded-full mix-blend-screen filter blur-[120px] opacity-20 animate-pulse" style={{ animationDuration: '6s' }}></div>
+        <div className="absolute top-[40%] left-[30%] w-64 h-64 bg-indigo-500 rounded-full mix-blend-screen filter blur-[100px] opacity-10"></div>
 
-      <div className="w-full max-w-md relative z-10">
-        
-        {/* ✨ UI UPGRADE: Increased Logo Size and hover effect */}
-        <div className="flex justify-center mb-8">
-          <img 
-            src="/mintage-logo.png" 
-            alt="Mintage CRM" 
-            className="h-20 w-auto drop-shadow-md transition-transform hover:scale-105 duration-500" 
-          />
+        {/* Logo */}
+        <div className="relative z-10">
+          {/* Using a brightness filter to make the logo white for the dark background */}
+          <img src="/mintage-logo.png" alt="Mintage CRM" className="h-14 brightness-0 invert opacity-90" />
         </div>
 
-        {/* ✨ UI UPGRADE: Frosted Glass Login Card */}
-        <div className="bg-white/70 backdrop-blur-2xl py-10 px-8 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] border border-white/80 rounded-3xl sm:px-10">
+        {/* Real-time Product Copy */}
+        <div className="relative z-10 space-y-8 -mt-12">
+          <h1 className="text-4xl xl:text-5xl font-extrabold text-white tracking-tight leading-[1.1]">
+            The Intelligent <br/>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#74ebd5] to-[#9face6]">Real Estate Engine.</span>
+          </h1>
+          <p className="text-slate-400 text-lg font-medium max-w-md leading-relaxed">
+            Automate lead capture, enrich customer data instantly with Truecaller API, and close deals faster with Level 4 enterprise architecture.
+          </p>
+
+          <div className="space-y-5 pt-8">
+            <div className="flex items-center gap-4 text-slate-300 font-bold text-sm tracking-wide">
+              <div className="p-2 bg-white/10 rounded-xl shadow-inner border border-white/5"><Zap className="w-5 h-5 text-[#74ebd5]" /></div>
+              Omnichannel Lead Capture
+            </div>
+            <div className="flex items-center gap-4 text-slate-300 font-bold text-sm tracking-wide">
+              <div className="p-2 bg-white/10 rounded-xl shadow-inner border border-white/5"><ShieldCheck className="w-5 h-5 text-[#9face6]" /></div>
+              Truecaller Identity Verification
+            </div>
+            <div className="flex items-center gap-4 text-slate-300 font-bold text-sm tracking-wide">
+              <div className="p-2 bg-white/10 rounded-xl shadow-inner border border-white/5"><TrendingUp className="w-5 h-5 text-[#74ebd5]" /></div>
+              Dual-Pipeline Automated Routing
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="relative z-10 text-slate-500 text-xs font-bold tracking-widest uppercase">
+          © {new Date().getFullYear()} Mintage Marketing Communications
+        </div>
+      </div>
+
+      {/* ✨ RIGHT PANE: LOGIN FORM ✨ */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12 relative bg-white">
+        
+        {/* Subtle background element for the light side */}
+        <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px] opacity-30"></div>
+
+        <div className="w-full max-w-md space-y-8 relative z-10">
           
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-2">
-              Welcome Back
-            </h2>
-            <p className="text-sm font-medium text-slate-500">
-              Enter your credentials to access your workspace.
-            </p>
+          <div className="text-center lg:text-left">
+            <img src="/mintage-logo.png" alt="Mintage CRM" className="h-16 mx-auto lg:hidden mb-8 drop-shadow-sm" />
+            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Access Workspace</h2>
+            <p className="text-slate-500 font-medium mt-2">Sign in to your secure CRM dashboard.</p>
           </div>
 
-          <form className="space-y-6" onSubmit={handleAuth}>
-            <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">
-                Email address
-              </label>
-              <div className="relative group">
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+              <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+              <p className="text-sm font-bold text-red-700">{error}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6 mt-8">
+            
+            <div className="space-y-2">
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest ml-1">Email Address</label>
+              <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                  <Mail className="h-5 w-5 text-slate-400" />
                 </div>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-white/60 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm font-medium text-slate-800 outline-none shadow-sm placeholder:font-normal placeholder:text-slate-400"
-                  placeholder="admin@example.com"
+                <input 
+                  type="email" 
+                  required 
+                  value={email} 
+                  onChange={(e) => setEmail(e.target.value)} 
+                  className="block w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-[#74ebd5]/20 focus:border-[#74ebd5] outline-none transition-all shadow-sm" 
+                  placeholder="admin@example.com" 
                 />
               </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">
-                Password
-              </label>
-              <div className="relative group">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest ml-1">Password</label>
+              </div>
+              <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                  <Lock className="h-5 w-5 text-slate-400" />
                 </div>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-white/60 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm font-medium text-slate-800 outline-none shadow-sm placeholder:font-normal placeholder:text-slate-400"
-                  placeholder="••••••••"
+                <input 
+                  type="password" 
+                  required 
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)} 
+                  className="block w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-[#74ebd5]/20 focus:border-[#74ebd5] outline-none transition-all shadow-sm" 
+                  placeholder="••••••••" 
                 />
               </div>
             </div>
 
-            {error && (
-              <div className="p-4 rounded-xl bg-red-50/80 backdrop-blur-sm border border-red-100 flex items-start gap-3 text-red-800 text-sm shadow-sm">
-                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-red-500" />
-                <p className="font-medium">{error}</p>
-              </div>
-            )}
-
-            <div className="pt-2">
-              {/* ✨ UI UPGRADE: Gradient Button with hover lift and colored shadow */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center items-center gap-2 py-3.5 px-4 border border-emerald-400/50 rounded-xl shadow-lg shadow-emerald-500/25 text-sm font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
-              >
-                {loading ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <LogIn className="w-5 h-5" />
-                    Sign in
-                  </>
-                )}
-              </button>
-            </div>
+            <button 
+              type="submit" 
+              disabled={loading} 
+              className="w-full flex justify-center items-center py-4 px-4 border border-transparent rounded-2xl shadow-lg shadow-[#74ebd5]/30 text-sm font-extrabold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 focus:outline-none focus:ring-4 focus:ring-offset-2 focus:ring-[#74ebd5]/50 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none mt-4"
+            >
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>Sign In <ArrowRight className="ml-2 w-4 h-4" /></>
+              )}
+            </button>
           </form>
+          
         </div>
-
-        {/* Subtle Footer Note */}
-        <div className="text-center mt-8">
-          <p className="text-xs font-medium text-slate-400">
-            Powered by <span className="font-bold text-slate-500">Mintage CRM</span>
-          </p>
-        </div>
-
       </div>
-
-      {/* Internal CSS for the slow pulse animation on the background orbs */}
-      <style>{`
-        @keyframes pulse-slow {
-          0%, 100% { opacity: 0.7; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(1.05); }
-        }
-        .animate-pulse-slow {
-          animation: pulse-slow 8s ease-in-out infinite;
-        }
-      `}</style>
     </div>
   );
 }
