@@ -1,27 +1,41 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Mail, Lock, ArrowRight, ShieldCheck, Zap, TrendingUp, AlertCircle } from 'lucide-react';
+import { Mail, Lock, ArrowRight, ShieldCheck, Zap, TrendingUp, AlertCircle, LogIn } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
-  const navigate = useNavigate();
+  const { user, role } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // ✨ RESTORED: Core Routing Logic based on User Roles ✨
+  if (user) {
+    if (role === 'SUPER_ADMIN') return <Navigate to="/super-admin" />;
+    if (role === 'CLIENT_ADMIN' || role === 'client_admin') return <Navigate to="/client-admin" />;
+    if (role === 'client_agent') return <Navigate to="/agent-dashboard" />;
+  }
+
+  // ✨ RESTORED: Original Firebase Auth Logic ✨
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    setLoading(true);
+
     try {
-      setError('');
-      setLoading(true);
-      await login(email, password);
-      // The AuthContext listener usually handles redirecting, but we push to '/' just in case
-      navigate('/');
+      await signInWithEmailAndPassword(auth, email, password);
+      // Note: We don't need a navigate() call here because the 'if (user)' block above 
+      // will instantly catch the successful login and route them perfectly!
     } catch (err: any) {
-      console.error("Login Error:", err);
-      setError('Invalid email or password. Please try again.');
+      console.error('Auth error:', err);
+      if (err.code === 'auth/invalid-credential') {
+        setError('Invalid email or password. Please try again.');
+      } else {
+        setError(err.message || 'An error occurred. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -39,7 +53,6 @@ export default function Login() {
 
         {/* Logo */}
         <div className="relative z-10">
-          {/* Using a brightness filter to make the logo white for the dark background */}
           <img src="/mintage-logo.png" alt="Mintage CRM" className="h-14 brightness-0 invert opacity-90" />
         </div>
 
@@ -96,7 +109,7 @@ export default function Login() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6 mt-8">
+          <form onSubmit={handleAuth} className="space-y-6 mt-8">
             
             <div className="space-y-2">
               <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest ml-1">Email Address</label>
