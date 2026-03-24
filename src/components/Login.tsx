@@ -3,7 +3,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Mail, Lock, ArrowRight, ShieldCheck, Zap, TrendingUp, AlertCircle, LogIn } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Zap, TrendingUp, AlertCircle, LogIn } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -63,7 +63,7 @@ export default function Login() {
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#74ebd5] to-[#9face6]">Real Estate Engine.</span>
           </h1>
           <p className="text-slate-400 text-lg font-medium max-w-md leading-relaxed">
-            Automate lead capture, enrich customer data instantly with Truecaller API, and close deals faster with Level 4 enterprise architecture.
+            Automate lead capture, receive instant alerts, and close deals faster with Level 4 enterprise architecture.
           </p>
 
           <div className="space-y-5 pt-8">
@@ -72,8 +72,9 @@ export default function Login() {
               Omnichannel Lead Capture
             </div>
             <div className="flex items-center gap-4 text-slate-300 font-bold text-sm tracking-wide">
-              <div className="p-2 bg-white/10 rounded-xl shadow-inner border border-white/5"><ShieldCheck className="w-5 h-5 text-[#9face6]" /></div>
-              Truecaller Identity Verification
+              {/* ✨ UPDATED: Instant Lead Email Alerts ✨ */}
+              <div className="p-2 bg-white/10 rounded-xl shadow-inner border border-white/5"><Mail className="w-5 h-5 text-[#9face6]" /></div>
+              Instant Lead Email Alerts
             </div>
             <div className="flex items-center gap-4 text-slate-300 font-bold text-sm tracking-wide">
               <div className="p-2 bg-white/10 rounded-xl shadow-inner border border-white/5"><TrendingUp className="w-5 h-5 text-[#74ebd5]" /></div>
