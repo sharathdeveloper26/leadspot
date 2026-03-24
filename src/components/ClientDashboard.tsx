@@ -499,10 +499,11 @@ export default function ClientDashboard() {
         setOutboundWebhookUrl(docSnap.data().webhookUrl || "");
         setGoogleSheetUrl(docSnap.data().googleSheetUrl || "");
         setOutboundHeaders(docSnap.data().headers || []);
+        setAlertEmails(docSnap.data().alertEmails || ""); 
       }
     } catch (error) { console.error("Error fetching outbound configurations:", error); }
   };
-// ✨ NEW: Save Alert Emails Function ✨
+
   const handleSaveAlertEmails = async () => {
     if (!user?.clientId) return;
     setIsSavingAlerts(true);
@@ -514,7 +515,7 @@ export default function ClientDashboard() {
       showDialog('error', 'Save Failed', 'Failed to save email alert configuration.'); 
     } finally { setIsSavingAlerts(false); }
   };
-  // --- GOOGLE SHEETS PIPELINE LOGIC ---
+
   const handleSaveGoogleSheet = async () => {
     if (!user?.clientId) return;
     setIsSavingSheets(true);
@@ -539,7 +540,6 @@ export default function ClientDashboard() {
     } finally { setIsTestingSheets(false); }
   };
 
-  // --- CUSTOM CRM API PIPELINE LOGIC ---
   const handleSaveCustomCRM = async () => {
     if (!user?.clientId) return;
     setIsSavingCRM(true);
@@ -683,9 +683,12 @@ export default function ClientDashboard() {
     } catch (error) { console.error("Error assigning lead:", error); }
   };
 
+  // ✨ UPDATED: DYNAMIC MULTI-APP SDK INJECTOR ✨
   const initFacebookSdk = (appId: string): Promise<void> => {
     return new Promise((resolve) => {
       if (window.FB) {
+        // Facebook's SDK does not switch App IDs cleanly if already loaded. 
+        // Calling init again ensures the correct token is generated for the specific App ID being connected.
         window.FB.init({ appId: appId, cookie: true, xfbml: true, version: 'v19.0' });
         resolve();
         return;
@@ -696,32 +699,52 @@ export default function ClientDashboard() {
       };
       const d = document, s = 'script', id = 'facebook-jssdk';
       let js, fjs = d.getElementsByTagName(s)[0];
-      if (d.getElementById(id)) return;
+      if (d.getElementById(id)) {
+        // If script is injected but window.FB isn't ready yet, we still resolve to prevent infinite loading.
+        resolve(); 
+        return;
+      }
       js = d.createElement(s) as any; js.id = id;
       (js as any).src = "https://connect.facebook.net/en_US/sdk.js";
       if (fjs && fjs.parentNode) fjs.parentNode.insertBefore(js, fjs); else d.head.appendChild(js);
     });
   };
 
+  // ✨ UPDATED: FACEBOOK CONNECTION WITH STRICT APP ID ENFORCEMENT ✨
   const handleConnectFacebook = async () => {
     setIsLoadingFb(true);
     await initFacebookSdk('1439047481212574'); 
+    
+    // Explicit override before login to guarantee we are NOT using the WhatsApp App ID
+    if (window.FB) {
+      window.FB.init({ appId: '1439047481212574', cookie: true, xfbml: true, version: 'v19.0' });
+    }
 
     window.FB.login((response: any) => {
       if (response.authResponse) {
         setFbUserToken(response.authResponse.accessToken); 
         window.FB.api('/me/accounts', (apiResponse: any) => {
-          if (apiResponse && !apiResponse.error) setFbPages(apiResponse.data || []);
-          else showDialog('error', 'Facebook Error', 'Failed to fetch Facebook Pages.');
+          if (apiResponse && !apiResponse.error) {
+            setFbPages(apiResponse.data || []);
+          } else {
+            showDialog('error', 'Facebook API Error', apiResponse?.error?.message || 'Failed to fetch Facebook Pages.');
+          }
           setIsLoadingFb(false);
         });
-      } else { setIsLoadingFb(false); }
-    }, { scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval' });
+      } else { 
+        setIsLoadingFb(false); 
+      }
+    }, { scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,business_management' }); // Added business_management for newer FB APIs
   };
 
+  // ✨ UPDATED: WHATSAPP CONNECTION WITH STRICT APP ID ENFORCEMENT ✨
   const handleConnectWhatsApp = async () => {
     setIsLinkingWhatsApp(true);
     await initFacebookSdk('1263110839094881'); 
+
+    if (window.FB) {
+      window.FB.init({ appId: '1263110839094881', cookie: true, xfbml: true, version: 'v19.0' });
+    }
 
     window.FB.login((response: any) => {
       if (response.authResponse && response.authResponse.code) {
@@ -744,20 +767,44 @@ export default function ClientDashboard() {
     });
   };
 
+  // ✨ UPDATED: SECURE LINKING WITH EXPOSED ERRORS ✨
   const handleLinkPage = async (page: any) => {
-    if (!user?.clientId || !fbUserToken) return;
+    if (!user?.clientId) return;
+    if (!fbUserToken) {
+      showDialog('error', 'Token Missing', 'Your Facebook session expired. Please click "Connect Facebook" again.');
+      return;
+    }
+    
     setIsLinking(true);
     try {
-      const q = query(collection(db, 'facebook_integrations'), where('pageId', '==', page.id));
+      const q = query(collection(db, 'facebook_integrations'), where('pageId', '==', String(page.id)));
       const querySnapshot = await getDocs(q);
       let isConnectedToOtherClient = false;
       querySnapshot.forEach((docSnap) => { if (docSnap.data().clientId !== user.clientId) isConnectedToOtherClient = true; });
-      if (isConnectedToOtherClient) { showDialog('error', 'Link Error', 'This Facebook Page is already connected to another client workspace.'); setIsLinking(false); return; }
+      
+      if (isConnectedToOtherClient) { 
+        showDialog('error', 'Link Error', 'This Facebook Page is already connected to another client workspace.'); 
+        setIsLinking(false); 
+        return; 
+      }
+      
       const linkFn = httpsCallable(functions, 'secureLinkFacebookPage');
-      await linkFn({ shortLivedUserToken: fbUserToken, pageId: page.id, pageName: page.name });
-      fetchLinkedPages(); setFbPages([]); 
-      showDialog('success', 'Page Linked', 'Facebook page linked successfully.');
-    } catch (error) { showDialog('error', 'Link Error', 'Failed to securely link page.'); } finally { setIsLinking(false); }
+      await linkFn({ 
+        shortLivedUserToken: fbUserToken, 
+        pageId: String(page.id), 
+        pageName: page.name 
+      });
+      
+      fetchLinkedPages(); 
+      setFbPages([]); 
+      showDialog('success', 'Page Linked', 'Facebook page successfully linked to your CRM.');
+    } catch (error: any) { 
+      console.error("Facebook Link Error:", error);
+      const errorMessage = error?.message || 'Failed to securely link the page. Check your Facebook permissions.';
+      showDialog('error', 'Link Failed', errorMessage); 
+    } finally { 
+      setIsLinking(false); 
+    }
   };
 
   const handleDisconnectPage = async (pageId: string) => {
@@ -1601,7 +1648,8 @@ export default function ClientDashboard() {
                       </div>
                     </div>
                   </div>
-                      {/* ✨ CARD: EMAIL NOTIFICATION ALERTS ✨ */}
+
+                  {/* ✨ CARD: EMAIL NOTIFICATION ALERTS ✨ */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300 mt-6">
                     <div className="p-8">
                       <div className="flex items-center gap-4 mb-8">
@@ -1612,7 +1660,7 @@ export default function ClientDashboard() {
                         <div className="space-y-6">
                           <div>
                             <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">Notification Recipients</label>
-                            <input type="text" value={alertEmails} onChange={(e) => setAlertEmails(e.target.value)} placeholder="sales@vamsiramhomes.in, manager@domain.com" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all shadow-sm" />
+                            <input type="text" value={alertEmails} onChange={(e) => setAlertEmails(e.target.value)} placeholder="your email id, manager@domain.com" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all shadow-sm" />
                             <p className="text-[10px] text-slate-500 font-medium mt-2">Separate multiple email addresses with a comma.</p>
                           </div>
                           <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -1624,6 +1672,7 @@ export default function ClientDashboard() {
                       </div>
                     </div>
                   </div>
+
                   {/* ✨ CARD 2: ENTERPRISE CRM API BRIDGE ✨ */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300 mt-6">
                     <div className="p-8">
