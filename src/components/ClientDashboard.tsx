@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 
@@ -72,11 +72,13 @@ export default function ClientDashboard() {
   const [addingAgent, setAddingAgent] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // ✨ SEPARATED INTEGRATION STATES ✨
+  // INTEGRATION STATES
   const [outboundWebhookUrl, setOutboundWebhookUrl] = useState("");
   const [googleSheetUrl, setGoogleSheetUrl] = useState("");
   const [outboundHeaders, setOutboundHeaders] = useState<{key: string, value: string}[]>([]);
   const [alertEmails, setAlertEmails] = useState("");
+  const [emailInput, setEmailInput] = useState(""); // ✨ NEW: For dynamic tag input
+  
   const [isSavingAlerts, setIsSavingAlerts] = useState(false);
   const [isSavingSheets, setIsSavingSheets] = useState(false);
   const [isTestingSheets, setIsTestingSheets] = useState(false);
@@ -504,12 +506,45 @@ export default function ClientDashboard() {
     } catch (error) { console.error("Error fetching outbound configurations:", error); }
   };
 
+  // ✨ UPGRADED: EMAIL TAG UI HANDLERS ✨
+  const emailList = alertEmails.split(',').map(e => e.trim()).filter(e => e);
+
+  const handleAddEmailTag = (e: React.KeyboardEvent<HTMLInputElement> | React.FocusEvent<HTMLInputElement>) => {
+    if (e.type === 'blur' || (e as React.KeyboardEvent).key === 'Enter') {
+      e.preventDefault();
+      const val = emailInput.trim();
+      if (val && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+        if (!emailList.includes(val)) {
+          const newEmails = [...emailList, val];
+          setAlertEmails(newEmails.join(', '));
+        }
+        setEmailInput("");
+      } else if (val) {
+        showDialog('error', 'Invalid Email', 'Please enter a valid email address before saving.');
+      }
+    }
+  };
+
+  const handleRemoveEmailTag = (emailToRemove: string) => {
+    const newEmails = emailList.filter(e => e !== emailToRemove);
+    setAlertEmails(newEmails.join(', '));
+  };
+
   const handleSaveAlertEmails = async () => {
     if (!user?.clientId) return;
     setIsSavingAlerts(true);
     try {
+      // Auto-save any straggling input text if they clicked save without hitting Enter
+      let finalEmails = alertEmails;
+      if (emailInput.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim())) {
+        const newEmails = [...emailList, emailInput.trim()];
+        finalEmails = newEmails.join(', ');
+        setAlertEmails(finalEmails);
+        setEmailInput("");
+      }
+
       const docRef = doc(db, 'outbound_integrations', user.clientId);
-      await setDoc(docRef, { clientId: user.clientId, alertEmails: alertEmails, updatedAt: serverTimestamp() }, { merge: true });
+      await setDoc(docRef, { clientId: user.clientId, alertEmails: finalEmails, updatedAt: serverTimestamp() }, { merge: true });
       showDialog('success', 'Alerts Saved', 'Lead notification emails updated successfully.');
     } catch (error) { 
       showDialog('error', 'Save Failed', 'Failed to save email alert configuration.'); 
@@ -683,12 +718,9 @@ export default function ClientDashboard() {
     } catch (error) { console.error("Error assigning lead:", error); }
   };
 
-  // ✨ UPDATED: DYNAMIC MULTI-APP SDK INJECTOR ✨
   const initFacebookSdk = (appId: string): Promise<void> => {
     return new Promise((resolve) => {
       if (window.FB) {
-        // Facebook's SDK does not switch App IDs cleanly if already loaded. 
-        // Calling init again ensures the correct token is generated for the specific App ID being connected.
         window.FB.init({ appId: appId, cookie: true, xfbml: true, version: 'v19.0' });
         resolve();
         return;
@@ -699,23 +731,17 @@ export default function ClientDashboard() {
       };
       const d = document, s = 'script', id = 'facebook-jssdk';
       let js, fjs = d.getElementsByTagName(s)[0];
-      if (d.getElementById(id)) {
-        // If script is injected but window.FB isn't ready yet, we still resolve to prevent infinite loading.
-        resolve(); 
-        return;
-      }
+      if (d.getElementById(id)) { resolve(); return; }
       js = d.createElement(s) as any; js.id = id;
       (js as any).src = "https://connect.facebook.net/en_US/sdk.js";
       if (fjs && fjs.parentNode) fjs.parentNode.insertBefore(js, fjs); else d.head.appendChild(js);
     });
   };
 
-  // ✨ UPDATED: FACEBOOK CONNECTION WITH STRICT APP ID ENFORCEMENT ✨
   const handleConnectFacebook = async () => {
     setIsLoadingFb(true);
     await initFacebookSdk('1439047481212574'); 
     
-    // Explicit override before login to guarantee we are NOT using the WhatsApp App ID
     if (window.FB) {
       window.FB.init({ appId: '1439047481212574', cookie: true, xfbml: true, version: 'v19.0' });
     }
@@ -734,10 +760,13 @@ export default function ClientDashboard() {
       } else { 
         setIsLoadingFb(false); 
       }
-    }, { scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,business_management' }); // Added business_management for newer FB APIs
+    }, { 
+      scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,business_management',
+      auth_type: 'rerequest',
+      return_scopes: true
+    }); 
   };
 
-  // ✨ UPDATED: WHATSAPP CONNECTION WITH STRICT APP ID ENFORCEMENT ✨
   const handleConnectWhatsApp = async () => {
     setIsLinkingWhatsApp(true);
     await initFacebookSdk('1263110839094881'); 
@@ -767,7 +796,6 @@ export default function ClientDashboard() {
     });
   };
 
-  // ✨ UPDATED: SECURE LINKING WITH EXPOSED ERRORS ✨
   const handleLinkPage = async (page: any) => {
     if (!user?.clientId) return;
     if (!fbUserToken) {
@@ -789,22 +817,15 @@ export default function ClientDashboard() {
       }
       
       const linkFn = httpsCallable(functions, 'secureLinkFacebookPage');
-      await linkFn({ 
-        shortLivedUserToken: fbUserToken, 
-        pageId: String(page.id), 
-        pageName: page.name 
-      });
+      await linkFn({ shortLivedUserToken: fbUserToken, pageId: String(page.id), pageName: page.name });
       
-      fetchLinkedPages(); 
-      setFbPages([]); 
+      fetchLinkedPages(); setFbPages([]); 
       showDialog('success', 'Page Linked', 'Facebook page successfully linked to your CRM.');
     } catch (error: any) { 
       console.error("Facebook Link Error:", error);
       const errorMessage = error?.message || 'Failed to securely link the page. Check your Facebook permissions.';
       showDialog('error', 'Link Failed', errorMessage); 
-    } finally { 
-      setIsLinking(false); 
-    }
+    } finally { setIsLinking(false); }
   };
 
   const handleDisconnectPage = async (pageId: string) => {
@@ -858,6 +879,53 @@ export default function ClientDashboard() {
     return matches;
   });
 
+  // ✨ UPGRADED ANALYTICS & REPORTS DATA ENGINE ✨
+  const reportsData = useMemo(() => {
+    const total = filteredLeads.length;
+    const won = filteredLeads.filter(l => l.status === 'Closed Won').length;
+    const lostOrJunk = filteredLeads.filter(l => l.status === 'Closed Lost' || l.status === 'Junk / Invalid').length;
+    const active = total - won - lostOrJunk;
+    const winRate = total > 0 ? Math.round((won / total) * 100) : 0;
+
+    // 1. Leads by Date Trend (Bar Chart Data)
+    const trendMap = new Map<string, number>();
+    filteredLeads.forEach(lead => {
+      if(lead.createdAt) {
+        const date = new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        trendMap.set(date, (trendMap.get(date) || 0) + 1);
+      }
+    });
+    // Create an array and sort it simply to maintain flow
+    const trendChart = Array.from(trendMap.entries()).map(([date, count]) => ({ date, count })).reverse(); // Assuming descending firestore data, reverse to show chronological
+
+    // 2. Agent Leaderboard (Bar Chart Data)
+    const agentMap = new Map<string, {name: string, totalLeads: number, wonDeals: number}>();
+    filteredLeads.forEach(lead => {
+      const agentId = lead.assignedToId || lead.assignedTo || 'unassigned';
+      const agentName = lead.assignedToName || teamMembers.find(m => m.id === agentId)?.name || 'Unassigned';
+      
+      if (!agentMap.has(agentId)) {
+        agentMap.set(agentId, { name: agentName, totalLeads: 0, wonDeals: 0 });
+      }
+      
+      const data = agentMap.get(agentId)!;
+      data.totalLeads += 1;
+      if (lead.status === 'Closed Won') data.wonDeals += 1;
+    });
+    // Top 5 agents by volume
+    const agentChart = Array.from(agentMap.values()).sort((a,b) => b.totalLeads - a.totalLeads).slice(0, 5);
+
+    // 3. Pipeline Funnel (Bar Chart Data mapped to PIPELINE_STATUSES)
+    const pipelineChart = PIPELINE_STATUSES.map(status => {
+      return {
+        name: status,
+        count: filteredLeads.filter(l => l.status === status).length
+      };
+    }).filter(s => s.count > 0); // Only show statuses that have leads
+
+    return { total, won, lostOrJunk, active, winRate, trendChart, agentChart, pipelineChart };
+  }, [filteredLeads, teamMembers]);
+
   const feedbackSourceDataMap = new Map<string, number>();
   filteredFeedbackLeads.forEach(lead => {
     const source = lead.source || 'Manual'; feedbackSourceDataMap.set(source, (feedbackSourceDataMap.get(source) || 0) + 1);
@@ -905,13 +973,6 @@ export default function ClientDashboard() {
   filteredLeads.forEach(lead => { const source = lead.source || 'Manual'; sourceDataMap.set(source, (sourceDataMap.get(source) || 0) + 1); });
   const dynamicSourceData = Array.from(sourceDataMap.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   const PIE_COLORS = ['#74ebd5', '#9face6', '#a1c4fd', '#c2e9fb', '#d4fc79', '#96e6a1', '#84fab0', '#8fd3f4', '#f5576c', '#f093fb'];
-
-  const statusDataMap = new Map<string, number>();
-  filteredLeads.forEach(lead => { const status = lead.status || 'New'; statusDataMap.set(status, (statusDataMap.get(status) || 0) + 1); });
-  const dynamicStatusData = Array.from(statusDataMap.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => {
-      const indexA = PIPELINE_STATUSES.indexOf(a.name); const indexB = PIPELINE_STATUSES.indexOf(b.name);
-      if (indexA !== -1 && indexB !== -1) return indexA - indexB; if (indexA !== -1) return -1; if (indexB !== -1) return 1; return b.count - a.count;
-  });
 
   const getSourceBadge = (source?: string, subSource?: string) => {
     const s = source?.toLowerCase() || 'manual';
@@ -1196,7 +1257,6 @@ export default function ClientDashboard() {
             
             {activeTab === 'dashboard' ? (
               <div className="w-full space-y-8 animate-in fade-in duration-500">
-              {/* ✨ UPDATED: Animated IST Greeting ✨ */}
                 <div>
                   <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1 flex items-center gap-3">
                     {greeting.text}, {user?.email?.split('@')[0]} 
@@ -1649,7 +1709,7 @@ export default function ClientDashboard() {
                     </div>
                   </div>
 
-                  {/* ✨ CARD: EMAIL NOTIFICATION ALERTS ✨ */}
+                  {/* ✨ UPGRADED CARD: EMAIL NOTIFICATION ALERTS ✨ */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300 mt-6">
                     <div className="p-8">
                       <div className="flex items-center gap-4 mb-8">
@@ -1660,9 +1720,31 @@ export default function ClientDashboard() {
                         <div className="space-y-6">
                           <div>
                             <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">Notification Recipients</label>
-                            <input type="text" value={alertEmails} onChange={(e) => setAlertEmails(e.target.value)} placeholder="your email id, manager@domain.com" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all shadow-sm" />
-                            <p className="text-[10px] text-slate-500 font-medium mt-2">Separate multiple email addresses with a comma.</p>
+                            
+                            {/* NEW TAG INPUT UI */}
+                            <div className="bg-white border border-slate-200 rounded-xl p-2 flex flex-wrap gap-2 focus-within:ring-2 focus-within:ring-red-500/20 focus-within:border-red-500 transition-all shadow-sm min-h-[52px]">
+                              {emailList.map(email => (
+                                <span key={email} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 shadow-sm animate-in zoom-in-95">
+                                  <Mail className="w-3 h-3 text-slate-400" />
+                                  {email}
+                                  <button type="button" onClick={() => handleRemoveEmailTag(email)} className="text-slate-400 hover:text-red-500 transition-colors ml-1 focus:outline-none">
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </span>
+                              ))}
+                              <input 
+                                type="email" 
+                                value={emailInput} 
+                                onChange={(e) => setEmailInput(e.target.value)} 
+                                onKeyDown={handleAddEmailTag}
+                                onBlur={handleAddEmailTag}
+                                placeholder={emailList.length === 0 ? "sales@domain.com (Press Enter)" : "Add another email..."} 
+                                className="flex-1 min-w-[200px] bg-transparent border-none focus:ring-0 text-sm font-medium outline-none px-2 py-1.5 text-slate-700 placeholder:text-slate-400" 
+                              />
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-medium mt-2">Type an email address and press <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded font-mono text-[9px]">Enter</kbd> to add it to the list.</p>
                           </div>
+                          
                           <div className="flex flex-wrap items-center gap-3 pt-2">
                             <button onClick={handleSaveAlertEmails} disabled={isSavingAlerts} className="px-6 py-2.5 bg-red-500 text-white text-sm font-bold rounded-xl hover:bg-red-600 transition-all shadow-md shadow-red-500/20 disabled:opacity-50 flex items-center gap-2">
                               {isSavingAlerts ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} Save Alert Emails
@@ -1780,12 +1862,12 @@ export default function ClientDashboard() {
               <div className="w-full space-y-8 animate-in fade-in duration-500">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                   <div>
-                    <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Analytics Reports</h2>
-                    <p className="text-slate-500 text-sm font-medium">Filter, analyze, and export your master lead data.</p>
+                    <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Advanced Analytics</h2>
+                    <p className="text-slate-500 text-sm font-medium">Enterprise-level insights, pipeline health, and agent performance.</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-4">
-                    <button onClick={handleExportCSV} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white text-sm font-bold rounded-xl shadow-lg shadow-[#74ebd5]/30 hover:opacity-90 hover:-translate-y-0.5 transition-all">
-                      <Download className="w-4 h-4" /> Export Master CSV
+                    <button onClick={handleExportCSV} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white text-sm font-bold rounded-xl shadow-lg shadow-[#74ebd5]/30 hover:opacity-90 hover:-translate-y-0.5 transition-all border border-transparent">
+                      <Download className="w-4 h-4" /> Export Master Data
                     </button>
                   </div>
                 </div>
@@ -1804,51 +1886,108 @@ export default function ClientDashboard() {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* ✨ UPGRADED: LEVEL 4 KPI METRICS ✨ */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                   <div className="bg-white/80 backdrop-blur-2xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
-                    <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4">Leads in Range</h3>
-                    <p className="text-4xl font-black text-slate-800">{filteredLeads.length}</p>
+                    <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Users className="w-4 h-4 text-indigo-500"/> Total Leads</h3>
+                    <p className="text-4xl font-black text-slate-800">{reportsData.total}</p>
                   </div>
                   <div className="bg-white/80 backdrop-blur-2xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
-                    <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4">Won in Range</h3>
-                    <p className="text-4xl font-black text-slate-800">{filteredLeads.filter(l => l.status === 'Closed Won').length}</p>
+                    <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Target className="w-4 h-4 text-amber-500"/> Active Pipeline</h3>
+                    <p className="text-4xl font-black text-slate-800">{reportsData.active}</p>
                   </div>
                   <div className="bg-white/80 backdrop-blur-2xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
-                    <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4">Lost in Range</h3>
-                    <p className="text-4xl font-black text-slate-800">{filteredLeads.filter(l => l.status === 'Closed Lost').length}</p>
+                    <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-500"/> Win Rate</h3>
+                    <div className="flex items-baseline gap-2"><p className="text-4xl font-black text-slate-800">{reportsData.winRate}%</p><span className="text-xs font-bold text-slate-400 mb-1">({reportsData.won} Deals)</span></div>
+                  </div>
+                  <div className="bg-white/80 backdrop-blur-2xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
+                    <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2"><XCircle className="w-4 h-4 text-red-400"/> Lost / Junk</h3>
+                    <p className="text-4xl font-black text-slate-800">{reportsData.lostOrJunk}</p>
                   </div>
                 </div>
 
+                {/* ✨ UPGRADED: CHARTS ROW 1 ✨ */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col min-h-[350px]">
+                    <h3 className="text-lg font-bold text-slate-800 mb-6">Lead Generation Trend</h3>
+                    {reportsData.trendChart.length > 0 ? (
+                      <div className="flex-1 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={reportsData.trendChart}>
+                            <defs><linearGradient id="colorTrendReports" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#9face6" stopOpacity={0.4}/><stop offset="95%" stopColor="#9face6" stopOpacity={0}/></linearGradient></defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} dy={10} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} dx={-10} allowDecimals={false} />
+                            <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', padding: '12px 16px', fontWeight: 600 }} itemStyle={{ color: '#7b8ed3' }} />
+                            <Area type="monotone" dataKey="count" stroke="#9face6" strokeWidth={3} fillOpacity={1} fill="url(#colorTrendReports)" />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : ( <div className="flex-1 flex items-center justify-center text-slate-400 font-medium text-sm border border-dashed border-slate-200 rounded-2xl">No trend data available</div> )}
+                  </div>
+                  
+                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col min-h-[350px]">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-lg font-bold text-slate-800">Agent Leaderboard</h3>
+                      <span className="px-2.5 py-1 bg-amber-50 text-amber-600 rounded-lg text-[10px] font-bold uppercase tracking-widest border border-amber-100 flex items-center gap-1"><Medal className="w-3 h-3"/> Top 5</span>
+                    </div>
+                    {reportsData.agentChart.length > 0 ? (
+                      <div className="flex-1 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={reportsData.agentChart} layout="vertical" margin={{ top: 0, right: 0, left: 20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                            <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} />
+                            <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} width={80} />
+                            <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', fontWeight: 600 }} />
+                            <Bar dataKey="totalLeads" name="Total Leads" fill="#e2e8f0" radius={[0, 4, 4, 0]} barSize={12} />
+                            <Bar dataKey="wonDeals" name="Won Deals" fill="#74ebd5" radius={[0, 4, 4, 0]} barSize={12} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : ( <div className="flex-1 flex items-center justify-center text-slate-400 font-medium text-sm border border-dashed border-slate-200 rounded-2xl">No agent data available</div> )}
+                  </div>
+                </div>
+
+                {/* ✨ UPGRADED: CHARTS ROW 2 ✨ */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-8 w-full">
-                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
+                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col min-h-[350px]">
                     <h3 className="text-lg font-bold text-slate-800 mb-6">Leads by Source</h3>
                     {dynamicSourceData.length > 0 ? (
-                      <div className="h-[250px] w-full flex justify-center">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={dynamicSourceData} cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={4} dataKey="value" nameKey="name" stroke="none">
-                              {dynamicSourceData.map((entry, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
-                            </Pie>
-                            <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', fontWeight: 600 }} />
-                          </PieChart>
-                        </ResponsiveContainer>
+                      <div className="flex-1 flex flex-col justify-center">
+                        <div className="h-[220px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie data={dynamicSourceData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value" nameKey="name" stroke="none">
+                                {dynamicSourceData.map((entry, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
+                              </Pie>
+                              <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', fontWeight: 600 }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4">{dynamicSourceData.map((source, index) => <div key={source.name} className="flex items-center gap-2 text-xs font-bold text-slate-600"><div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />{source.name} <span className="text-slate-400">({source.value})</span></div>)}</div>
                       </div>
-                    ) : ( <div className="text-center py-10 text-slate-400 font-medium">No data</div> )}
+                    ) : ( <div className="flex-1 flex items-center justify-center text-slate-400 font-medium text-sm border border-dashed border-slate-200 rounded-2xl">No data available</div> )}
                   </div>
-                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
-                    <h3 className="text-lg font-bold text-slate-800 mb-6">Leads by Status</h3>
-                    {dynamicStatusData.length > 0 ? (
-                      <div className="h-[250px] w-full flex justify-center">
+
+                  <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col min-h-[350px]">
+                    <h3 className="text-lg font-bold text-slate-800 mb-6">Pipeline Funnel</h3>
+                    {reportsData.pipelineChart.length > 0 ? (
+                      <div className="flex-1 w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={dynamicStatusData} cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={4} dataKey="count" nameKey="name" stroke="none">
-                              {dynamicStatusData.map((entry, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
-                            </Pie>
-                            <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', fontWeight: 600 }} />
-                          </PieChart>
+                          <BarChart data={reportsData.pipelineChart} layout="vertical" margin={{ top: 0, right: 20, left: 30, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                            <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} />
+                            <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: 700 }} width={120} />
+                            <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0 0 0 / 0.1)', fontWeight: 600 }} />
+                            <Bar dataKey="count" name="Leads" fill="#9face6" radius={[0, 6, 6, 0]} barSize={20}>
+                              {reportsData.pipelineChart.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.name === 'Closed Won' ? '#74ebd5' : entry.name === 'Closed Lost' || entry.name === 'Junk / Invalid' ? '#f87171' : '#9face6'} />
+                              ))}
+                            </Bar>
+                          </BarChart>
                         </ResponsiveContainer>
                       </div>
-                    ) : ( <div className="text-center py-10 text-slate-400 font-medium">No data</div> )}
+                    ) : ( <div className="flex-1 flex items-center justify-center text-slate-400 font-medium text-sm border border-dashed border-slate-200 rounded-2xl">No data available</div> )}
                   </div>
                 </div>
               </div>
