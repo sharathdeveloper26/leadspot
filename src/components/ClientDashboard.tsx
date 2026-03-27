@@ -1336,16 +1336,19 @@ export default function ClientDashboard() {
                   <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
                     {/* Process Leads and Group Messages */}
                     {(() => {
-                      // Find leads that have messages (or just show all leads for testing)
-                      const leadsWithChats = leads.filter(l => l.phone).map(l => {
-                        const normalizedPhone = normalizePhone(l.phone);
-                        const msgsForLead = waMessages.filter(m => m.senderPhone === normalizedPhone);
-                        return { ...l, msgs: msgsForLead, lastMsg: msgsForLead[msgsForLead.length - 1] };
-                      }).filter(l => l.msgs.length > 0).sort((a, b) => {
-                        const timeA = a.lastMsg ? (a.lastMsg.timestamp?.toMillis ? a.lastMsg.timestamp.toMillis() : new Date(a.lastMsg.timestamp).getTime()) : 0;
-                        const timeB = b.lastMsg ? (b.lastMsg.timestamp?.toMillis ? b.lastMsg.timestamp.toMillis() : new Date(b.lastMsg.timestamp).getTime()) : 0;
-                        return timeB - timeA;
-                      });
+                    // Find leads that have messages OR are currently the active chat
+const leadsWithChats = leads.filter(l => l.phone).map(l => {
+  const normalizedPhone = normalizePhone(l.phone);
+  const msgsForLead = waMessages.filter(m => m.senderPhone === normalizedPhone);
+  return { ...l, msgs: msgsForLead, lastMsg: msgsForLead[msgsForLead.length - 1] };
+})
+// ✨ THE FIX: Keep them in the list if they have messages OR if they are the active chat
+.filter(l => l.msgs.length > 0 || l.id === activeChatLeadId) 
+.sort((a, b) => {
+  const timeA = a.lastMsg ? (a.lastMsg.timestamp?.toMillis ? a.lastMsg.timestamp.toMillis() : new Date(a.lastMsg.timestamp).getTime()) : 0;
+  const timeB = b.lastMsg ? (b.lastMsg.timestamp?.toMillis ? b.lastMsg.timestamp.toMillis() : new Date(b.lastMsg.timestamp).getTime()) : 0;
+  return timeB - timeA;
+});
 
                       if (leadsWithChats.length === 0) {
                         return (
