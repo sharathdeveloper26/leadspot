@@ -1,11 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
+exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
 const axios_1 = require("axios");
 const nodemailer = require("nodemailer");
+const firestore_2 = require("firebase-functions/v2/firestore");
 // Initialize the Firebase Admin SDK
 admin.initializeApp();
 const db = (0, firestore_1.getFirestore)(admin.app(), 'crmdb');
@@ -17,6 +18,15 @@ const mailTransporter = nodemailer.createTransport({
         pass: 'cnks dslx mgvn tabo'
     }
 });
+// ============================================================================
+// 🚀 LEVEL 5 MEMORY CACHE (Global Scope) 🚀
+// Prevents redundant Firestore reads across concurrent webhook invocations.
+// ============================================================================
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
+const fbIntegrationCache = new Map();
+const assignmentRulesCache = new Map();
+const outboundCache = new Map();
+const discoveredSourcesCache = new Map(); // Tracks auto-discovered sources
 // OPTIMIZATION: Memory restricted to 512MiB, concurrency set to 80, timeout capped at 15s.
 exports.incomingLeadWebhook = (0, https_1.onRequest)({
     cors: true,
@@ -41,6 +51,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
     // 2. LEAD CATCHER: Handle POST Request
     else if (req.method === "POST") {
         try {
+            const now = Date.now();
             let leadData = {};
             let clientId = null;
             let customAnswers = {};
@@ -51,15 +62,26 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 const changes = req.body.entry[0].changes[0].value;
                 const pageId = changes.page_id;
                 const leadgenId = changes.leadgen_id;
-                const integrationQuery = await db.collection("facebook_integrations")
-                    .where("pageId", "==", pageId)
-                    .limit(1)
-                    .get();
-                if (integrationQuery.empty) {
+                // 🧠 CACHE CHECK: Facebook Integration
+                let integrationData = null;
+                const cachedFb = fbIntegrationCache.get(pageId);
+                if (cachedFb && cachedFb.expiresAt > now) {
+                    integrationData = cachedFb.data;
+                }
+                else {
+                    const integrationQuery = await db.collection("facebook_integrations")
+                        .where("pageId", "==", pageId)
+                        .limit(1)
+                        .get();
+                    if (!integrationQuery.empty) {
+                        integrationData = integrationQuery.docs[0].data();
+                        fbIntegrationCache.set(pageId, { data: integrationData, expiresAt: now + CACHE_TTL });
+                    }
+                }
+                if (!integrationData) {
                     res.status(200).send("Ignored: Integration not found");
                     return;
                 }
-                const integrationData = integrationQuery.docs[0].data();
                 clientId = integrationData.clientId;
                 const pageAccessToken = integrationData.pageAccessToken || integrationData.accessToken;
                 if (!pageAccessToken) {
@@ -92,7 +114,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 };
             }
             else {
-                // 🔥 CUSTOM PAYLOAD PARSING & AUTO-DISCOVERY PREP 🔥
+                // 🔥 CUSTOM PAYLOAD PARSING
                 let data = req.body;
                 if (typeof data === 'string') {
                     try {
@@ -182,14 +204,23 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                     console.error("Truecaller API Miss/Timeout:", enrichmentError.message);
                 }
             }
+            // 🧠 CACHE CHECK: Auto-Assignment Rules
             let assignedToId = null;
             let assignedToName = null;
-            const rulesSnapshot = await db.collection("lead_assignment_rules")
-                .where("clientId", "==", clientId).where("sourceName", "==", leadData.source).get();
-            if (!rulesSnapshot.empty) {
-                const ruleData = rulesSnapshot.docs[0].data();
-                assignedToId = ruleData.agentId;
-                assignedToName = ruleData.agentName;
+            let rules = [];
+            const cachedRules = assignmentRulesCache.get(clientId);
+            if (cachedRules && cachedRules.expiresAt > now) {
+                rules = cachedRules.rules;
+            }
+            else {
+                const rulesSnapshot = await db.collection("lead_assignment_rules").where("clientId", "==", clientId).get();
+                rules = rulesSnapshot.docs.map(doc => doc.data());
+                assignmentRulesCache.set(clientId, { rules, expiresAt: now + CACHE_TTL });
+            }
+            const activeRule = rules.find(r => r.sourceName === leadData.source);
+            if (activeRule) {
+                assignedToId = activeRule.agentId;
+                assignedToName = activeRule.agentName;
             }
             let fName = leadData.firstName || leadData.name || "Unknown";
             let lName = leadData.lastName || "";
@@ -237,18 +268,30 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
             };
             // 1. SAVE TO CRM DATABASE
             const newLeadRef = await db.collection("leads").add(finalLead);
-            // AUTO-DISCOVERY ENGINE
+            // 🧠 CACHE CHECK: Auto-Discovery Engine
             try {
+                if (!discoveredSourcesCache.has(clientId)) {
+                    discoveredSourcesCache.set(clientId, new Set());
+                }
+                const clientDiscovered = discoveredSourcesCache.get(clientId);
                 if (incomingSource) {
-                    const sourceQuery = await db.collection('lead_sources').where('clientId', '==', clientId).where('name', '==', incomingSource).get();
-                    if (sourceQuery.empty) {
-                        await db.collection('lead_sources').add({ clientId, name: incomingSource, autoDiscovered: true });
+                    const cacheKey = `SRC_${incomingSource}`;
+                    if (!clientDiscovered.has(cacheKey)) {
+                        const sourceQuery = await db.collection('lead_sources').where('clientId', '==', clientId).where('name', '==', incomingSource).limit(1).get();
+                        if (sourceQuery.empty) {
+                            await db.collection('lead_sources').add({ clientId, name: incomingSource, autoDiscovered: true });
+                        }
+                        clientDiscovered.add(cacheKey); // Mark known in RAM
                     }
                 }
                 if (incomingSubSource) {
-                    const subSourceQuery = await db.collection('lead_sub_sources').where('clientId', '==', clientId).where('name', '==', incomingSubSource).get();
-                    if (subSourceQuery.empty) {
-                        await db.collection('lead_sub_sources').add({ clientId, name: incomingSubSource, autoDiscovered: true });
+                    const cacheKey = `SUB_${incomingSubSource}`;
+                    if (!clientDiscovered.has(cacheKey)) {
+                        const subSourceQuery = await db.collection('lead_sub_sources').where('clientId', '==', clientId).where('name', '==', incomingSubSource).limit(1).get();
+                        if (subSourceQuery.empty) {
+                            await db.collection('lead_sub_sources').add({ clientId, name: incomingSubSource, autoDiscovered: true });
+                        }
+                        clientDiscovered.add(cacheKey); // Mark known in RAM
                     }
                 }
             }
@@ -259,13 +302,22 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
             // 🚀 2 & 3. OUTBOUND PUSHES & EMAIL ALERTS 🚀
             // ========================================================
             try {
-                const outboundDoc = await db.collection("outbound_integrations").doc(clientId).get();
-                if (outboundDoc.exists) {
-                    const outboundData = outboundDoc.data();
-                    const clientWebhookUrl = outboundData === null || outboundData === void 0 ? void 0 : outboundData.webhookUrl;
-                    const googleSheetUrl = outboundData === null || outboundData === void 0 ? void 0 : outboundData.googleSheetUrl;
-                    const clientHeaders = (outboundData === null || outboundData === void 0 ? void 0 : outboundData.headers) || [];
-                    const alertEmails = outboundData === null || outboundData === void 0 ? void 0 : outboundData.alertEmails; // ✨ Safe Extraction!
+                // 🧠 CACHE CHECK: Outbound Integrations
+                let outboundData = null;
+                const cachedOutbound = outboundCache.get(clientId);
+                if (cachedOutbound && cachedOutbound.expiresAt > now) {
+                    outboundData = cachedOutbound.data;
+                }
+                else {
+                    const outboundDoc = await db.collection("outbound_integrations").doc(clientId).get();
+                    outboundData = outboundDoc.exists ? outboundDoc.data() : null;
+                    outboundCache.set(clientId, { data: outboundData, expiresAt: now + CACHE_TTL });
+                }
+                if (outboundData) {
+                    const clientWebhookUrl = outboundData.webhookUrl;
+                    const googleSheetUrl = outboundData.googleSheetUrl;
+                    const clientHeaders = outboundData.headers || [];
+                    const alertEmails = outboundData.alertEmails;
                     const webhookPayload = Object.assign(Object.assign({}, finalLead), { id: newLeadRef.id, createdAt: new Date().toISOString() });
                     const pushPromises = [];
                     // Pipeline A: Google Sheets
@@ -582,7 +634,6 @@ exports.whatsappWebhook = (0, https_1.onRequest)({
                                     messageText = `[Received a ${msg.type} message]`;
                                 }
                                 console.log(`Received WA message from ${senderPhone}: ${messageText}`);
-                                // ✨ FIXED: Added wabaId to payload to resolve strict TS unused local variable error
                                 await db.collection("whatsapp_messages").add({
                                     wabaId: wabaId,
                                     phoneNumberId: phoneNumberId,
@@ -601,7 +652,6 @@ exports.whatsappWebhook = (0, https_1.onRequest)({
                         // Handle Message Status Updates (Sent, Delivered, Read)
                         if (value.statuses && value.statuses.length > 0) {
                             for (const status of value.statuses) {
-                                // We will use this later to show "Blue Ticks" in your UI!
                                 console.log(`Message ${status.id} is now ${status.status}`);
                             }
                         }
@@ -620,5 +670,126 @@ exports.whatsappWebhook = (0, https_1.onRequest)({
         return;
     }
     res.status(405).send("Method Not Allowed");
+});
+// ============================================================================
+// 🚀 PHASE 3.1: SECURE WHATSAPP OAUTH EXCHANGE 🚀
+// ============================================================================
+exports.secureLinkWhatsApp = (0, https_1.onCall)(functionOpts, async (request) => {
+    var _a, _b, _c;
+    if (!request.auth)
+        throw new https_1.HttpsError("unauthenticated", "Must be logged in.");
+    const clientId = request.auth.token.clientId;
+    const { accessToken } = request.data; // Passed from frontend Meta Login
+    if (!clientId || !accessToken) {
+        throw new https_1.HttpsError("invalid-argument", "Missing required credentials.");
+    }
+    try {
+        // 1. Fetch the WhatsApp Business Accounts attached to this token
+        const wabaResponse = await axios_1.default.get(`https://graph.facebook.com/v19.0/me/client_whatsapp_business_accounts`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: 5000
+        });
+        const wabaData = (_a = wabaResponse.data) === null || _a === void 0 ? void 0 : _a.data;
+        if (!wabaData || wabaData.length === 0) {
+            throw new Error("No WhatsApp Business Accounts found for this Meta user.");
+        }
+        const targetWabaId = wabaData[0].id; // Grabbing the first connected WABA
+        // 2. Fetch the Phone Numbers attached to that WABA
+        const phoneResponse = await axios_1.default.get(`https://graph.facebook.com/v19.0/${targetWabaId}/phone_numbers`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: 5000
+        });
+        const phoneData = (_b = phoneResponse.data) === null || _b === void 0 ? void 0 : _b.data;
+        if (!phoneData || phoneData.length === 0) {
+            throw new Error("No Phone Numbers found in this WhatsApp Business Account.");
+        }
+        const targetPhoneNumberId = phoneData[0].id;
+        const targetDisplayPhoneNumber = phoneData[0].display_phone_number;
+        // 3. Save to CRM Database mapped strictly to this Client
+        await db.collection('whatsapp_integrations').doc(clientId).set({
+            clientId: clientId,
+            wabaId: targetWabaId,
+            phoneNumberId: targetPhoneNumberId,
+            displayPhoneNumber: targetDisplayPhoneNumber,
+            systemAccessToken: accessToken, // In production, exchange this for a permanent token
+            status: 'active',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return {
+            success: true,
+            message: "WhatsApp Business Account securely linked.",
+            phoneNumber: targetDisplayPhoneNumber
+        };
+    }
+    catch (error) {
+        console.error("WhatsApp OAuth Error:", ((_c = error.response) === null || _c === void 0 ? void 0 : _c.data) || error.message);
+        throw new https_1.HttpsError("internal", "Failed to secure WhatsApp connection with Meta.");
+    }
+});
+// ============================================================================
+// 🚀 PHASE 3.2: DYNAMIC OUTBOUND WHATSAPP DISPATCHER 🚀
+// ============================================================================
+exports.sendOutboundWhatsApp = (0, firestore_2.onDocumentCreated)({
+    document: "whatsapp_messages/{messageId}",
+    database: "crmdb",
+    memory: "256MiB",
+}, async (event) => {
+    var _a, _b, _c, _d, _e;
+    const snapshot = event.data;
+    if (!snapshot)
+        return;
+    const messageData = snapshot.data();
+    // 🛡️ GUARD 1: Only process outbound messages
+    if (messageData.direction !== 'outbound')
+        return;
+    // 🛡️ GUARD 2: Prevent infinite loops
+    if (messageData.status === 'delivered_to_meta' || messageData.status === 'failed')
+        return;
+    if (!messageData.senderPhone || !messageData.clientId) {
+        console.log("Missing recipient phone or clientId. Aborting.");
+        return;
+    }
+    try {
+        // ✨ MULTI-TENANT MAGIC: Fetch this specific client's API Keys from the database!
+        const integrationDoc = await db.collection('whatsapp_integrations').doc(messageData.clientId).get();
+        if (!integrationDoc.exists || ((_a = integrationDoc.data()) === null || _a === void 0 ? void 0 : _a.status) !== 'active') {
+            throw new Error("Client does not have an active WhatsApp integration.");
+        }
+        const clientWA = integrationDoc.data();
+        const WA_PHONE_NUMBER_ID = clientWA === null || clientWA === void 0 ? void 0 : clientWA.phoneNumberId;
+        const WA_ACCESS_TOKEN = clientWA === null || clientWA === void 0 ? void 0 : clientWA.systemAccessToken;
+        if (!WA_PHONE_NUMBER_ID || !WA_ACCESS_TOKEN) {
+            throw new Error("Client WhatsApp API keys are missing or invalid.");
+        }
+        // Clean recipient phone
+        let recipientPhone = messageData.senderPhone.replace(/[^0-9]/g, '');
+        console.log(`[Client: ${messageData.clientId}] Dispatching to ${recipientPhone}...`);
+        // Fire to Meta using the CLIENT'S specific credentials
+        const response = await axios_1.default.post(`https://graph.facebook.com/v19.0/${WA_PHONE_NUMBER_ID}/messages`, {
+            messaging_product: "whatsapp",
+            recipient_type: "individual",
+            to: recipientPhone,
+            type: "text",
+            text: { preview_url: false, body: messageData.text }
+        }, {
+            headers: {
+                "Authorization": `Bearer ${WA_ACCESS_TOKEN}`,
+                "Content-Type": "application/json"
+            },
+            timeout: 5000
+        });
+        const metaMessageId = response.data.messages[0].id;
+        await snapshot.ref.update({
+            status: "delivered_to_meta",
+            metaMessageId: metaMessageId
+        });
+    }
+    catch (error) {
+        console.error("Meta Graph API Error:", ((_b = error.response) === null || _b === void 0 ? void 0 : _b.data) || error.message);
+        await snapshot.ref.update({
+            status: "failed",
+            errorLog: ((_e = (_d = (_c = error.response) === null || _c === void 0 ? void 0 : _c.data) === null || _d === void 0 ? void 0 : _d.error) === null || _e === void 0 ? void 0 : _e.message) || error.message
+        });
+    }
 });
 //# sourceMappingURL=index.js.map

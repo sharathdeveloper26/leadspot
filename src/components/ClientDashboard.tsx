@@ -798,30 +798,44 @@ export default function ClientDashboard() {
     }); 
   };
 
-  const handleConnectWhatsApp = async () => {
+ const handleConnectWhatsApp = async () => {
     setIsLinkingWhatsApp(true);
-    await initFacebookSdk('1263110839094881'); 
+    await initFacebookSdk('1263110839094881'); // Your Meta App ID
 
     if (window.FB) {
       window.FB.init({ appId: '1263110839094881', cookie: true, xfbml: true, version: 'v19.0' });
     }
 
-    window.FB.login((response: any) => {
-      if (response.authResponse && response.authResponse.code) {
-        const code = response.authResponse.code;
+    window.FB.login(async (response: any) => {
+      // For Embedded Signup, we need the Access Token that Meta returns after the user finishes the flow
+      if (response.authResponse && response.authResponse.accessToken) {
+        const accessToken = response.authResponse.accessToken;
         
-        if(user?.clientId) {
-          setDoc(doc(db, 'whatsapp_integrations', user.clientId), {
-            clientId: user.clientId, status: 'connected', phoneNumberId: 'pending_verification', connectedAt: serverTimestamp()
-          }).then(() => {
-            setWhatsappConnected(true); setIsLinkingWhatsApp(false);
-            showDialog('success', 'WhatsApp Connected', 'Your WhatsApp Business account has been linked successfully!');
-          });
+        if (user?.clientId) {
+          try {
+            // ✨ Call our new Firebase Function to do the heavy lifting!
+            const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
+            const result = await linkWaFn({ accessToken: accessToken });
+            
+            setWhatsappConnected(true);
+            // Re-fetch integration to update the UI with their actual phone number ID
+            fetchWhatsAppIntegration();
+            
+            showDialog('success', 'WhatsApp Connected', `Successfully linked to phone number!`);
+          } catch (error: any) {
+            console.error("Link Error:", error);
+            showDialog('error', 'Connection Failed', error.message || 'Failed to link WhatsApp account.');
+          } finally {
+            setIsLinkingWhatsApp(false);
+          }
         }
-      } else { setIsLinkingWhatsApp(false); }
+      } else { 
+        setIsLinkingWhatsApp(false); 
+      }
     }, {
-      config_id: '1083197781534526', 
-      response_type: 'code', override_default_response_type: true,
+      config_id: '1083197781534526', // Your Embedded Signup Config ID
+      response_type: 'code,token', 
+      override_default_response_type: true,
       extras: { setup: {}, featureType: '', sessionInfoVersion: '2' }
     });
   };
