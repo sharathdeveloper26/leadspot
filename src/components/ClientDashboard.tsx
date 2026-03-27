@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 
@@ -37,6 +37,14 @@ declare global {
 
 const notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
 
+// Helper to normalize phone numbers for accurate chat matching
+const normalizePhone = (phone?: string) => {
+  if (!phone) return "";
+  let cleaned = phone.replace(/[^0-9]/g, '');
+  if (cleaned.length === 10) cleaned = `91${cleaned}`;
+  return cleaned;
+};
+
 export default function ClientDashboard() {
   const { user, logout } = useAuth(); 
   const [greeting, setGreeting] = useState({ text: 'Welcome back', emoji: '👋' });
@@ -59,7 +67,8 @@ export default function ClientDashboard() {
     return () => clearInterval(interval);
   }, []);
   
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'integrations' | 'team' | 'reports'>('dashboard');
+  // ✨ ADDED 'inbox' TO ACTIVE TAB TYPES ✨
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'inbox' | 'integrations' | 'team' | 'reports'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('pipeline');
@@ -77,7 +86,7 @@ export default function ClientDashboard() {
   const [googleSheetUrl, setGoogleSheetUrl] = useState("");
   const [outboundHeaders, setOutboundHeaders] = useState<{key: string, value: string}[]>([]);
   const [alertEmails, setAlertEmails] = useState("");
-  const [emailInput, setEmailInput] = useState(""); // ✨ NEW: For dynamic tag input
+  const [emailInput, setEmailInput] = useState("");
   
   const [isSavingAlerts, setIsSavingAlerts] = useState(false);
   const [isSavingSheets, setIsSavingSheets] = useState(false);
@@ -92,6 +101,12 @@ export default function ClientDashboard() {
   const [hasMoreLeads, setHasMoreLeads] = useState(true);
   const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
+
+  // ✨ INBOX SPECIFIC STATE ✨
+  const [waMessages, setWaMessages] = useState<any[]>([]);
+  const [activeChatLeadId, setActiveChatLeadId] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [dialogState, setDialogState] = useState<{ isOpen: boolean; type: 'alert' | 'confirm' | 'success' | 'error'; title: string; message: string; onConfirm?: () => void; onCloseAction?: () => void; }>({ isOpen: false, type: 'alert', title: '', message: '' });
 
@@ -138,6 +153,25 @@ export default function ClientDashboard() {
       Notification.requestPermission();
     }
   }, []);
+
+  // ✨ OMNICHANNEL INBOX: Fetch WhatsApp Messages ✨
+  useEffect(() => {
+    if (!user?.clientId) return;
+    const q = query(collection(db, 'whatsapp_messages'), orderBy('timestamp', 'asc'));
+    const unsub = onSnapshot(q, (snap) => {
+      const msgs: any[] = [];
+      snap.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
+      setWaMessages(msgs);
+    }, (err) => console.error("WhatsApp sync error:", err));
+    return () => unsub();
+  }, [user?.clientId]);
+
+  // Scroll to bottom of chat when new message arrives
+  useEffect(() => {
+    if (activeTab === 'inbox' && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [waMessages, activeChatLeadId, activeTab]);
 
   useEffect(() => {
     if (!user?.clientId) return;
@@ -506,7 +540,6 @@ export default function ClientDashboard() {
     } catch (error) { console.error("Error fetching outbound configurations:", error); }
   };
 
-  // ✨ UPGRADED: EMAIL TAG UI HANDLERS ✨
   const emailList = alertEmails.split(',').map(e => e.trim()).filter(e => e);
 
   const handleAddEmailTag = (e: React.KeyboardEvent<HTMLInputElement> | React.FocusEvent<HTMLInputElement>) => {
@@ -534,7 +567,6 @@ export default function ClientDashboard() {
     if (!user?.clientId) return;
     setIsSavingAlerts(true);
     try {
-      // Auto-save any straggling input text if they clicked save without hitting Enter
       let finalEmails = alertEmails;
       if (emailInput.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim())) {
         const newEmails = [...emailList, emailInput.trim()];
@@ -542,7 +574,6 @@ export default function ClientDashboard() {
         setAlertEmails(finalEmails);
         setEmailInput("");
       }
-
       const docRef = doc(db, 'outbound_integrations', user.clientId);
       await setDoc(docRef, { clientId: user.clientId, alertEmails: finalEmails, updatedAt: serverTimestamp() }, { merge: true });
       showDialog('success', 'Alerts Saved', 'Lead notification emails updated successfully.');
@@ -778,7 +809,6 @@ export default function ClientDashboard() {
     window.FB.login((response: any) => {
       if (response.authResponse && response.authResponse.code) {
         const code = response.authResponse.code;
-        console.log("WhatsApp Auth Code Acquired:", code);
         
         if(user?.clientId) {
           setDoc(doc(db, 'whatsapp_integrations', user.clientId), {
@@ -879,7 +909,6 @@ export default function ClientDashboard() {
     return matches;
   });
 
-  // ✨ UPGRADED ANALYTICS & REPORTS DATA ENGINE ✨
   const reportsData = useMemo(() => {
     const total = filteredLeads.length;
     const won = filteredLeads.filter(l => l.status === 'Closed Won').length;
@@ -887,7 +916,6 @@ export default function ClientDashboard() {
     const active = total - won - lostOrJunk;
     const winRate = total > 0 ? Math.round((won / total) * 100) : 0;
 
-    // 1. Leads by Date Trend (Bar Chart Data)
     const trendMap = new Map<string, number>();
     filteredLeads.forEach(lead => {
       if(lead.createdAt) {
@@ -895,33 +923,22 @@ export default function ClientDashboard() {
         trendMap.set(date, (trendMap.get(date) || 0) + 1);
       }
     });
-    // Create an array and sort it simply to maintain flow
-    const trendChart = Array.from(trendMap.entries()).map(([date, count]) => ({ date, count })).reverse(); // Assuming descending firestore data, reverse to show chronological
+    const trendChart = Array.from(trendMap.entries()).map(([date, count]) => ({ date, count })).reverse(); 
 
-    // 2. Agent Leaderboard (Bar Chart Data)
     const agentMap = new Map<string, {name: string, totalLeads: number, wonDeals: number}>();
     filteredLeads.forEach(lead => {
       const agentId = lead.assignedToId || lead.assignedTo || 'unassigned';
       const agentName = lead.assignedToName || teamMembers.find(m => m.id === agentId)?.name || 'Unassigned';
-      
-      if (!agentMap.has(agentId)) {
-        agentMap.set(agentId, { name: agentName, totalLeads: 0, wonDeals: 0 });
-      }
-      
+      if (!agentMap.has(agentId)) { agentMap.set(agentId, { name: agentName, totalLeads: 0, wonDeals: 0 }); }
       const data = agentMap.get(agentId)!;
       data.totalLeads += 1;
       if (lead.status === 'Closed Won') data.wonDeals += 1;
     });
-    // Top 5 agents by volume
     const agentChart = Array.from(agentMap.values()).sort((a,b) => b.totalLeads - a.totalLeads).slice(0, 5);
 
-    // 3. Pipeline Funnel (Bar Chart Data mapped to PIPELINE_STATUSES)
     const pipelineChart = PIPELINE_STATUSES.map(status => {
-      return {
-        name: status,
-        count: filteredLeads.filter(l => l.status === status).length
-      };
-    }).filter(s => s.count > 0); // Only show statuses that have leads
+      return { name: status, count: filteredLeads.filter(l => l.status === status).length };
+    }).filter(s => s.count > 0); 
 
     return { total, won, lostOrJunk, active, winRate, trendChart, agentChart, pipelineChart };
   }, [filteredLeads, teamMembers]);
@@ -1061,6 +1078,40 @@ export default function ClientDashboard() {
         showDialog('success', 'Campaign Queued', `Successfully queued WhatsApp campaign to ${targetPhones.length} recipients.`);
       } catch (error: any) { showDialog('error', 'Campaign Failed', error.message || 'Failed to send WhatsApp campaign.'); } 
       finally { setIsSendingCampaign(false); }
+    }
+  };
+
+  // ✨ INBOX SPECIFIC SEND LOGIC ✨
+  const handleSendWhatsAppReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !activeChatLeadId) return;
+    
+    const activeLead = leads.find(l => l.id === activeChatLeadId);
+    if (!activeLead || !activeLead.phone) return;
+
+    const mockMessageText = chatInput.trim();
+    setChatInput('');
+    
+    try {
+      // Mock the outbound send by saving it directly to Firestore 
+      // (Phase 3 will add actual Meta Graph API dispatch here)
+      await addDoc(collection(db, 'whatsapp_messages'), {
+        clientId: user?.clientId,
+        wabaId: 'internal_mock', // Since this is outbound
+        senderPhone: normalizePhone(activeLead.phone), // The recipient in this context
+        text: mockMessageText,
+        type: 'text',
+        direction: 'outbound',
+        status: 'sent',
+        timestamp: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        isRead: true
+      });
+      // Show an invisible confirmation
+      console.log("Mock Outbound WA Saved.");
+    } catch (error) {
+      console.error("Failed to save mock reply:", error);
+      showDialog('error', 'Send Failed', 'Could not dispatch WhatsApp message.');
     }
   };
 
@@ -1205,6 +1256,17 @@ export default function ClientDashboard() {
           <button onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'dashboard' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><LayoutDashboard className="w-5 h-5" /> Dashboard</button>
           <button onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'leads' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><Users className="w-5 h-5" /> Leads</button>
           <button onClick={() => { setActiveTab('feedback'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'feedback' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><MessageSquare className="w-5 h-5" /> Leads Feedback</button>
+          
+          {/* ✨ NEW INBOX TAB LINK ✨ */}
+          <button onClick={() => { setActiveTab('inbox'); setIsMobileMenuOpen(false); }} className={`flex items-center justify-between px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'inbox' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}>
+            <div className="flex items-center gap-3"><MessageCircle className="w-5 h-5" /> Inbox</div>
+            {waMessages.filter(m => m.direction === 'inbound' && !m.isRead).length > 0 && (
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'inbox' ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>
+                {waMessages.filter(m => m.direction === 'inbound' && !m.isRead).length}
+              </span>
+            )}
+          </button>
+
           {user?.role === 'client_admin' && (
             <>
               <button onClick={() => { setActiveTab('team'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'team' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><UserCog className="w-5 h-5" /> Team</button>
@@ -1221,7 +1283,9 @@ export default function ClientDashboard() {
       {/* Main Content */}
       <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         <header className="h-24 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
-          <h1 className="text-xl font-bold tracking-tight text-slate-800">{activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'feedback' ? 'Leads Feedback' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : 'Integrations'}</h1>
+          <h1 className="text-xl font-bold tracking-tight text-slate-800">
+            {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'feedback' ? 'Leads Feedback' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : activeTab === 'inbox' ? 'Omnichannel Inbox' : 'Integrations'}
+          </h1>
           <div className="flex items-center gap-6">
             <div className="relative">
               <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className={`p-2.5 rounded-xl transition-all relative ${isNotificationOpen ? 'bg-white shadow-sm text-[#50bdaf]' : 'bg-white/60 hover:bg-white text-slate-500 hover:text-[#50bdaf]'}`}><Bell className="w-5 h-5" />{unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}</button>
@@ -1252,10 +1316,235 @@ export default function ClientDashboard() {
           </div>
         </header>
 
-        <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-auto custom-scrollbar">
-          <div className="max-w-7xl mx-auto h-full flex flex-col min-w-[800px] md:min-w-0">
+        <div className={`flex-1 overflow-y-auto custom-scrollbar ${activeTab === 'inbox' ? 'p-0 sm:p-4 md:p-8' : 'p-4 md:p-8'}`}>
+          <div className={`max-w-7xl mx-auto h-full flex flex-col ${activeTab === 'inbox' ? 'min-w-0' : 'min-w-[800px] md:min-w-0'}`}>
             
-            {activeTab === 'dashboard' ? (
+            {/* ✨ NEW: OMNICHANNEL INBOX TAB RENDER ✨ */}
+            {activeTab === 'inbox' ? (
+              <div className="flex h-[calc(100vh-140px)] bg-white/80 backdrop-blur-2xl sm:rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden animate-in fade-in duration-300">
+                
+                {/* INBOX LEFT PANE: Chat List */}
+                <div className={`w-full sm:w-[320px] md:w-[360px] border-r border-slate-100 flex flex-col bg-slate-50/50 shrink-0 ${activeChatLeadId ? 'hidden sm:flex' : 'flex'}`}>
+                  <div className="p-4 border-b border-slate-200/60 bg-white/50 backdrop-blur-md sticky top-0 z-10">
+                    <h2 className="text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2"><MessageCircle className="w-5 h-5 text-[#25D366]"/> Messages</h2>
+                    <div className="mt-3 relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input type="text" placeholder="Search chats..." className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-[#25D366]/30 outline-none shadow-sm" />
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                    {/* Process Leads and Group Messages */}
+                    {(() => {
+                      // Find leads that have messages (or just show all leads for testing)
+                      const leadsWithChats = leads.filter(l => l.phone).map(l => {
+                        const normalizedPhone = normalizePhone(l.phone);
+                        const msgsForLead = waMessages.filter(m => m.senderPhone === normalizedPhone);
+                        return { ...l, msgs: msgsForLead, lastMsg: msgsForLead[msgsForLead.length - 1] };
+                      }).filter(l => l.msgs.length > 0).sort((a, b) => {
+                        const timeA = a.lastMsg ? (a.lastMsg.timestamp?.toMillis ? a.lastMsg.timestamp.toMillis() : new Date(a.lastMsg.timestamp).getTime()) : 0;
+                        const timeB = b.lastMsg ? (b.lastMsg.timestamp?.toMillis ? b.lastMsg.timestamp.toMillis() : new Date(b.lastMsg.timestamp).getTime()) : 0;
+                        return timeB - timeA;
+                      });
+
+                      if (leadsWithChats.length === 0) {
+                        return (
+                          <div className="text-center p-6 mt-10">
+                            <MessageCircle className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                            <p className="text-sm font-bold text-slate-500">No messages yet</p>
+                            <p className="text-xs text-slate-400 mt-1">When leads reply, they will appear here.</p>
+                          </div>
+                        );
+                      }
+
+                      return leadsWithChats.map(l => {
+                        const unreadCount = l.msgs.filter(m => m.direction === 'inbound' && !m.isRead).length;
+                        return (
+                          <button 
+                            key={l.id} 
+                            onClick={() => setActiveChatLeadId(l.id)}
+                            className={`w-full text-left p-3 rounded-2xl transition-all flex gap-3 items-center ${activeChatLeadId === l.id ? 'bg-white shadow-md border border-slate-200' : 'hover:bg-slate-100/80 border border-transparent'}`}
+                          >
+                            <div className="relative">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#74ebd5]/20 to-[#9face6]/20 text-[#50bdaf] flex items-center justify-center font-bold shadow-inner">
+                                {l.firstName.charAt(0)}
+                              </div>
+                              {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 border-2 border-white rounded-full"></span>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between items-center mb-0.5">
+                                <h4 className="text-sm font-bold text-slate-800 truncate">{l.firstName} {l.lastName === 'Lead' ? '' : l.lastName}</h4>
+                                <span className="text-[10px] font-bold text-slate-400 shrink-0">
+                                  {l.lastMsg?.timestamp?.toDate ? l.lastMsg.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                                </span>
+                              </div>
+                              <p className={`text-xs truncate ${unreadCount > 0 ? 'text-slate-900 font-bold' : 'text-slate-500 font-medium'}`}>
+                                {l.lastMsg ? (l.lastMsg.direction === 'outbound' ? `You: ${l.lastMsg.text}` : l.lastMsg.text) : 'No messages'}
+                              </p>
+                            </div>
+                          </button>
+                        )
+                      });
+                    })()}
+                  </div>
+                </div>
+
+                {/* INBOX MIDDLE PANE: Chat Engine */}
+                <div className={`flex-1 flex flex-col bg-slate-50 relative ${!activeChatLeadId ? 'hidden sm:flex items-center justify-center' : 'flex'}`}>
+                  {!activeChatLeadId ? (
+                    <div className="text-center p-8 bg-white rounded-3xl border border-slate-100 shadow-sm max-w-md">
+                      <div className="w-16 h-16 bg-[#25D366]/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <MessageCircle className="w-8 h-8 text-[#25D366]" />
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-800 mb-2">Mintage Omnichannel</h3>
+                      <p className="text-sm text-slate-500 font-medium">Select a conversation from the left to start chatting securely with your leads.</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Active Chat Header */}
+                      {(() => {
+                        const activeLead = leads.find(l => l.id === activeChatLeadId);
+                        if (!activeLead) return null;
+                        return (
+                          <div className="h-16 px-4 border-b border-slate-200/60 bg-white/90 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between shrink-0 shadow-sm">
+                            <div className="flex items-center gap-3">
+                              <button onClick={() => setActiveChatLeadId(null)} className="sm:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg"><ChevronDown className="w-5 h-5 rotate-90" /></button>
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#74ebd5]/20 to-[#9face6]/20 text-[#50bdaf] flex items-center justify-center font-bold">{activeLead.firstName.charAt(0)}</div>
+                              <div>
+                                <h3 className="text-sm font-bold text-slate-800">{activeLead.firstName} {activeLead.lastName === 'Lead' ? '' : activeLead.lastName}</h3>
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold border mt-0.5 ${getStatusBadgeClass(activeLead.status)}`}>{activeLead.status}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"><Phone className="w-4 h-4"/></button>
+                              <button onClick={() => openLeadDetails(activeLead)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Open Full Details"><MoreVertical className="w-4 h-4"/></button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Chat Bubbles Area (Scrollable) */}
+                      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-[url('https://i.pinimg.com/originals/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg')] bg-cover bg-center bg-fixed bg-opacity-10 custom-scrollbar">
+                        {(() => {
+                          const activeLead = leads.find(l => l.id === activeChatLeadId);
+                          if (!activeLead) return null;
+                          const normalizedPhone = normalizePhone(activeLead.phone);
+                          const msgs = waMessages.filter(m => m.senderPhone === normalizedPhone);
+                          
+                          if (msgs.length === 0) {
+                            return (
+                              <div className="bg-white/80 backdrop-blur border border-slate-100 text-slate-500 text-xs font-bold p-3 rounded-xl mx-auto w-fit shadow-sm mt-4">
+                                This is the start of your conversation with {activeLead.firstName}.
+                              </div>
+                            );
+                          }
+
+                          return msgs.map((msg, idx) => {
+                            const isOutbound = msg.direction === 'outbound';
+                            return (
+                              <div key={msg.id} className={`flex w-full ${isOutbound ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
+                                <div className={`max-w-[75%] sm:max-w-[60%] rounded-2xl px-4 py-2.5 shadow-sm relative ${isOutbound ? 'bg-[#D9FDD3] text-slate-800 rounded-tr-sm border border-[#25D366]/20' : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100'}`}>
+                                  {msg.type === 'image' && (
+                                    <div className="mb-2 bg-black/5 rounded-xl h-32 flex items-center justify-center border border-black/10">
+                                      <ImageIcon className="w-6 h-6 text-slate-400" />
+                                    </div>
+                                  )}
+                                  <p className="text-sm font-medium leading-relaxed">{msg.text}</p>
+                                  <div className={`flex justify-end items-center gap-1 mt-1 ${isOutbound ? 'text-green-800/60' : 'text-slate-400'}`}>
+                                    <span className="text-[9px] font-bold">
+                                      {msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Now'}
+                                    </span>
+                                    {isOutbound && (
+                                      <Check className={`w-3 h-3 ${msg.status === 'read' ? 'text-blue-500' : ''}`} />
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                        <div ref={messagesEndRef} />
+                      </div>
+
+                      {/* Chat Input Engine */}
+                      <div className="p-4 bg-white border-t border-slate-200/60 shrink-0">
+                        <form onSubmit={handleSendWhatsAppReply} className="flex items-end gap-2">
+                          <button type="button" className="p-3 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors shrink-0">
+                            <Plus className="w-5 h-5" />
+                          </button>
+                          <div className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2 focus-within:ring-2 focus-within:ring-[#25D366]/30 focus-within:border-[#25D366] transition-all flex items-center shadow-inner min-h-[50px]">
+                            <textarea 
+                              value={chatInput}
+                              onChange={(e) => setChatInput(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendWhatsAppReply(e); } }}
+                              placeholder="Type a message..."
+                              className="w-full bg-transparent border-none focus:ring-0 resize-none outline-none text-sm font-medium text-slate-800 max-h-[120px] custom-scrollbar py-1.5"
+                              rows={1}
+                            />
+                          </div>
+                          <button 
+                            type="submit" 
+                            disabled={!chatInput.trim()}
+                            className="p-3 bg-[#25D366] text-white rounded-xl hover:bg-[#1EBE57] transition-all shadow-md disabled:opacity-50 disabled:transform-none hover:-translate-y-0.5 shrink-0 flex items-center justify-center w-[50px] h-[50px]"
+                          >
+                            <Send className="w-5 h-5 ml-1" />
+                          </button>
+                        </form>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* INBOX RIGHT PANE: Context (Hidden on mobile) */}
+                {activeChatLeadId && (
+                  <div className="w-[300px] border-l border-slate-100 bg-white/50 backdrop-blur-xl hidden lg:flex flex-col shrink-0 animate-in slide-in-from-right-4 duration-300">
+                    {(() => {
+                      const activeLead = leads.find(l => l.id === activeChatLeadId);
+                      if (!activeLead) return null;
+                      return (
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                          
+                          {/* Profile Hero */}
+                          <div className="text-center pb-6 border-b border-slate-200/60">
+                            <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-[#74ebd5] to-[#9face6] text-white flex items-center justify-center text-3xl font-black shadow-lg shadow-[#74ebd5]/20 mb-4">
+                              {activeLead.firstName.charAt(0)}
+                            </div>
+                            <h3 className="text-lg font-extrabold text-slate-900">{activeLead.firstName} {activeLead.lastName === 'Lead' ? '' : activeLead.lastName}</h3>
+                            <p className="text-sm font-bold text-slate-500 mt-1">{activeLead.phone || 'No Phone'}</p>
+                          </div>
+
+                          {/* Action Cards */}
+                          <div className="space-y-3">
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Project Inquiry</p>
+                              <p className="text-sm font-bold text-slate-800 flex items-center gap-2"><Home className="w-4 h-4 text-amber-500"/>{activeLead.projectProperty || 'General'}</p>
+                            </div>
+                            
+                            {activeLead.truecallerName && activeLead.truecallerName !== "Unknown" && (
+                              <div className="bg-blue-50/50 p-4 rounded-2xl shadow-sm border border-blue-100">
+                                <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-1"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/><path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/></svg> Truecaller Verified</p>
+                                <p className="text-sm font-bold text-blue-900">{activeLead.truecallerName}</p>
+                              </div>
+                            )}
+
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Lead Source</p>
+                              {getSourceBadge(activeLead.source, activeLead.subSource)}
+                            </div>
+                          </div>
+
+                          {/* Quick Actions */}
+                          <button onClick={() => openLeadDetails(activeLead)} className="w-full py-3 bg-slate-900 text-white text-sm font-bold rounded-xl shadow-lg shadow-slate-900/20 hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
+                            <LayoutDashboard className="w-4 h-4"/> Open Full Profile
+                          </button>
+
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            ) : activeTab === 'dashboard' ? (
               <div className="w-full space-y-8 animate-in fade-in duration-500">
                 <div>
                   <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1 flex items-center gap-3">
@@ -2005,6 +2294,12 @@ export default function ClientDashboard() {
           onClose={() => { setIsLeadModalOpen(false); setSelectedLead(null); }}
           onLeadUpdated={handleLeadUpdated}
           teamMembers={teamMembers}
+          // ✨ NEW: Passthrough function to teleport the agent from the modal directly to the inbox!
+          onOpenChat={(leadId) => {
+            setActiveTab('inbox');
+            setActiveChatLeadId(leadId);
+            setIsLeadModalOpen(false);
+          }}
         />
       )}
 

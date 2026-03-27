@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
+exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
@@ -533,5 +533,92 @@ exports.sendBulkWhatsAppCampaign = (0, https_1.onCall)(functionOpts, async (requ
         console.error("WhatsApp Campaign Error:", error);
         throw new https_1.HttpsError("internal", "Failed to execute WhatsApp campaign.");
     }
+});
+// ============================================================================
+// 🚀 PHASE 2: TWO-WAY WHATSAPP INBOX WEBHOOK 🚀
+// ============================================================================
+exports.whatsappWebhook = (0, https_1.onRequest)({
+    cors: true,
+    memory: "256MiB",
+    concurrency: 80,
+    maxInstances: 10,
+}, async (req, res) => {
+    var _a;
+    const WHATSAPP_VERIFY_TOKEN = "MINTAGE_WA_SECRET_2026"; // You will need this in Step 2!
+    // 1. HANDSHAKE: Meta Webhook Verification
+    if (req.method === "GET") {
+        const mode = req.query["hub.mode"];
+        const token = req.query["hub.verify_token"];
+        const challenge = req.query["hub.challenge"];
+        if (mode === "subscribe" && token === WHATSAPP_VERIFY_TOKEN) {
+            console.log("WhatsApp Webhook Verified!");
+            res.status(200).send(challenge);
+            return;
+        }
+        res.status(403).send("Forbidden");
+        return;
+    }
+    // 2. MESSAGE CATCHER: Handle Incoming WhatsApp Messages
+    if (req.method === "POST") {
+        try {
+            const body = req.body;
+            if (body.object === "whatsapp_business_account") {
+                for (const entry of body.entry) {
+                    for (const change of entry.changes) {
+                        const value = change.value;
+                        const wabaId = entry.id; // WhatsApp Business Account ID
+                        const phoneNumberId = (_a = value.metadata) === null || _a === void 0 ? void 0 : _a.phone_number_id;
+                        // Handle Incoming Messages from Leads
+                        if (value.messages && value.messages.length > 0) {
+                            for (const msg of value.messages) {
+                                const senderPhone = msg.from; // Lead's phone number
+                                const messageId = msg.id;
+                                const timestamp = msg.timestamp;
+                                let messageText = "";
+                                if (msg.type === "text") {
+                                    messageText = msg.text.body;
+                                }
+                                else {
+                                    messageText = `[Received a ${msg.type} message]`;
+                                }
+                                console.log(`Received WA message from ${senderPhone}: ${messageText}`);
+                                // ✨ FIXED: Added wabaId to payload to resolve strict TS unused local variable error
+                                await db.collection("whatsapp_messages").add({
+                                    wabaId: wabaId,
+                                    phoneNumberId: phoneNumberId,
+                                    messageId: messageId,
+                                    senderPhone: senderPhone,
+                                    text: messageText,
+                                    type: msg.type,
+                                    direction: "inbound", // Mark as received
+                                    status: "received",
+                                    timestamp: admin.firestore.Timestamp.fromMillis(parseInt(timestamp) * 1000),
+                                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                                    isRead: false
+                                });
+                            }
+                        }
+                        // Handle Message Status Updates (Sent, Delivered, Read)
+                        if (value.statuses && value.statuses.length > 0) {
+                            for (const status of value.statuses) {
+                                // We will use this later to show "Blue Ticks" in your UI!
+                                console.log(`Message ${status.id} is now ${status.status}`);
+                            }
+                        }
+                    }
+                }
+                res.status(200).send("EVENT_RECEIVED");
+            }
+            else {
+                res.status(404).send("Not Found");
+            }
+        }
+        catch (error) {
+            console.error("WhatsApp Webhook Error:", error);
+            res.status(500).send("INTERNAL_SERVER_ERROR");
+        }
+        return;
+    }
+    res.status(405).send("Method Not Allowed");
 });
 //# sourceMappingURL=index.js.map

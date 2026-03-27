@@ -33,7 +33,7 @@ export interface Lead {
   location?: string;
   linkedin?: string;
   truecallerName?: string;
-  truecallerBusiness?: string; // ✨ Added for Truecaller Business checking
+  truecallerBusiness?: string;
   truecallerEmail?: string;
   formId?: string;
   adId?: string;
@@ -52,6 +52,8 @@ interface LeadDetailsModalProps {
   onClose: () => void;
   onLeadUpdated: (updatedLead: Lead) => void;
   teamMembers: {id: string, name: string}[];
+  // ✨ NEW: Tell TypeScript to expect the teleport function!
+  onOpenChat?: (leadId: string) => void; 
 }
 
 const PIPELINE_STATUSES = [
@@ -61,7 +63,8 @@ const PIPELINE_STATUSES = [
 
 const REMINDER_TYPES = ['Follow-up Call', 'Site Visit Scheduled', 'Post-Visit Feedback', 'Document/Payment Collection', 'General To-Do'];
 
-export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated, teamMembers }: LeadDetailsModalProps) {
+// ✨ INJECTED onOpenChat into the component props
+export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated, teamMembers, onOpenChat }: LeadDetailsModalProps) {
   const { user, role } = useAuth();
   const [noteText, setNoteText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -308,19 +311,24 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
 
   const sortedNotes = [...(lead.notes || [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-  // ✨ QUICK ACTION LOGIC ✨
+  // ✨ QUICK ACTION LOGIC (UPGRADED FOR INBOX) ✨
   const handleWhatsAppClick = () => {
     if (!lead.phone) {
       alert("No phone number available for this lead.");
       return;
     }
-    // Clean the phone number (remove spaces, dashes)
+    
+    // Teleport to our new custom Inbox!
+    if (onOpenChat) {
+      onOpenChat(lead.id);
+      return;
+    }
+
+    // Fallback logic if the prop isn't passed (safety net)
     let cleanPhone = lead.phone.replace(/[^0-9+]/g, '');
-    // If it doesn't start with '+', assume Indian code '+91' for Real Estate CRM defaults
     if (!cleanPhone.startsWith('+') && cleanPhone.length === 10) {
       cleanPhone = `+91${cleanPhone}`;
     }
-    // Remove the '+' for the whatsapp URL
     cleanPhone = cleanPhone.replace('+', '');
     
     const leadName = lead.firstName !== "Imported" && lead.firstName !== "FB" ? lead.firstName : "there";
@@ -428,7 +436,7 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
                   className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 bg-[#25D366] hover:bg-[#1EBE57] text-white text-sm font-bold rounded-xl shadow-md shadow-[#25D366]/20 transition-all hover:-translate-y-0.5"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  WhatsApp
+                  WhatsApp Chat
                 </button>
                 <button 
                   onClick={handleCallClick}
