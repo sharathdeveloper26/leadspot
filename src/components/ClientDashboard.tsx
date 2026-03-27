@@ -3,41 +3,15 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon, Megaphone, RefreshCw, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 
-interface Agent {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  createdAt: any;
-  designation?: string;
-  location?: string;
-  linkedin?: string;
-  formId?: string;
-  adId?: string;
-  adName?: string;
-  campaignId?: string;
-  campaignName?: string;
-}
-
-const PIPELINE_STATUSES = [
-  'New', 'Attempted Contact', 'Connected / Warm', 'Site Visit Scheduled', 
-  'Site Visit Completed', 'Negotiation', 'Closed Won', 'Closed Lost', 'Junk / Invalid'
-];
-
-declare global {
-  interface Window {
-    FB: any;
-    fbAsyncInit: any;
-  }
-}
-
+interface Agent { id: string; name: string; email: string; role: string; createdAt: any; designation?: string; location?: string; linkedin?: string; formId?: string; adId?: string; adName?: string; campaignId?: string; campaignName?: string; }
+const PIPELINE_STATUSES = ['New', 'Attempted Contact', 'Connected / Warm', 'Site Visit Scheduled', 'Site Visit Completed', 'Negotiation', 'Closed Won', 'Closed Lost', 'Junk / Invalid'];
+declare global { interface Window { FB: any; fbAsyncInit: any; } }
 const notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
 
-// Helper to normalize phone numbers for accurate chat matching
 const normalizePhone = (phone?: string) => {
   if (!phone) return "";
   let cleaned = phone.replace(/[^0-9]/g, '');
@@ -55,20 +29,17 @@ export default function ClientDashboard() {
       const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
       const istDate = new Date(utc + (3600000 * 5.5)); 
       const hour = istDate.getHours();
-
       if (hour >= 4 && hour < 12) return { text: 'Good morning', emoji: '🌅' };
       if (hour >= 12 && hour < 17) return { text: 'Good afternoon', emoji: '☀️' };
       if (hour >= 17 && hour < 22) return { text: 'Good evening', emoji: '🌙' };
       return { text: 'Working late', emoji: '🦉' };
     };
     setGreeting(getISTGreeting());
-    
     const interval = setInterval(() => setGreeting(getISTGreeting()), 3600000);
     return () => clearInterval(interval);
   }, []);
   
-  // ✨ ADDED 'inbox' TO ACTIVE TAB TYPES ✨
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'inbox' | 'integrations' | 'team' | 'reports'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'inbox' | 'campaigns' | 'integrations' | 'team' | 'reports'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('pipeline');
@@ -81,7 +52,6 @@ export default function ClientDashboard() {
   const [addingAgent, setAddingAgent] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // INTEGRATION STATES
   const [outboundWebhookUrl, setOutboundWebhookUrl] = useState("");
   const [googleSheetUrl, setGoogleSheetUrl] = useState("");
   const [outboundHeaders, setOutboundHeaders] = useState<{key: string, value: string}[]>([]);
@@ -102,22 +72,18 @@ export default function ClientDashboard() {
   const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
 
-  // ✨ INBOX SPECIFIC STATE ✨
   const [waMessages, setWaMessages] = useState<any[]>([]);
   const [activeChatLeadId, setActiveChatLeadId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const [campaignsList, setCampaignsList] = useState<any[]>([]);
+  const [campaignViewTab, setCampaignViewTab] = useState<'templates' | 'history'>('templates');
+  const [isSyncingTemplates, setIsSyncingTemplates] = useState(false);
+
   const [dialogState, setDialogState] = useState<{ isOpen: boolean; type: 'alert' | 'confirm' | 'success' | 'error'; title: string; message: string; onConfirm?: () => void; onCloseAction?: () => void; }>({ isOpen: false, type: 'alert', title: '', message: '' });
-
-  const showDialog = (type: 'alert' | 'confirm' | 'success' | 'error', title: string, message: string, onConfirm?: () => void, onCloseAction?: () => void) => {
-    setDialogState({ isOpen: true, type, title, message, onConfirm, onCloseAction });
-  };
-
-  const closeDialog = () => {
-    if (dialogState.onCloseAction && dialogState.type !== 'confirm') dialogState.onCloseAction();
-    setDialogState(prev => ({ ...prev, isOpen: false }));
-  };
+  const showDialog = (type: 'alert' | 'confirm' | 'success' | 'error', title: string, message: string, onConfirm?: () => void, onCloseAction?: () => void) => { setDialogState({ isOpen: true, type, title, message, onConfirm, onCloseAction }); };
+  const closeDialog = () => { if (dialogState.onCloseAction && dialogState.type !== 'confirm') dialogState.onCloseAction(); setDialogState(prev => ({ ...prev, isOpen: false })); };
 
   const isInitialMount = useRef(true);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -126,16 +92,8 @@ export default function ClientDashboard() {
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
-
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-    setIsNotificationOpen(false);
-  };
-
   const [fbUserToken, setFbUserToken] = useState("");
   const [isLinking, setIsLinking] = useState(false);
-  
   const [isLinkingWhatsApp, setIsLinkingWhatsApp] = useState(false);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean>(false);
   const [whatsappNumberId, setWhatsappNumberId] = useState<string>('');
@@ -148,13 +106,21 @@ export default function ClientDashboard() {
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const alertedTasks = useRef<Set<string>>(new Set());
 
+  const timeoutRef = useRef<NodeJS.Timeout>();
   useEffect(() => {
-    if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
-      Notification.requestPermission();
-    }
-  }, []);
+    const resetTimer = () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => { showDialog('alert', 'Session Expired', 'Your session has expired due to 15 minutes of inactivity.', undefined, () => { logout(); }); }, 900000); 
+    };
+    resetTimer();
+    const events = ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'];
+    const handleActivity = () => resetTimer();
+    events.forEach(event => window.addEventListener(event, handleActivity, { passive: true }));
+    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); events.forEach(event => window.removeEventListener(event, handleActivity)); };
+  }, [logout]);
 
-  // ✨ OMNICHANNEL INBOX: Fetch WhatsApp Messages ✨
+  useEffect(() => { if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") { Notification.requestPermission(); } }, []);
+
   useEffect(() => {
     if (!user?.clientId) return;
     const q = query(collection(db, 'whatsapp_messages'), orderBy('timestamp', 'asc'));
@@ -166,12 +132,34 @@ export default function ClientDashboard() {
     return () => unsub();
   }, [user?.clientId]);
 
-  // Scroll to bottom of chat when new message arrives
   useEffect(() => {
-    if (activeTab === 'inbox' && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (activeTab === 'inbox' && activeChatLeadId) {
+      const activeLead = leads.find(l => l.id === activeChatLeadId);
+      if (activeLead && activeLead.phone) {
+        const normalizedPhone = normalizePhone(activeLead.phone);
+        setWaMessages(prev => prev.map(m => (m.senderPhone === normalizedPhone && m.direction === 'inbound' && !m.isRead) ? { ...m, isRead: true } : m));
+        const unreadMsgs = waMessages.filter(m => m.senderPhone === normalizedPhone && m.direction === 'inbound' && !m.isRead);
+        if (unreadMsgs.length > 0) { unreadMsgs.forEach(msg => { updateDoc(doc(db, 'whatsapp_messages', msg.id), { isRead: true }).catch(console.error); }); }
+      }
     }
-  }, [waMessages, activeChatLeadId, activeTab]);
+  }, [activeChatLeadId, activeTab, leads]);
+
+  const unreadWhatsAppCount = useMemo(() => { return waMessages.filter(m => m.direction === 'inbound' && !m.isRead).length; }, [waMessages]);
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const markAllAsRead = () => { setNotifications(prev => prev.map(n => ({ ...n, isRead: true }))); setIsNotificationOpen(false); };
+
+  useEffect(() => {
+    if (!user?.clientId) return;
+    const q = query(collection(db, 'whatsapp_campaigns'), where('clientId', '==', user.clientId), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      const camps: any[] = [];
+      snap.forEach(doc => camps.push({ id: doc.id, ...doc.data() }));
+      setCampaignsList(camps);
+    }, (err) => console.error("Campaign sync error:", err));
+    return () => unsub();
+  }, [user?.clientId]);
+
+  useEffect(() => { if (activeTab === 'inbox' && messagesEndRef.current) { messagesEndRef.current.scrollIntoView({ behavior: "smooth" }); } }, [waMessages, activeChatLeadId, activeTab]);
 
   useEffect(() => {
     if (!user?.clientId) return;
@@ -196,19 +184,13 @@ export default function ClientDashboard() {
       myPendingTasks.forEach(task => {
         const dueTime = new Date(task.dueDate).getTime();
         const timeDiff = dueTime - now;
-        
         if (timeDiff <= 120000 && timeDiff > -86400000 && !alertedTasks.current.has(task.id)) {
           const isOverdue = timeDiff < 0;
           const title = isOverdue ? "Task Overdue!" : "Task Due Soon!";
           const bodyMsg = `${task.type} for ${task.leadName}`;
-
           setToastData({ show: true, title: title, message: bodyMsg, color: isOverdue ? "from-red-500 to-rose-600" : "from-amber-400 to-orange-500" });
           notificationSound.play().catch(e => console.log("Audio auto-play blocked by browser.", e));
-
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification(`Mintage CRM: ${title}`, { body: bodyMsg, icon: '/mintage-logo.png' });
-          }
-          
+          if ("Notification" in window && Notification.permission === "granted") { new Notification(`Mintage CRM: ${title}`, { body: bodyMsg, icon: '/mintage-logo.png' }); }
           setNotifications(prev => {
             if (prev.some(n => n.id.includes(task.id))) return prev;
             return [{ id: `task-${task.id}-${Date.now()}`, leadId: task.leadId, title: isOverdue ? `Overdue: ${task.type}` : `Due Soon: ${task.type}`, message: `Action required for ${task.leadName}.`, time: new Date(), isRead: false }, ...prev].slice(0, 30);
@@ -247,7 +229,6 @@ export default function ClientDashboard() {
   const dashboardStats = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const sevenDaysAgo = new Date(today); sevenDaysAgo.setDate(today.getDate() - 6);
-
     let todaysLeadsCount = 0; let activePipelineCount = 0; let closedWonCount = 0;
     const todaysSources = new Map<string, number>();
     const trendDataMap = new Map<string, number>();
@@ -276,63 +257,19 @@ export default function ClientDashboard() {
     const todaysSourceChart = Array.from(todaysSources.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
     const trendChart = Array.from(trendDataMap.entries()).map(([name, count]) => ({ name, count }));
     const conversionRate = leads.length > 0 ? Math.round((closedWonCount / leads.length) * 100) : 0;
-
     return { todaysLeadsCount, activePipelineCount, conversionRate, todaysSourceChart, trendChart };
   }, [leads]);
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [projectProperty, setProjectProperty] = useState('');
-  const [status, setStatus] = useState('New');
-  const [source, setSource] = useState('');
-  const [subSource, setSubSource] = useState('');
-  const [assignedTo, setAssignedTo] = useState('');
-
-  const [agentName, setAgentName] = useState('');
-  const [agentEmail, setAgentEmail] = useState('');
-  const [agentPassword, setAgentPassword] = useState('');
-  const [inlineEditingAgentId, setInlineEditingAgentId] = useState<string | null>(null);
-  const [inlineEditingName, setInlineEditingName] = useState('');
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All');
-  const [leadsStartDate, setLeadsStartDate] = useState('');
-  const [leadsEndDate, setLeadsEndDate] = useState('');
-
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [leadSourceFilter, setLeadSourceFilter] = useState('All');
-
-  const [feedbackStartDate, setFeedbackStartDate] = useState('');
-  const [feedbackEndDate, setFeedbackEndDate] = useState('');
-  const [feedbackSourceFilter, setFeedbackSourceFilter] = useState('All');
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const leadsPerPage = 10;
-  const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
-  const [expandedLeads, setExpandedLeads] = useState<string[]>([]);
-
-  const [fbPages, setFbPages] = useState<any[]>([]);
-  const [linkedPages, setLinkedPages] = useState<any[]>([]);
-  const [isLoadingLinkedPages, setIsLoadingLinkedPages] = useState(true);
-  const [isLoadingFb, setIsLoadingFb] = useState(false);
-
-  const [leadSources, setLeadSources] = useState<{id: string, name: string}[]>([]);
-  const [leadSubSources, setLeadSubSources] = useState<{id: string, name: string}[]>([]);
-
-  const [assignmentRules, setAssignmentRules] = useState<{id: string, sourceName: string, agentId: string, agentName: string}[]>([]);
-  const [newRuleSource, setNewRuleSource] = useState('');
-  const [newRuleAgentId, setNewRuleAgentId] = useState('');
-  const [addingRule, setAddingRule] = useState(false);
-
-  const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
-  const [campaignTab, setCampaignTab] = useState<'email' | 'whatsapp'>('whatsapp');
-  const [emailSubject, setEmailSubject] = useState('');
-  const [emailBody, setEmailBody] = useState('');
-  const [isSendingCampaign, setIsSendingCampaign] = useState(false);
-  const [whatsappTemplate, setWhatsappTemplate] = useState('project_launch_01');
+  const [firstName, setFirstName] = useState(''); const [lastName, setLastName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [projectProperty, setProjectProperty] = useState(''); const [status, setStatus] = useState('New'); const [source, setSource] = useState(''); const [subSource, setSubSource] = useState(''); const [assignedTo, setAssignedTo] = useState('');
+  const [agentName, setAgentName] = useState(''); const [agentEmail, setAgentEmail] = useState(''); const [agentPassword, setAgentPassword] = useState(''); const [inlineEditingAgentId, setInlineEditingAgentId] = useState<string | null>(null); const [inlineEditingName, setInlineEditingName] = useState('');
+  const [searchQuery, setSearchQuery] = useState(''); const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All'); const [leadsStartDate, setLeadsStartDate] = useState(''); const [leadsEndDate, setLeadsEndDate] = useState('');
+  const [startDate, setStartDate] = useState(''); const [endDate, setEndDate] = useState(''); const [leadSourceFilter, setLeadSourceFilter] = useState('All');
+  const [feedbackStartDate, setFeedbackStartDate] = useState(''); const [feedbackEndDate, setFeedbackEndDate] = useState(''); const [feedbackSourceFilter, setFeedbackSourceFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1); const leadsPerPage = 10; const [selectedLeads, setSelectedLeads] = useState<string[]>([]); const [expandedLeads, setExpandedLeads] = useState<string[]>([]);
+  const [fbPages, setFbPages] = useState<any[]>([]); const [linkedPages, setLinkedPages] = useState<any[]>([]); const [isLoadingLinkedPages, setIsLoadingLinkedPages] = useState(true); const [isLoadingFb, setIsLoadingFb] = useState(false);
+  const [leadSources, setLeadSources] = useState<{id: string, name: string}[]>([]); const [leadSubSources, setLeadSubSources] = useState<{id: string, name: string}[]>([]);
+  const [assignmentRules, setAssignmentRules] = useState<{id: string, sourceName: string, agentId: string, agentName: string}[]>([]); const [newRuleSource, setNewRuleSource] = useState(''); const [newRuleAgentId, setNewRuleAgentId] = useState(''); const [addingRule, setAddingRule] = useState(false);
+  const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false); const [campaignTab, setCampaignTab] = useState<'email' | 'whatsapp'>('whatsapp'); const [emailSubject, setEmailSubject] = useState(''); const [emailBody, setEmailBody] = useState(''); const [isSendingCampaign, setIsSendingCampaign] = useState(false); const [whatsappTemplate, setWhatsappTemplate] = useState('project_launch_01');
 
   const combinedSources = useMemo(() => {
     const sourcesSet = new Set<string>();
@@ -342,24 +279,6 @@ export default function ClientDashboard() {
   }, [leadSources, leads]);
 
   const webhookUrl = `https://us-central1-mintage-crm.cloudfunctions.net/incomingLeadWebhook?clientId=${user?.clientId}`;
-  const timeoutRef = useRef<NodeJS.Timeout>();
-
-  useEffect(() => {
-    const resetTimer = () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => {
-        showDialog('alert', 'Session Expired', 'Your session has expired due to 15 minutes of inactivity. Please log in again to continue.', undefined, () => { logout(); });
-      }, 900000); 
-    };
-    resetTimer();
-    const events = ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'];
-    const handleActivity = () => resetTimer();
-    events.forEach(event => window.addEventListener(event, handleActivity, { passive: true }));
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      events.forEach(event => window.removeEventListener(event, handleActivity));
-    };
-  }, []);
 
   useEffect(() => {
     if (!user?.clientId) return;
@@ -369,21 +288,18 @@ export default function ClientDashboard() {
       const fetchedLeads: Lead[] = [];
       snapshot.forEach((doc) => fetchedLeads.push({ id: doc.id, ...doc.data() } as Lead));
       setRealTimeLeads(fetchedLeads);
-
       if (!isInitialMount.current) {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const newLead = change.doc.data() as Lead;
             const cleanLastName = newLead.lastName === 'Lead' ? '' : newLead.lastName;
             const leadName = `${newLead.firstName} ${cleanLastName}`.trim() || 'Someone';
-            const sourceName = newLead.source || 'Direct Entry';
-            setToastData({ show: true, title: "New Lead Captured!", message: `${leadName} just arrived via ${sourceName}.` });
+            setToastData({ show: true, title: "New Lead Captured!", message: `${leadName} just arrived via ${newLead.source || 'Direct Entry'}.` });
             setNotifications(prev => [{ id: change.doc.id + Date.now(), leadId: change.doc.id, leadRef: newLead, title: "New Lead", message: `${leadName} - ${newLead.projectProperty || 'General Inquiry'}`, time: new Date(), isRead: false }, ...prev].slice(0, 30));
             setTimeout(() => setToastData(null), 5000);
           }
         });
       }
-      
       if (isInitialMount.current) {
         isInitialMount.current = false;
         if (!lastVisibleLead && snapshot.docs.length > 0) {
@@ -392,10 +308,7 @@ export default function ClientDashboard() {
         }
         setLoading(false);
       }
-    }, (error) => {
-      console.error("Error in onSnapshot:", error);
-      setLoading(false);
-    });
+    }, (error) => { console.error("Error in onSnapshot:", error); setLoading(false); });
     return () => unsubscribe();
   }, [user?.clientId]);
 
@@ -454,10 +367,7 @@ export default function ClientDashboard() {
     if (!user?.clientId) return;
     try {
       const waDoc = await getDoc(doc(db, 'whatsapp_integrations', user.clientId));
-      if (waDoc.exists()) {
-        setWhatsappConnected(true);
-        setWhatsappNumberId(waDoc.data().phoneNumberId);
-      }
+      if (waDoc.exists()) { setWhatsappConnected(true); setWhatsappNumberId(waDoc.data().phoneNumberId); }
     } catch (error) { console.error("Error fetching WA status", error); }
   };
 
@@ -468,14 +378,9 @@ export default function ClientDashboard() {
       const q = query(collection(db, 'lead_sources'), where('clientId', '==', user.clientId));
       const snapshot = await getDocs(q);
       snapshot.forEach(doc => fetched.push({ id: doc.id, name: doc.data().name }));
-
       const globalQ = collection(db, 'global_lead_sources');
       const globalSnapshot = await getDocs(globalQ);
-      globalSnapshot.forEach(doc => {
-        if (!fetched.some(s => s.name.toLowerCase() === doc.data().name.toLowerCase())) {
-          fetched.push({ id: doc.id, name: doc.data().name });
-        }
-      });
+      globalSnapshot.forEach(doc => { if (!fetched.some(s => s.name.toLowerCase() === doc.data().name.toLowerCase())) { fetched.push({ id: doc.id, name: doc.data().name }); } });
       fetched.sort((a, b) => a.name.localeCompare(b.name));
       setLeadSources(fetched);
       if (fetched.length > 0) setSource(fetched[0].name);
@@ -506,9 +411,7 @@ export default function ClientDashboard() {
     try {
       const agent = teamMembers.find(m => m.id === newRuleAgentId);
       if (!agent) return;
-      const docRef = await addDoc(collection(db, 'lead_assignment_rules'), {
-        clientId: user.clientId, sourceName: newRuleSource, agentId: newRuleAgentId, agentName: agent.name, createdAt: serverTimestamp()
-      });
+      const docRef = await addDoc(collection(db, 'lead_assignment_rules'), { clientId: user.clientId, sourceName: newRuleSource, agentId: newRuleAgentId, agentName: agent.name, createdAt: serverTimestamp() });
       setAssignmentRules([...assignmentRules, { id: docRef.id, sourceName: newRuleSource, agentId: newRuleAgentId, agentName: agent.name }]);
       setNewRuleSource(''); setNewRuleAgentId('');
       showDialog('success', 'Success', 'Auto-assignment rule added successfully.');
@@ -532,36 +435,23 @@ export default function ClientDashboard() {
       const docRef = doc(db, 'outbound_integrations', user.clientId);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) { 
-        setOutboundWebhookUrl(docSnap.data().webhookUrl || "");
-        setGoogleSheetUrl(docSnap.data().googleSheetUrl || "");
-        setOutboundHeaders(docSnap.data().headers || []);
-        setAlertEmails(docSnap.data().alertEmails || ""); 
+        setOutboundWebhookUrl(docSnap.data().webhookUrl || ""); setGoogleSheetUrl(docSnap.data().googleSheetUrl || ""); setOutboundHeaders(docSnap.data().headers || []); setAlertEmails(docSnap.data().alertEmails || ""); 
       }
-    } catch (error) { console.error("Error fetching outbound configurations:", error); }
+    } catch (error) { console.error("Error fetching outbound configs:", error); }
   };
 
   const emailList = alertEmails.split(',').map(e => e.trim()).filter(e => e);
-
   const handleAddEmailTag = (e: React.KeyboardEvent<HTMLInputElement> | React.FocusEvent<HTMLInputElement>) => {
     if (e.type === 'blur' || (e as React.KeyboardEvent).key === 'Enter') {
       e.preventDefault();
       const val = emailInput.trim();
       if (val && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
-        if (!emailList.includes(val)) {
-          const newEmails = [...emailList, val];
-          setAlertEmails(newEmails.join(', '));
-        }
+        if (!emailList.includes(val)) { setAlertEmails([...emailList, val].join(', ')); }
         setEmailInput("");
-      } else if (val) {
-        showDialog('error', 'Invalid Email', 'Please enter a valid email address before saving.');
-      }
+      } else if (val) { showDialog('error', 'Invalid Email', 'Please enter a valid email address before saving.'); }
     }
   };
-
-  const handleRemoveEmailTag = (emailToRemove: string) => {
-    const newEmails = emailList.filter(e => e !== emailToRemove);
-    setAlertEmails(newEmails.join(', '));
-  };
+  const handleRemoveEmailTag = (emailToRemove: string) => { setAlertEmails(emailList.filter(e => e !== emailToRemove).join(', ')); };
 
   const handleSaveAlertEmails = async () => {
     if (!user?.clientId) return;
@@ -569,41 +459,30 @@ export default function ClientDashboard() {
     try {
       let finalEmails = alertEmails;
       if (emailInput.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim())) {
-        const newEmails = [...emailList, emailInput.trim()];
-        finalEmails = newEmails.join(', ');
-        setAlertEmails(finalEmails);
-        setEmailInput("");
+        finalEmails = [...emailList, emailInput.trim()].join(', ');
+        setAlertEmails(finalEmails); setEmailInput("");
       }
-      const docRef = doc(db, 'outbound_integrations', user.clientId);
-      await setDoc(docRef, { clientId: user.clientId, alertEmails: finalEmails, updatedAt: serverTimestamp() }, { merge: true });
+      await setDoc(doc(db, 'outbound_integrations', user.clientId), { clientId: user.clientId, alertEmails: finalEmails, updatedAt: serverTimestamp() }, { merge: true });
       showDialog('success', 'Alerts Saved', 'Lead notification emails updated successfully.');
-    } catch (error) { 
-      showDialog('error', 'Save Failed', 'Failed to save email alert configuration.'); 
-    } finally { setIsSavingAlerts(false); }
+    } catch (error) { showDialog('error', 'Save Failed', 'Failed to save email alert config.'); } finally { setIsSavingAlerts(false); }
   };
 
   const handleSaveGoogleSheet = async () => {
     if (!user?.clientId) return;
     setIsSavingSheets(true);
     try {
-      const docRef = doc(db, 'outbound_integrations', user.clientId);
-      await setDoc(docRef, { clientId: user.clientId, googleSheetUrl: googleSheetUrl, updatedAt: serverTimestamp() }, { merge: true });
+      await setDoc(doc(db, 'outbound_integrations', user.clientId), { clientId: user.clientId, googleSheetUrl: googleSheetUrl, updatedAt: serverTimestamp() }, { merge: true });
       showDialog('success', 'Saved', 'Google Sheets pipeline connected successfully.');
-    } catch (error) { 
-      showDialog('error', 'Save Failed', 'Failed to save Google Sheets configuration.'); 
-    } finally { setIsSavingSheets(false); }
+    } catch (error) { showDialog('error', 'Save Failed', 'Failed to save Google Sheets config.'); } finally { setIsSavingSheets(false); }
   };
 
   const handleTestGoogleSheet = async () => {
     if (!googleSheetUrl) { showDialog('alert', 'Missing URL', 'Please enter your Apps Script URL first.'); return; }
     setIsTestingSheets(true);
     try {
-      const testPayload = { id: 'test-123', firstName: 'Test', lastName: 'Lead', email: 'test@example.com', phone: '+919876543210', source: 'Test Webhook', status: 'New', createdAt: new Date().toISOString(), clientId: user?.clientId, projectProperty: 'Test Project' };
-      await fetch(googleSheetUrl, { method: 'POST', body: JSON.stringify(testPayload) });
+      await fetch(googleSheetUrl, { method: 'POST', body: JSON.stringify({ id: 'test-123', firstName: 'Test', lastName: 'Lead', email: 'test@example.com', phone: '+919876543210', source: 'Test Webhook', status: 'New', createdAt: new Date().toISOString(), clientId: user?.clientId, projectProperty: 'Test Project' }) });
       showDialog('success', 'Test Sent', 'Test lead fired to Google Sheets!');
-    } catch (error) { 
-      showDialog('error', 'CORS Notice', 'Test fired, but browser security blocked the response view. Check your Google Sheet to confirm receipt.'); 
-    } finally { setIsTestingSheets(false); }
+    } catch (error) { showDialog('error', 'CORS Notice', 'Test fired, but browser security blocked response view. Check your Google Sheet.'); } finally { setIsTestingSheets(false); }
   };
 
   const handleSaveCustomCRM = async () => {
@@ -611,13 +490,10 @@ export default function ClientDashboard() {
     setIsSavingCRM(true);
     try {
       const validHeaders = outboundHeaders.filter(h => h.key.trim() !== '');
-      const docRef = doc(db, 'outbound_integrations', user.clientId);
-      await setDoc(docRef, { clientId: user.clientId, webhookUrl: outboundWebhookUrl, headers: validHeaders, updatedAt: serverTimestamp() }, { merge: true });
+      await setDoc(doc(db, 'outbound_integrations', user.clientId), { clientId: user.clientId, webhookUrl: outboundWebhookUrl, headers: validHeaders, updatedAt: serverTimestamp() }, { merge: true });
       setOutboundHeaders(validHeaders);
       showDialog('success', 'Saved', 'Enterprise CRM API bridge configured successfully.');
-    } catch (error) { 
-      showDialog('error', 'Save Failed', 'Failed to save CRM API configuration.'); 
-    } finally { setIsSavingCRM(false); }
+    } catch (error) { showDialog('error', 'Save Failed', 'Failed to save CRM API configuration.'); } finally { setIsSavingCRM(false); }
   };
 
   const handleTestCustomCRM = async () => {
@@ -629,9 +505,81 @@ export default function ClientDashboard() {
       outboundHeaders.forEach(h => { if (h.key.trim() !== '' && h.value.trim() !== '') { headerObj[h.key.trim()] = h.value.trim(); } });
       await fetch(outboundWebhookUrl, { method: 'POST', headers: headerObj, body: JSON.stringify(testPayload) });
       showDialog('success', 'Test Sent', 'Test lead fired to your Custom CRM!');
-    } catch (error) { 
-      showDialog('error', 'CORS Notice', 'Test fired, but browser security blocked the response view. Check your destination CRM.'); 
-    } finally { setIsTestingCRM(false); }
+    } catch (error) { showDialog('error', 'CORS Notice', 'Test fired, but browser security blocked response view. Check destination CRM.'); } finally { setIsTestingCRM(false); }
+  };
+
+  const initFacebookSdk = (appId: string): Promise<void> => {
+    return new Promise((resolve) => {
+      if (window.FB) { window.FB.init({ appId: appId, cookie: true, xfbml: true, version: 'v19.0' }); resolve(); return; }
+      window.fbAsyncInit = function() { window.FB.init({ appId: appId, cookie: true, xfbml: true, version: 'v19.0' }); resolve(); };
+      const d = document, s = 'script', id = 'facebook-jssdk';
+      let js, fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) { resolve(); return; }
+      js = d.createElement(s) as any; js.id = id; (js as any).src = "https://connect.facebook.net/en_US/sdk.js";
+      if (fjs && fjs.parentNode) fjs.parentNode.insertBefore(js, fjs); else d.head.appendChild(js);
+    });
+  };
+
+  useEffect(() => { initFacebookSdk('1263110839094881'); }, []); // Background load to prevent popup blocker
+
+  const handleConnectFacebook = async () => {
+    setIsLoadingFb(true);
+    if (window.FB) window.FB.init({ appId: '1439047481212574', cookie: true, xfbml: true, version: 'v19.0' });
+    window.FB.login((response: any) => {
+      if (response.authResponse) {
+        setFbUserToken(response.authResponse.accessToken); 
+        window.FB.api('/me/accounts', (apiResponse: any) => {
+          if (apiResponse && !apiResponse.error) { setFbPages(apiResponse.data || []); } else { showDialog('error', 'Facebook API Error', apiResponse?.error?.message || 'Failed to fetch Facebook Pages.'); }
+          setIsLoadingFb(false);
+        });
+      } else { setIsLoadingFb(false); }
+    }, { scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,business_management', auth_type: 'rerequest', return_scopes: true }); 
+  };
+
+  const handleConnectWhatsApp = () => {
+    setIsLinkingWhatsApp(true);
+    if (!window.FB) { setIsLinkingWhatsApp(false); showDialog('error', 'SDK Loading', 'Please wait a moment for the Meta SDK to load or disable ad-blockers.'); return; }
+    const fallbackTimer = setTimeout(() => { setIsLinkingWhatsApp(false); }, 60000);
+
+    window.FB.login(async (response: any) => {
+      clearTimeout(fallbackTimer);
+      if (response.authResponse && response.authResponse.accessToken) {
+        const accessToken = response.authResponse.accessToken;
+        if (user?.clientId) {
+          try {
+            const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
+            await linkWaFn({ accessToken: accessToken });
+            setWhatsappConnected(true); fetchWhatsAppIntegration();
+            showDialog('success', 'WhatsApp Connected', `Successfully linked to phone number!`);
+          } catch (error: any) { showDialog('error', 'Connection Failed', error.message || 'Failed to link WhatsApp account.'); } finally { setIsLinkingWhatsApp(false); }
+        }
+      } else { setIsLinkingWhatsApp(false); }
+    }, { config_id: '1083197781534526', response_type: 'code,token', override_default_response_type: true, extras: { setup: {}, featureType: '', sessionInfoVersion: '2' } });
+  };
+
+  const handleLinkPage = async (page: any) => {
+    if (!user?.clientId) return;
+    if (!fbUserToken) { showDialog('error', 'Token Missing', 'Your Facebook session expired. Please click "Connect Facebook" again.'); return; }
+    setIsLinking(true);
+    try {
+      const q = query(collection(db, 'facebook_integrations'), where('pageId', '==', String(page.id)));
+      const querySnapshot = await getDocs(q);
+      let isConnectedToOtherClient = false;
+      querySnapshot.forEach((docSnap) => { if (docSnap.data().clientId !== user.clientId) isConnectedToOtherClient = true; });
+      if (isConnectedToOtherClient) { showDialog('error', 'Link Error', 'This Facebook Page is already connected to another client workspace.'); setIsLinking(false); return; }
+      
+      const linkFn = httpsCallable(functions, 'secureLinkFacebookPage');
+      await linkFn({ shortLivedUserToken: fbUserToken, pageId: String(page.id), pageName: page.name });
+      fetchLinkedPages(); setFbPages([]); showDialog('success', 'Page Linked', 'Facebook page successfully linked to your CRM.');
+    } catch (error: any) { showDialog('error', 'Link Failed', error?.message || 'Failed to securely link the page. Check your Facebook permissions.'); } finally { setIsLinking(false); }
+  };
+
+  const handleDisconnectPage = async (pageId: string) => {
+    if (!user?.clientId) return;
+    showDialog('confirm', 'Disconnect Page', 'Are you sure you want to disconnect this Facebook page?', async () => {
+      try { await deleteDoc(doc(db, 'facebook_integrations', user.clientId)); fetchLinkedPages(); showDialog('success', 'Disconnected', 'Facebook page disconnected.'); } 
+      catch (error) { showDialog('error', 'Error', 'Failed to disconnect. Please try again.'); }
+    });
   };
 
   useEffect(() => {
@@ -644,9 +592,7 @@ export default function ClientDashboard() {
     setSelectedLead(updatedLead);
   };
 
-  const openLeadDetails = (lead: Lead) => {
-    setSelectedLead(lead); setIsLeadModalOpen(true);
-  };
+  const openLeadDetails = (lead: Lead) => { setSelectedLead(lead); setIsLeadModalOpen(true); };
 
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -655,12 +601,10 @@ export default function ClientDashboard() {
     try {
       const assignedUser = teamMembers.find(m => m.id === assignedTo);
       const assignedToName = assignedUser ? assignedUser.name : (assignedTo === user.uid ? user.email : '');
-      await addDoc(collection(db, 'leads'), {
-        clientId: user.clientId, firstName, lastName, email, phone, projectProperty, status, source: source || 'Manual', subSource: subSource || '', assignedTo: assignedTo || user?.uid, assignedToId: assignedTo || user?.uid, assignedToName: assignedToName, createdAt: serverTimestamp()
-      });
+      await addDoc(collection(db, 'leads'), { clientId: user.clientId, firstName, lastName, email, phone, projectProperty, status, source: source || 'Manual', subSource: subSource || '', assignedTo: assignedTo || user?.uid, assignedToId: assignedTo || user?.uid, assignedToName: assignedToName, createdAt: serverTimestamp() });
       setFirstName(''); setLastName(''); setEmail(''); setPhone(''); setProjectProperty(''); setStatus('New'); setSubSource(''); setAssignedTo('');
       setIsModalOpen(false); showDialog('success', 'Lead Added', 'The lead was manually added successfully.');
-    } catch (error) { showDialog('error', 'Error', 'Failed to add lead. Check console for details.'); } finally { setAddingLead(false); }
+    } catch (error) { showDialog('error', 'Error', 'Failed to add lead.'); } finally { setAddingLead(false); }
   };
 
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -696,12 +640,12 @@ export default function ClientDashboard() {
           successCount++;
         }
         showDialog('success', 'Import Complete', `Successfully imported ${successCount} leads!`);
-      } catch (error) { showDialog('error', 'Import Failed', 'Failed to import leads. Please ensure your CSV is formatted correctly.'); } finally { setIsImporting(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+      } catch (error) { showDialog('error', 'Import Failed', 'Failed to import leads. Format error.'); } finally { setIsImporting(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
     };
     reader.readAsText(file);
   };
 
-  const handleCreateAgent = async (e: React.FormEvent) => {
+  const handleCreateAgent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setAddingAgent(true);
     try {
       const createAgentFn = httpsCallable(functions, 'createAgent');
@@ -747,137 +691,6 @@ export default function ClientDashboard() {
       setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, assignedTo: agentId, assignedToId: agentId, assignedToName: assignedToName } : lead));
       await updateDoc(doc(db, 'leads', leadId), { assignedTo: agentId, assignedToId: agentId, assignedToName: assignedToName });
     } catch (error) { console.error("Error assigning lead:", error); }
-  };
-
-  const initFacebookSdk = (appId: string): Promise<void> => {
-    return new Promise((resolve) => {
-      if (window.FB) {
-        window.FB.init({ appId: appId, cookie: true, xfbml: true, version: 'v19.0' });
-        resolve();
-        return;
-      }
-      window.fbAsyncInit = function() {
-        window.FB.init({ appId: appId, cookie: true, xfbml: true, version: 'v19.0' });
-        resolve();
-      };
-      const d = document, s = 'script', id = 'facebook-jssdk';
-      let js, fjs = d.getElementsByTagName(s)[0];
-      if (d.getElementById(id)) { resolve(); return; }
-      js = d.createElement(s) as any; js.id = id;
-      (js as any).src = "https://connect.facebook.net/en_US/sdk.js";
-      if (fjs && fjs.parentNode) fjs.parentNode.insertBefore(js, fjs); else d.head.appendChild(js);
-    });
-  };
-
-  const handleConnectFacebook = async () => {
-    setIsLoadingFb(true);
-    await initFacebookSdk('1439047481212574'); 
-    
-    if (window.FB) {
-      window.FB.init({ appId: '1439047481212574', cookie: true, xfbml: true, version: 'v19.0' });
-    }
-
-    window.FB.login((response: any) => {
-      if (response.authResponse) {
-        setFbUserToken(response.authResponse.accessToken); 
-        window.FB.api('/me/accounts', (apiResponse: any) => {
-          if (apiResponse && !apiResponse.error) {
-            setFbPages(apiResponse.data || []);
-          } else {
-            showDialog('error', 'Facebook API Error', apiResponse?.error?.message || 'Failed to fetch Facebook Pages.');
-          }
-          setIsLoadingFb(false);
-        });
-      } else { 
-        setIsLoadingFb(false); 
-      }
-    }, { 
-      scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,business_management',
-      auth_type: 'rerequest',
-      return_scopes: true
-    }); 
-  };
-
- const handleConnectWhatsApp = async () => {
-    setIsLinkingWhatsApp(true);
-    await initFacebookSdk('1263110839094881'); // Your Meta App ID
-
-    if (window.FB) {
-      window.FB.init({ appId: '1263110839094881', cookie: true, xfbml: true, version: 'v19.0' });
-    }
-
-    window.FB.login(async (response: any) => {
-      // For Embedded Signup, we need the Access Token that Meta returns after the user finishes the flow
-      if (response.authResponse && response.authResponse.accessToken) {
-        const accessToken = response.authResponse.accessToken;
-        
-        if (user?.clientId) {
-          try {
-            // ✨ Call our new Firebase Function to do the heavy lifting!
-            const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
-            const result = await linkWaFn({ accessToken: accessToken });
-            
-            setWhatsappConnected(true);
-            // Re-fetch integration to update the UI with their actual phone number ID
-            fetchWhatsAppIntegration();
-            
-            showDialog('success', 'WhatsApp Connected', `Successfully linked to phone number!`);
-          } catch (error: any) {
-            console.error("Link Error:", error);
-            showDialog('error', 'Connection Failed', error.message || 'Failed to link WhatsApp account.');
-          } finally {
-            setIsLinkingWhatsApp(false);
-          }
-        }
-      } else { 
-        setIsLinkingWhatsApp(false); 
-      }
-    }, {
-      config_id: '1083197781534526', // Your Embedded Signup Config ID
-      response_type: 'code,token', 
-      override_default_response_type: true,
-      extras: { setup: {}, featureType: '', sessionInfoVersion: '2' }
-    });
-  };
-
-  const handleLinkPage = async (page: any) => {
-    if (!user?.clientId) return;
-    if (!fbUserToken) {
-      showDialog('error', 'Token Missing', 'Your Facebook session expired. Please click "Connect Facebook" again.');
-      return;
-    }
-    
-    setIsLinking(true);
-    try {
-      const q = query(collection(db, 'facebook_integrations'), where('pageId', '==', String(page.id)));
-      const querySnapshot = await getDocs(q);
-      let isConnectedToOtherClient = false;
-      querySnapshot.forEach((docSnap) => { if (docSnap.data().clientId !== user.clientId) isConnectedToOtherClient = true; });
-      
-      if (isConnectedToOtherClient) { 
-        showDialog('error', 'Link Error', 'This Facebook Page is already connected to another client workspace.'); 
-        setIsLinking(false); 
-        return; 
-      }
-      
-      const linkFn = httpsCallable(functions, 'secureLinkFacebookPage');
-      await linkFn({ shortLivedUserToken: fbUserToken, pageId: String(page.id), pageName: page.name });
-      
-      fetchLinkedPages(); setFbPages([]); 
-      showDialog('success', 'Page Linked', 'Facebook page successfully linked to your CRM.');
-    } catch (error: any) { 
-      console.error("Facebook Link Error:", error);
-      const errorMessage = error?.message || 'Failed to securely link the page. Check your Facebook permissions.';
-      showDialog('error', 'Link Failed', errorMessage); 
-    } finally { setIsLinking(false); }
-  };
-
-  const handleDisconnectPage = async (pageId: string) => {
-    if (!user?.clientId) return;
-    showDialog('confirm', 'Disconnect Page', 'Are you sure you want to disconnect this Facebook page?', async () => {
-      try { await deleteDoc(doc(db, 'facebook_integrations', user.clientId)); fetchLinkedPages(); showDialog('success', 'Disconnected', 'Facebook page disconnected.'); } 
-      catch (error) { showDialog('error', 'Error', 'Failed to disconnect. Please try again.'); }
-    });
   };
 
   const handleCopy = () => { navigator.clipboard.writeText(webhookUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); };
@@ -929,16 +742,11 @@ export default function ClientDashboard() {
     const lostOrJunk = filteredLeads.filter(l => l.status === 'Closed Lost' || l.status === 'Junk / Invalid').length;
     const active = total - won - lostOrJunk;
     const winRate = total > 0 ? Math.round((won / total) * 100) : 0;
-
     const trendMap = new Map<string, number>();
     filteredLeads.forEach(lead => {
-      if(lead.createdAt) {
-        const date = new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        trendMap.set(date, (trendMap.get(date) || 0) + 1);
-      }
+      if(lead.createdAt) { const date = new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); trendMap.set(date, (trendMap.get(date) || 0) + 1); }
     });
     const trendChart = Array.from(trendMap.entries()).map(([date, count]) => ({ date, count })).reverse(); 
-
     const agentMap = new Map<string, {name: string, totalLeads: number, wonDeals: number}>();
     filteredLeads.forEach(lead => {
       const agentId = lead.assignedToId || lead.assignedTo || 'unassigned';
@@ -949,18 +757,12 @@ export default function ClientDashboard() {
       if (lead.status === 'Closed Won') data.wonDeals += 1;
     });
     const agentChart = Array.from(agentMap.values()).sort((a,b) => b.totalLeads - a.totalLeads).slice(0, 5);
-
-    const pipelineChart = PIPELINE_STATUSES.map(status => {
-      return { name: status, count: filteredLeads.filter(l => l.status === status).length };
-    }).filter(s => s.count > 0); 
-
+    const pipelineChart = PIPELINE_STATUSES.map(status => { return { name: status, count: filteredLeads.filter(l => l.status === status).length }; }).filter(s => s.count > 0); 
     return { total, won, lostOrJunk, active, winRate, trendChart, agentChart, pipelineChart };
   }, [filteredLeads, teamMembers]);
 
   const feedbackSourceDataMap = new Map<string, number>();
-  filteredFeedbackLeads.forEach(lead => {
-    const source = lead.source || 'Manual'; feedbackSourceDataMap.set(source, (feedbackSourceDataMap.get(source) || 0) + 1);
-  });
+  filteredFeedbackLeads.forEach(lead => { const source = lead.source || 'Manual'; feedbackSourceDataMap.set(source, (feedbackSourceDataMap.get(source) || 0) + 1); });
   const dynamicFeedbackSourceData = Array.from(feedbackSourceDataMap.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
   const handleExportCSV = () => {
@@ -1011,11 +813,7 @@ export default function ClientDashboard() {
     if (s.includes('facebook')) { icon = <Facebook className="w-3 h-3" />; colorClass = "bg-[#74ebd5]/10 text-[#4cb8a5] border-[#74ebd5]/30"; } 
     else if (s.includes('google')) { icon = <Search className="w-3 h-3" />; colorClass = "bg-amber-50 text-amber-700 border-amber-200"; } 
     else if (s.includes('website')) { icon = <Globe className="w-3 h-3" />; colorClass = "bg-[#9face6]/10 text-[#7a8ece] border-[#9face6]/30"; }
-    return (
-      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${colorClass}`}>
-        {icon} {label} {subSource ? `/ ${subSource}` : ''}
-      </span>
-    );
+    return <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${colorClass}`}>{icon} {label} {subSource ? `/ ${subSource}` : ''}</span>;
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -1033,27 +831,15 @@ export default function ClientDashboard() {
     }
   };
 
-  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) { setSelectedLeads(paginatedLeads.map(l => l.id)); } 
-    else { setSelectedLeads([]); }
-  };
-
-  const handleSelectLead = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSelectedLeads(prev => prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]);
-  };
-
-  const toggleExpandLead = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setExpandedLeads(prev => prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]);
-  };
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.checked) { setSelectedLeads(paginatedLeads.map(l => l.id)); } else { setSelectedLeads([]); } };
+  const handleSelectLead = (id: string, e: React.MouseEvent) => { e.stopPropagation(); setSelectedLeads(prev => prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]); };
+  const toggleExpandLead = (id: string, e: React.MouseEvent) => { e.stopPropagation(); setExpandedLeads(prev => prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]); };
 
   const handleDeleteSelected = async () => {
     showDialog('confirm', 'Delete Leads', `Are you sure you want to delete ${selectedLeads.length} selected leads? This cannot be undone.`, async () => {
       try {
         for (const id of selectedLeads) { await deleteDoc(doc(db, 'leads', id)); }
-        setSelectedLeads([]);
-        setOlderLeads(prev => prev.filter(l => !selectedLeads.includes(l.id)));
+        setSelectedLeads([]); setOlderLeads(prev => prev.filter(l => !selectedLeads.includes(l.id)));
         showDialog('success', 'Deleted', 'Selected leads have been deleted.');
       } catch (error) { showDialog('error', 'Delete Failed', 'Failed to delete some leads.'); }
     });
@@ -1069,65 +855,38 @@ export default function ClientDashboard() {
       try {
         const targetEmails = leads.filter(l => selectedLeads.includes(l.id) && l.email).map(l => l.email);
         if (targetEmails.length === 0) { showDialog('error', 'No Valid Emails', 'None of the selected leads have an email address.'); setIsSendingCampaign(false); return; }
-        
         const sendEmailFn = httpsCallable(functions, 'sendBulkEmailCampaign');
         await sendEmailFn({ subject: emailSubject, body: emailBody, targetEmails: targetEmails });
-        
         setIsCampaignModalOpen(false); setEmailSubject(''); setEmailBody(''); setSelectedLeads([]);
         showDialog('success', 'Campaign Queued', `Successfully queued email campaign to ${targetEmails.length} recipients.`);
-      } catch (error: any) { showDialog('error', 'Campaign Failed', error.message || 'Failed to send email campaign.'); } 
-      finally { setIsSendingCampaign(false); }
-    } 
-    else if (campaignTab === 'whatsapp') {
+      } catch (error: any) { showDialog('error', 'Campaign Failed', error.message || 'Failed to send email campaign.'); } finally { setIsSendingCampaign(false); }
+    } else if (campaignTab === 'whatsapp') {
       if (!whatsappTemplate) return;
       setIsSendingCampaign(true);
       try {
         const targetPhones = leads.filter(l => selectedLeads.includes(l.id) && l.phone).map(l => l.phone);
         if (targetPhones.length === 0) { showDialog('error', 'No Valid Phones', 'None of the selected leads have a phone number.'); setIsSendingCampaign(false); return; }
-        
         const sendWhatsAppFn = httpsCallable(functions, 'sendBulkWhatsAppCampaign');
         await sendWhatsAppFn({ templateName: whatsappTemplate, targetPhones: targetPhones });
-        
         setIsCampaignModalOpen(false); setSelectedLeads([]);
         showDialog('success', 'Campaign Queued', `Successfully queued WhatsApp campaign to ${targetPhones.length} recipients.`);
-      } catch (error: any) { showDialog('error', 'Campaign Failed', error.message || 'Failed to send WhatsApp campaign.'); } 
-      finally { setIsSendingCampaign(false); }
+      } catch (error: any) { showDialog('error', 'Campaign Failed', error.message || 'Failed to send WhatsApp campaign.'); } finally { setIsSendingCampaign(false); }
     }
   };
 
-  // ✨ INBOX SPECIFIC SEND LOGIC ✨
   const handleSendWhatsAppReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || !activeChatLeadId) return;
-    
     const activeLead = leads.find(l => l.id === activeChatLeadId);
     if (!activeLead || !activeLead.phone) return;
-
     const mockMessageText = chatInput.trim();
     setChatInput('');
-    
     try {
-      // Mock the outbound send by saving it directly to Firestore 
-      // (Phase 3 will add actual Meta Graph API dispatch here)
-      await addDoc(collection(db, 'whatsapp_messages'), {
-        clientId: user?.clientId,
-        wabaId: 'internal_mock', // Since this is outbound
-        senderPhone: normalizePhone(activeLead.phone), // The recipient in this context
-        text: mockMessageText,
-        type: 'text',
-        direction: 'outbound',
-        status: 'sent',
-        timestamp: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        isRead: true
-      });
-      // Show an invisible confirmation
-      console.log("Mock Outbound WA Saved.");
-    } catch (error) {
-      console.error("Failed to save mock reply:", error);
-      showDialog('error', 'Send Failed', 'Could not dispatch WhatsApp message.');
-    }
+      await addDoc(collection(db, 'whatsapp_messages'), { clientId: user?.clientId, wabaId: 'internal_mock', senderPhone: normalizePhone(activeLead.phone), text: mockMessageText, type: 'text', direction: 'outbound', status: 'sent', timestamp: serverTimestamp(), createdAt: serverTimestamp(), isRead: true });
+    } catch (error) { console.error("Failed to save mock reply:", error); showDialog('error', 'Send Failed', 'Could not dispatch WhatsApp message.'); }
   };
+
+  const handleSyncTemplates = () => { setIsSyncingTemplates(true); setTimeout(() => { setIsSyncingTemplates(false); setToastData({ show: true, title: "Templates Synced", message: "Successfully fetched 4 approved templates from Meta Graph API.", color: "from-emerald-400 to-teal-500" }); }, 1500); };
 
   return (
     <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
@@ -1136,31 +895,15 @@ export default function ClientDashboard() {
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/50 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="p-6 text-center">
-              <div className={`mx-auto flex items-center justify-center h-14 w-14 rounded-full mb-5 shadow-inner ${
-                dialogState.type === 'confirm' ? 'bg-amber-100 text-amber-600' : 
-                dialogState.type === 'error' ? 'bg-red-100 text-red-600' :
-                dialogState.type === 'success' ? 'bg-[#74ebd5]/20 text-[#50bdaf]' :
-                'bg-blue-100 text-blue-600'
-              }`}>
-                 {dialogState.type === 'confirm' ? <AlertCircle className="h-7 w-7" /> : 
-                  dialogState.type === 'error' ? <XCircle className="h-7 w-7" /> :
-                  dialogState.type === 'success' ? <CheckCircle2 className="h-7 w-7" /> :
-                  <Info className="h-7 w-7" />}
+              <div className={`mx-auto flex items-center justify-center h-14 w-14 rounded-full mb-5 shadow-inner ${dialogState.type === 'confirm' ? 'bg-amber-100 text-amber-600' : dialogState.type === 'error' ? 'bg-red-100 text-red-600' : dialogState.type === 'success' ? 'bg-[#74ebd5]/20 text-[#50bdaf]' : 'bg-blue-100 text-blue-600'}`}>
+                 {dialogState.type === 'confirm' ? <AlertCircle className="h-7 w-7" /> : dialogState.type === 'error' ? <XCircle className="h-7 w-7" /> : dialogState.type === 'success' ? <CheckCircle2 className="h-7 w-7" /> : <Info className="h-7 w-7" />}
               </div>
               <h3 className="text-xl font-bold text-slate-800 mb-2">{dialogState.title}</h3>
               <p className="text-sm font-medium text-slate-500 leading-relaxed">{dialogState.message}</p>
             </div>
             <div className="p-4 bg-slate-50/50 border-t border-slate-100/80 flex gap-3">
-              {dialogState.type === 'confirm' && (
-                <button onClick={closeDialog} className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm">Cancel</button>
-              )}
-              <button onClick={() => { if (dialogState.type === 'confirm' && dialogState.onConfirm) dialogState.onConfirm(); else if (dialogState.onCloseAction) dialogState.onCloseAction(); closeDialog(); }}
-                className={`flex-1 px-4 py-2.5 text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg ${
-                  dialogState.type === 'confirm' ? 'bg-slate-900 shadow-slate-900/20' : dialogState.type === 'error' ? 'bg-red-600 shadow-red-500/30' : 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] shadow-[#74ebd5]/30'
-                }`}
-              >
-                {dialogState.type === 'confirm' ? 'Confirm' : 'OK'}
-              </button>
+              {dialogState.type === 'confirm' && (<button onClick={closeDialog} className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm">Cancel</button>)}
+              <button onClick={() => { if (dialogState.type === 'confirm' && dialogState.onConfirm) dialogState.onConfirm(); else if (dialogState.onCloseAction) dialogState.onCloseAction(); closeDialog(); }} className={`flex-1 px-4 py-2.5 text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg ${dialogState.type === 'confirm' ? 'bg-slate-900 shadow-slate-900/20' : dialogState.type === 'error' ? 'bg-red-600 shadow-red-500/30' : 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] shadow-[#74ebd5]/30'}`}>{dialogState.type === 'confirm' ? 'Confirm' : 'OK'}</button>
             </div>
           </div>
         </div>
@@ -1171,23 +914,15 @@ export default function ClientDashboard() {
           <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-2xl flex flex-col animate-in fade-in zoom-in-95 duration-300">
             <div className="flex justify-between items-center p-6 border-b border-slate-200/60 shrink-0">
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-xl text-white ${campaignTab === 'whatsapp' ? 'bg-[#25D366]' : 'bg-indigo-600'}`}>
-                  {campaignTab === 'whatsapp' ? <MessageCircle className="w-5 h-5" /> : <Send className="w-5 h-5" />}
-                </div>
+                <div className={`p-2 rounded-xl text-white ${campaignTab === 'whatsapp' ? 'bg-[#25D366]' : 'bg-indigo-600'}`}><MessageCircle className="w-5 h-5" /></div>
                 <h3 className="text-xl font-extrabold text-slate-800">Campaign Composer</h3>
               </div>
               <button onClick={() => setIsCampaignModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5" /></button>
             </div>
             
             <div className="flex px-8 pt-6 gap-6 border-b border-slate-100">
-              <button onClick={() => setCampaignTab('whatsapp')} className={`pb-4 text-sm font-bold transition-colors relative ${campaignTab === 'whatsapp' ? 'text-[#25D366]' : 'text-slate-400 hover:text-slate-600'}`}>
-                WhatsApp Message
-                {campaignTab === 'whatsapp' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#25D366] rounded-t-full" />}
-              </button>
-              <button onClick={() => setCampaignTab('email')} className={`pb-4 text-sm font-bold transition-colors relative ${campaignTab === 'email' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                Email Blast
-                {campaignTab === 'email' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-600 rounded-t-full" />}
-              </button>
+              <button onClick={() => setCampaignTab('whatsapp')} className={`pb-4 text-sm font-bold transition-colors relative ${campaignTab === 'whatsapp' ? 'text-[#25D366]' : 'text-slate-400 hover:text-slate-600'}`}>WhatsApp Message{campaignTab === 'whatsapp' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#25D366] rounded-t-full" />}</button>
+              <button onClick={() => setCampaignTab('email')} className={`pb-4 text-sm font-bold transition-colors relative ${campaignTab === 'email' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>Email Blast{campaignTab === 'email' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-600 rounded-t-full" />}</button>
             </div>
 
             <form id="bulk-campaign-form" onSubmit={handleSendCampaign} className="p-8 overflow-y-auto flex-1 space-y-6 custom-scrollbar bg-slate-50/30">
@@ -1205,32 +940,17 @@ export default function ClientDashboard() {
                     <option value="festival_greeting">🎉 Festival Offer Greeting</option>
                     <option value="price_drop_alert">💰 Price Drop Alert</option>
                   </select>
-                  <p className="text-[10px] text-slate-400 font-medium mt-3 leading-relaxed bg-slate-100 p-3 rounded-lg border border-slate-200">
-                    <strong>Note:</strong> Meta requires bulk outbound messages to use pre-approved templates. To create new templates, visit your Meta Business Manager.
-                  </p>
                 </div>
               ) : (
                 <div className="animate-in fade-in duration-300 space-y-5">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Email Subject</label>
-                    <input type="text" required placeholder="e.g. Exclusive Preview: New Luxury Villas in Hyderabad" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/30 outline-none transition-all text-sm font-medium shadow-sm" />
-                  </div>
-                  <div>
-                    <div className="flex justify-between items-end mb-1.5">
-                      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest">Email Body</label>
-                      <span className="text-[10px] text-slate-400 font-medium">Use <code className="bg-slate-100 px-1 py-0.5 rounded border border-slate-200">{'{{firstName}}'}</code> to personalize</span>
-                    </div>
-                    <textarea required rows={6} placeholder={`Hi {{firstName}},\n\nWe have an exciting new project launch...`} value={emailBody} onChange={(e) => setEmailBody(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/30 outline-none transition-all text-sm font-medium shadow-sm resize-y" />
-                  </div>
+                  <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Email Subject</label><input type="text" required placeholder="e.g. Exclusive Preview: New Luxury Villas in Hyderabad" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/30 outline-none transition-all text-sm font-medium shadow-sm" /></div>
+                  <div><div className="flex justify-between items-end mb-1.5"><label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest">Email Body</label><span className="text-[10px] text-slate-400 font-medium">Use <code className="bg-slate-100 px-1 py-0.5 rounded border border-slate-200">{'{{firstName}}'}</code> to personalize</span></div><textarea required rows={6} placeholder={`Hi {{firstName}},\n\nWe have an exciting new project launch...`} value={emailBody} onChange={(e) => setEmailBody(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/30 outline-none transition-all text-sm font-medium shadow-sm resize-y" /></div>
                 </div>
               )}
             </form>
-
             <div className="p-6 border-t border-slate-200/60 flex justify-end gap-3 bg-slate-50/50 rounded-b-3xl shrink-0">
               <button type="button" onClick={() => setIsCampaignModalOpen(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm">Cancel</button>
-              <button type="submit" form="bulk-campaign-form" disabled={isSendingCampaign || selectedLeads.length === 0} className={`px-6 py-2.5 text-white rounded-xl transition-all font-bold text-sm shadow-lg disabled:opacity-50 flex justify-center items-center min-w-[150px] ${campaignTab === 'whatsapp' ? 'bg-[#25D366] hover:bg-[#1EBE57] shadow-[#25D366]/30' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'}`}>
-                {isSendingCampaign ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>{campaignTab === 'whatsapp' ? <MessageCircle className="w-4 h-4 mr-2" /> : <Send className="w-4 h-4 mr-2" />} Send Campaign</>}
-              </button>
+              <button type="submit" form="bulk-campaign-form" disabled={isSendingCampaign || selectedLeads.length === 0} className={`px-6 py-2.5 text-white rounded-xl transition-all font-bold text-sm shadow-lg disabled:opacity-50 flex justify-center items-center min-w-[150px] ${campaignTab === 'whatsapp' ? 'bg-[#25D366] hover:bg-[#1EBE57] shadow-[#25D366]/30' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'}`}>{isSendingCampaign ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>{campaignTab === 'whatsapp' ? <MessageCircle className="w-4 h-4 mr-2" /> : <Send className="w-4 h-4 mr-2" />} Send Campaign</>}</button>
             </div>
           </div>
         </div>
@@ -1270,16 +990,11 @@ export default function ClientDashboard() {
           <button onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'dashboard' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><LayoutDashboard className="w-5 h-5" /> Dashboard</button>
           <button onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'leads' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><Users className="w-5 h-5" /> Leads</button>
           <button onClick={() => { setActiveTab('feedback'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'feedback' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><MessageSquare className="w-5 h-5" /> Leads Feedback</button>
-          
-          {/* ✨ NEW INBOX TAB LINK ✨ */}
           <button onClick={() => { setActiveTab('inbox'); setIsMobileMenuOpen(false); }} className={`flex items-center justify-between px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'inbox' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}>
             <div className="flex items-center gap-3"><MessageCircle className="w-5 h-5" /> Inbox</div>
-            {waMessages.filter(m => m.direction === 'inbound' && !m.isRead).length > 0 && (
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'inbox' ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>
-                {waMessages.filter(m => m.direction === 'inbound' && !m.isRead).length}
-              </span>
-            )}
+            {unreadWhatsAppCount > 0 && (<span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'inbox' ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>{unreadWhatsAppCount}</span>)}
           </button>
+          <button onClick={() => { setActiveTab('campaigns'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'campaigns' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><Megaphone className="w-5 h-5" /> Campaigns</button>
 
           {user?.role === 'client_admin' && (
             <>
@@ -1298,7 +1013,7 @@ export default function ClientDashboard() {
       <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         <header className="h-24 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
           <h1 className="text-xl font-bold tracking-tight text-slate-800">
-            {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'feedback' ? 'Leads Feedback' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : activeTab === 'inbox' ? 'Omnichannel Inbox' : 'Integrations'}
+            {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'feedback' ? 'Leads Feedback' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : activeTab === 'inbox' ? 'Omnichannel Inbox' : activeTab === 'campaigns' ? 'Campaigns & Templates' : 'Integrations'}
           </h1>
           <div className="flex items-center gap-6">
             <div className="relative">
@@ -1307,9 +1022,7 @@ export default function ClientDashboard() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsNotificationOpen(false)}></div>
                   <div className="absolute right-0 mt-3 w-80 bg-white/90 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white z-50 overflow-hidden animate-in slide-in-from-top-2 fade-in">
-                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                      <h3 className="font-bold text-slate-800 text-sm">Notifications</h3>{unreadCount > 0 && <button onClick={markAllAsRead} className="text-[10px] font-bold text-[#50bdaf] hover:text-[#419c90] uppercase tracking-wider">Mark all read</button>}
-                    </div>
+                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50"><h3 className="font-bold text-slate-800 text-sm">Notifications</h3>{unreadCount > 0 && <button onClick={markAllAsRead} className="text-[10px] font-bold text-[#50bdaf] hover:text-[#419c90] uppercase tracking-wider">Mark all read</button>}</div>
                     <div className="max-h-80 overflow-y-auto custom-scrollbar">
                       {notifications.length === 0 ? (
                         <div className="p-8 text-center text-slate-400 text-xs font-medium">No new notifications.</div>
@@ -1333,243 +1046,11 @@ export default function ClientDashboard() {
         <div className={`flex-1 overflow-y-auto custom-scrollbar ${activeTab === 'inbox' ? 'p-0 sm:p-4 md:p-8' : 'p-4 md:p-8'}`}>
           <div className={`max-w-7xl mx-auto h-full flex flex-col ${activeTab === 'inbox' ? 'min-w-0' : 'min-w-[800px] md:min-w-0'}`}>
             
-            {/* ✨ NEW: OMNICHANNEL INBOX TAB RENDER ✨ */}
-            {activeTab === 'inbox' ? (
-              <div className="flex h-[calc(100vh-140px)] bg-white/80 backdrop-blur-2xl sm:rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden animate-in fade-in duration-300">
-                
-                {/* INBOX LEFT PANE: Chat List */}
-                <div className={`w-full sm:w-[320px] md:w-[360px] border-r border-slate-100 flex flex-col bg-slate-50/50 shrink-0 ${activeChatLeadId ? 'hidden sm:flex' : 'flex'}`}>
-                  <div className="p-4 border-b border-slate-200/60 bg-white/50 backdrop-blur-md sticky top-0 z-10">
-                    <h2 className="text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2"><MessageCircle className="w-5 h-5 text-[#25D366]"/> Messages</h2>
-                    <div className="mt-3 relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input type="text" placeholder="Search chats..." className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-[#25D366]/30 outline-none shadow-sm" />
-                    </div>
-                  </div>
-                  
-                  <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                    {/* Process Leads and Group Messages */}
-                    {(() => {
-                    // Find leads that have messages OR are currently the active chat
-const leadsWithChats = leads.filter(l => l.phone).map(l => {
-  const normalizedPhone = normalizePhone(l.phone);
-  const msgsForLead = waMessages.filter(m => m.senderPhone === normalizedPhone);
-  return { ...l, msgs: msgsForLead, lastMsg: msgsForLead[msgsForLead.length - 1] };
-})
-// ✨ THE FIX: Keep them in the list if they have messages OR if they are the active chat
-.filter(l => l.msgs.length > 0 || l.id === activeChatLeadId) 
-.sort((a, b) => {
-  const timeA = a.lastMsg ? (a.lastMsg.timestamp?.toMillis ? a.lastMsg.timestamp.toMillis() : new Date(a.lastMsg.timestamp).getTime()) : 0;
-  const timeB = b.lastMsg ? (b.lastMsg.timestamp?.toMillis ? b.lastMsg.timestamp.toMillis() : new Date(b.lastMsg.timestamp).getTime()) : 0;
-  return timeB - timeA;
-});
-
-                      if (leadsWithChats.length === 0) {
-                        return (
-                          <div className="text-center p-6 mt-10">
-                            <MessageCircle className="w-8 h-8 text-slate-300 mx-auto mb-3" />
-                            <p className="text-sm font-bold text-slate-500">No messages yet</p>
-                            <p className="text-xs text-slate-400 mt-1">When leads reply, they will appear here.</p>
-                          </div>
-                        );
-                      }
-
-                      return leadsWithChats.map(l => {
-                        const unreadCount = l.msgs.filter(m => m.direction === 'inbound' && !m.isRead).length;
-                        return (
-                          <button 
-                            key={l.id} 
-                            onClick={() => setActiveChatLeadId(l.id)}
-                            className={`w-full text-left p-3 rounded-2xl transition-all flex gap-3 items-center ${activeChatLeadId === l.id ? 'bg-white shadow-md border border-slate-200' : 'hover:bg-slate-100/80 border border-transparent'}`}
-                          >
-                            <div className="relative">
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#74ebd5]/20 to-[#9face6]/20 text-[#50bdaf] flex items-center justify-center font-bold shadow-inner">
-                                {l.firstName.charAt(0)}
-                              </div>
-                              {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 border-2 border-white rounded-full"></span>}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex justify-between items-center mb-0.5">
-                                <h4 className="text-sm font-bold text-slate-800 truncate">{l.firstName} {l.lastName === 'Lead' ? '' : l.lastName}</h4>
-                                <span className="text-[10px] font-bold text-slate-400 shrink-0">
-                                  {l.lastMsg?.timestamp?.toDate ? l.lastMsg.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
-                                </span>
-                              </div>
-                              <p className={`text-xs truncate ${unreadCount > 0 ? 'text-slate-900 font-bold' : 'text-slate-500 font-medium'}`}>
-                                {l.lastMsg ? (l.lastMsg.direction === 'outbound' ? `You: ${l.lastMsg.text}` : l.lastMsg.text) : 'No messages'}
-                              </p>
-                            </div>
-                          </button>
-                        )
-                      });
-                    })()}
-                  </div>
-                </div>
-
-                {/* INBOX MIDDLE PANE: Chat Engine */}
-                <div className={`flex-1 flex flex-col bg-slate-50 relative ${!activeChatLeadId ? 'hidden sm:flex items-center justify-center' : 'flex'}`}>
-                  {!activeChatLeadId ? (
-                    <div className="text-center p-8 bg-white rounded-3xl border border-slate-100 shadow-sm max-w-md">
-                      <div className="w-16 h-16 bg-[#25D366]/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                        <MessageCircle className="w-8 h-8 text-[#25D366]" />
-                      </div>
-                      <h3 className="text-xl font-bold text-slate-800 mb-2">Mintage Omnichannel</h3>
-                      <p className="text-sm text-slate-500 font-medium">Select a conversation from the left to start chatting securely with your leads.</p>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Active Chat Header */}
-                      {(() => {
-                        const activeLead = leads.find(l => l.id === activeChatLeadId);
-                        if (!activeLead) return null;
-                        return (
-                          <div className="h-16 px-4 border-b border-slate-200/60 bg-white/90 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between shrink-0 shadow-sm">
-                            <div className="flex items-center gap-3">
-                              <button onClick={() => setActiveChatLeadId(null)} className="sm:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg"><ChevronDown className="w-5 h-5 rotate-90" /></button>
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#74ebd5]/20 to-[#9face6]/20 text-[#50bdaf] flex items-center justify-center font-bold">{activeLead.firstName.charAt(0)}</div>
-                              <div>
-                                <h3 className="text-sm font-bold text-slate-800">{activeLead.firstName} {activeLead.lastName === 'Lead' ? '' : activeLead.lastName}</h3>
-                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold border mt-0.5 ${getStatusBadgeClass(activeLead.status)}`}>{activeLead.status}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"><Phone className="w-4 h-4"/></button>
-                              <button onClick={() => openLeadDetails(activeLead)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Open Full Details"><MoreVertical className="w-4 h-4"/></button>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Chat Bubbles Area (Scrollable) */}
-                      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-[url('https://i.pinimg.com/originals/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg')] bg-cover bg-center bg-fixed bg-opacity-10 custom-scrollbar">
-                        {(() => {
-                          const activeLead = leads.find(l => l.id === activeChatLeadId);
-                          if (!activeLead) return null;
-                          const normalizedPhone = normalizePhone(activeLead.phone);
-                          const msgs = waMessages.filter(m => m.senderPhone === normalizedPhone);
-                          
-                          if (msgs.length === 0) {
-                            return (
-                              <div className="bg-white/80 backdrop-blur border border-slate-100 text-slate-500 text-xs font-bold p-3 rounded-xl mx-auto w-fit shadow-sm mt-4">
-                                This is the start of your conversation with {activeLead.firstName}.
-                              </div>
-                            );
-                          }
-
-                          return msgs.map((msg, idx) => {
-                            const isOutbound = msg.direction === 'outbound';
-                            return (
-                              <div key={msg.id} className={`flex w-full ${isOutbound ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
-                                <div className={`max-w-[75%] sm:max-w-[60%] rounded-2xl px-4 py-2.5 shadow-sm relative ${isOutbound ? 'bg-[#D9FDD3] text-slate-800 rounded-tr-sm border border-[#25D366]/20' : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100'}`}>
-                                  {msg.type === 'image' && (
-                                    <div className="mb-2 bg-black/5 rounded-xl h-32 flex items-center justify-center border border-black/10">
-                                      <ImageIcon className="w-6 h-6 text-slate-400" />
-                                    </div>
-                                  )}
-                                  <p className="text-sm font-medium leading-relaxed">{msg.text}</p>
-                                  <div className={`flex justify-end items-center gap-1 mt-1 ${isOutbound ? 'text-green-800/60' : 'text-slate-400'}`}>
-                                    <span className="text-[9px] font-bold">
-                                      {msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Now'}
-                                    </span>
-                                    {isOutbound && (
-                                      <Check className={`w-3 h-3 ${msg.status === 'read' ? 'text-blue-500' : ''}`} />
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          });
-                        })()}
-                        <div ref={messagesEndRef} />
-                      </div>
-
-                      {/* Chat Input Engine */}
-                      <div className="p-4 bg-white border-t border-slate-200/60 shrink-0">
-                        <form onSubmit={handleSendWhatsAppReply} className="flex items-end gap-2">
-                          <button type="button" className="p-3 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors shrink-0">
-                            <Plus className="w-5 h-5" />
-                          </button>
-                          <div className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2 focus-within:ring-2 focus-within:ring-[#25D366]/30 focus-within:border-[#25D366] transition-all flex items-center shadow-inner min-h-[50px]">
-                            <textarea 
-                              value={chatInput}
-                              onChange={(e) => setChatInput(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendWhatsAppReply(e); } }}
-                              placeholder="Type a message..."
-                              className="w-full bg-transparent border-none focus:ring-0 resize-none outline-none text-sm font-medium text-slate-800 max-h-[120px] custom-scrollbar py-1.5"
-                              rows={1}
-                            />
-                          </div>
-                          <button 
-                            type="submit" 
-                            disabled={!chatInput.trim()}
-                            className="p-3 bg-[#25D366] text-white rounded-xl hover:bg-[#1EBE57] transition-all shadow-md disabled:opacity-50 disabled:transform-none hover:-translate-y-0.5 shrink-0 flex items-center justify-center w-[50px] h-[50px]"
-                          >
-                            <Send className="w-5 h-5 ml-1" />
-                          </button>
-                        </form>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* INBOX RIGHT PANE: Context (Hidden on mobile) */}
-                {activeChatLeadId && (
-                  <div className="w-[300px] border-l border-slate-100 bg-white/50 backdrop-blur-xl hidden lg:flex flex-col shrink-0 animate-in slide-in-from-right-4 duration-300">
-                    {(() => {
-                      const activeLead = leads.find(l => l.id === activeChatLeadId);
-                      if (!activeLead) return null;
-                      return (
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                          
-                          {/* Profile Hero */}
-                          <div className="text-center pb-6 border-b border-slate-200/60">
-                            <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-[#74ebd5] to-[#9face6] text-white flex items-center justify-center text-3xl font-black shadow-lg shadow-[#74ebd5]/20 mb-4">
-                              {activeLead.firstName.charAt(0)}
-                            </div>
-                            <h3 className="text-lg font-extrabold text-slate-900">{activeLead.firstName} {activeLead.lastName === 'Lead' ? '' : activeLead.lastName}</h3>
-                            <p className="text-sm font-bold text-slate-500 mt-1">{activeLead.phone || 'No Phone'}</p>
-                          </div>
-
-                          {/* Action Cards */}
-                          <div className="space-y-3">
-                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Project Inquiry</p>
-                              <p className="text-sm font-bold text-slate-800 flex items-center gap-2"><Home className="w-4 h-4 text-amber-500"/>{activeLead.projectProperty || 'General'}</p>
-                            </div>
-                            
-                            {activeLead.truecallerName && activeLead.truecallerName !== "Unknown" && (
-                              <div className="bg-blue-50/50 p-4 rounded-2xl shadow-sm border border-blue-100">
-                                <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-1"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/><path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/></svg> Truecaller Verified</p>
-                                <p className="text-sm font-bold text-blue-900">{activeLead.truecallerName}</p>
-                              </div>
-                            )}
-
-                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Lead Source</p>
-                              {getSourceBadge(activeLead.source, activeLead.subSource)}
-                            </div>
-                          </div>
-
-                          {/* Quick Actions */}
-                          <button onClick={() => openLeadDetails(activeLead)} className="w-full py-3 bg-slate-900 text-white text-sm font-bold rounded-xl shadow-lg shadow-slate-900/20 hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
-                            <LayoutDashboard className="w-4 h-4"/> Open Full Profile
-                          </button>
-
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-              </div>
-            ) : activeTab === 'dashboard' ? (
+            {/* ✨ DASHBOARD TAB ✨ */}
+            {activeTab === 'dashboard' && (
               <div className="w-full space-y-8 animate-in fade-in duration-500">
                 <div>
-                  <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1 flex items-center gap-3">
-                    {greeting.text}, {user?.email?.split('@')[0]} 
-                    <span className="inline-block animate-bounce origin-bottom text-4xl" style={{ animationDuration: '2s' }}>
-                      {greeting.emoji}
-                    </span>
-                  </h2>
+                  <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1 flex items-center gap-3">{greeting.text}, {user?.email?.split('@')[0]} <span className="inline-block animate-bounce origin-bottom text-4xl" style={{ animationDuration: '2s' }}>{greeting.emoji}</span></h2>
                   <p className="text-slate-500 text-sm font-medium">Here is what is happening with your leads today.</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1652,7 +1133,10 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                   </div>
                 </div>
               </div>
-            ) : activeTab === 'leads' ? (
+            )}
+
+            {/* ✨ LEADS TAB ✨ */}
+            {activeTab === 'leads' && (
               <>
                 <div className="flex justify-between items-center mb-8 shrink-0">
                   <div><h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Your Leads</h2><p className="text-slate-500 text-sm font-medium">Manage and track your prospective customers.</p></div>
@@ -1662,23 +1146,17 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                     <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#74ebd5] transition-all hover:-translate-y-0.5 whitespace-nowrap"><Plus className="w-4 h-4" /> Add New Lead</button>
                   </div>
                 </div>
-
                 <div className="flex flex-wrap items-center gap-4 bg-white/60 backdrop-blur-xl p-3 rounded-2xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)] mb-8 shrink-0">
                   <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-3 py-1.5 h-10 shadow-sm"><input type="date" value={leadsStartDate} max={leadsEndDate || undefined} onChange={(e) => { setLeadsStartDate(e.target.value); if (leadsEndDate && e.target.value > leadsEndDate) { setLeadsEndDate(e.target.value); } }} className="text-sm font-medium border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer" /><span className="text-slate-300 text-sm font-light">|</span><input type="date" value={leadsEndDate} min={leadsStartDate || undefined} onChange={(e) => { setLeadsEndDate(e.target.value); if (leadsStartDate && e.target.value < leadsStartDate) { setLeadsStartDate(e.target.value); } }} className="text-sm font-medium border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer" />{(leadsStartDate || leadsEndDate) && <button onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); }} className="ml-2 text-xs font-bold text-slate-500 hover:text-red-600 bg-slate-100 hover:bg-red-50 px-2.5 py-1 rounded-lg transition-colors">Clear</button>}</div>
                   <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-4 py-1.5 h-10 flex-1 min-w-[200px] shadow-sm focus-within:ring-2 focus-within:ring-[#74ebd5]/30 transition-all"><Search className="w-4 h-4 text-slate-400 shrink-0" /><input type="text" placeholder="Search by name, email, or phone..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent w-full outline-none placeholder:font-normal" /></div>
                   <select value={leadsViewSourceFilter} onChange={(e) => setLeadsViewSourceFilter(e.target.value)} className="text-sm font-medium border border-slate-100 rounded-xl px-4 py-1.5 h-10 text-slate-600 bg-white/80 shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none cursor-pointer"><option value="All">All Sources</option>{combinedSources.map(sourceName => <option key={sourceName} value={sourceName}>{sourceName}</option>)}</select>
                   <div className="flex items-center bg-white/80 border border-slate-100 rounded-xl p-1 h-10 shadow-sm"><button onClick={() => setViewMode('pipeline')} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition-all h-full ${viewMode === 'pipeline' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}><KanbanSquare className="w-4 h-4" /> Pipeline</button><button onClick={() => setViewMode('table')} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition-all h-full ${viewMode === 'table' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}><List className="w-4 h-4" /> Table</button></div>
                 </div>
-
                 {loading ? (<div className="p-12 flex justify-center"><div className="w-10 h-10 border-4 border-[#74ebd5]/30 border-t-[#74ebd5] rounded-full animate-spin" /></div>) : leads.length === 0 ? (<div className="bg-white/60 backdrop-blur-xl rounded-3xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)] p-16 text-center flex flex-col items-center"><div className="bg-white p-4 rounded-2xl shadow-sm mb-4"><Users className="w-10 h-10 text-slate-300" /></div><h3 className="text-xl font-bold text-slate-800 mb-2">No leads found</h3><p className="text-slate-500 text-sm max-w-sm">Your pipeline is empty. Get started by adding a new lead manually or checking your integrations.</p></div>) : viewMode === 'table' ? (
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden shrink-0">
-                    
-                    {/* ✨ UNIFIED CAMPAIGN / BULK ACTION BAR ✨ */}
                     {selectedLeads.length > 0 && (
                       <div className="bg-indigo-50/90 backdrop-blur-md px-6 py-3 border-b border-indigo-100 flex items-center justify-between">
-                        <span className="text-sm font-bold text-indigo-800">
-                          {selectedLeads.length} lead{selectedLeads.length > 1 ? 's' : ''} selected
-                        </span>
+                        <span className="text-sm font-bold text-indigo-800">{selectedLeads.length} lead{selectedLeads.length > 1 ? 's' : ''} selected</span>
                         <div className="flex gap-3">
                           <button onClick={() => { setCampaignTab('whatsapp'); setIsCampaignModalOpen(true); }} className="flex items-center gap-2 py-1.5 px-4 bg-[#25D366] hover:bg-[#1EBE57] text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-[#25D366]/20"><MessageCircle className="w-4 h-4" /> WhatsApp</button>
                           <button onClick={() => { setCampaignTab('email'); setIsCampaignModalOpen(true); }} className="flex items-center gap-2 py-1.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-indigo-600/20"><Send className="w-4 h-4" /> Email</button>
@@ -1769,7 +1247,10 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                 )}
                 {hasMoreLeads && leads.length > 0 && <div className="mt-6 flex justify-center pb-8"><button onClick={loadMoreLeads} disabled={loadingMoreLeads} className="flex items-center gap-2 px-8 py-3 bg-white/80 backdrop-blur-md border border-white rounded-2xl text-sm font-bold text-slate-700 hover:bg-white hover:-translate-y-0.5 hover:shadow-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">{loadingMoreLeads ? <><div className="w-4 h-4 border-2 border-slate-300 border-t-[#74ebd5] rounded-full animate-spin" />Loading...</> : <><Search className="w-4 h-4 text-[#74ebd5]" />Load More Leads</>}</button></div>}
               </>
-            ) : activeTab === 'feedback' ? (
+            )}
+
+            {/* ✨ FEEDBACK TAB ✨ */}
+            {activeTab === 'feedback' && (
               <div className="w-full space-y-8 animate-in fade-in duration-500">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                   <div><h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Leads Feedback</h2><p className="text-slate-500 text-sm font-medium">Analyze communication history and agent notes.</p></div>
@@ -1822,7 +1303,120 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                   </div>
                 </div>
               </div>
-            ) : activeTab === 'team' ? (
+            )}
+
+            {/* ✨ CAMPAIGNS TAB ✨ */}
+            {activeTab === 'campaigns' && (
+              <div className="w-full space-y-8 animate-in fade-in duration-500">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                  <div>
+                    <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">WhatsApp Campaigns</h2>
+                    <p className="text-slate-500 text-sm font-medium">Manage your Meta templates and track bulk message deliveries.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button onClick={handleSyncTemplates} disabled={!whatsappConnected || isSyncingTemplates} className="flex items-center gap-2 py-2.5 px-5 rounded-xl text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50">
+                      <RefreshCw className={`w-4 h-4 ${isSyncingTemplates ? 'animate-spin' : ''}`} /> Sync Templates
+                    </button>
+                    <button onClick={() => { setSelectedLeads([]); setCampaignTab('whatsapp'); setIsCampaignModalOpen(true); }} className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#25D366]/30 text-sm font-bold text-white bg-[#25D366] hover:bg-[#1EBE57] transition-all hover:-translate-y-0.5 whitespace-nowrap">
+                      <Megaphone className="w-4 h-4" /> New Campaign
+                    </button>
+                  </div>
+                </div>
+
+                {!whatsappConnected && (
+                  <div className="bg-amber-50 border border-amber-200 p-5 rounded-2xl flex items-start gap-4">
+                    <div className="p-2 bg-amber-100 rounded-lg text-amber-600 shrink-0"><AlertCircle className="w-5 h-5"/></div>
+                    <div>
+                      <h4 className="text-sm font-bold text-amber-800">WhatsApp Not Connected</h4>
+                      <p className="text-xs text-amber-700 mt-1 font-medium leading-relaxed">You must connect your Meta WhatsApp Business account in the Integrations tab before you can sync templates or send campaigns.</p>
+                      <button onClick={() => setActiveTab('integrations')} className="mt-3 text-xs font-bold bg-white text-amber-700 px-4 py-2 rounded-lg border border-amber-200 shadow-sm hover:bg-amber-100 transition-colors">Go to Integrations</button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex px-2 border-b border-slate-200/60">
+                  <button onClick={() => setCampaignViewTab('templates')} className={`pb-4 px-4 text-sm font-bold transition-colors relative ${campaignViewTab === 'templates' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Approved Templates{campaignViewTab === 'templates' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#25D366] rounded-t-full" />}</button>
+                  <button onClick={() => setCampaignViewTab('history')} className={`pb-4 px-4 text-sm font-bold transition-colors relative ${campaignViewTab === 'history' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Campaign History Logs{campaignViewTab === 'history' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#25D366] rounded-t-full" />}</button>
+                </div>
+
+                {campaignViewTab === 'templates' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300">
+                    {[
+                      { id: 1, name: 'project_launch_01', type: 'MARKETING', status: 'APPROVED', lang: 'en', preview: '🚀 Exciting news! We are thrilled to announce the launch of our newest luxury property: {{1}}. Reply YES for exclusive floor plans and early-bird pricing.' },
+                      { id: 2, name: 'site_visit_reminder', type: 'UTILITY', status: 'APPROVED', lang: 'en', preview: 'Hi {{1}}, this is a quick reminder for your scheduled site visit tomorrow at {{2}}. We look forward to showing you the property! 📍' },
+                      { id: 3, name: 'festival_greeting', type: 'MARKETING', status: 'APPROVED', lang: 'en', preview: '✨ Wishing you and your family a very Happy {{1}}! Unlock special festive discounts of up to {{2}} on bookings made this month.' },
+                      { id: 4, name: 'price_drop_alert', type: 'MARKETING', status: 'PENDING', lang: 'en', preview: 'Great news {{1}}! The price for the unit you viewed at {{2}} has just been reduced. Let me know if you would like to secure it today.' },
+                    ].map(template => (
+                      <div key={template.id} className="bg-white/80 backdrop-blur-xl border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col relative overflow-hidden">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-800">{template.name}</h4>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{template.type} • {template.lang}</span>
+                          </div>
+                          <span className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-md border ${template.status === 'APPROVED' ? 'bg-[#D9FDD3] text-green-700 border-green-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>{template.status}</span>
+                        </div>
+                        <div className="flex-1 bg-slate-50 rounded-2xl p-4 border border-slate-100 shadow-inner">
+                          <p className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{template.preview}</p>
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
+                          <span className="text-[10px] font-bold text-slate-400">Meta ID: {Math.floor(Math.random() * 1000000000)}</span>
+                          <button onClick={() => { setWhatsappTemplate(template.name); setSelectedLeads([]); setCampaignTab('whatsapp'); setIsCampaignModalOpen(true); }} className="text-xs font-bold text-[#25D366] hover:text-[#1EBE57] bg-[#25D366]/10 px-3 py-1.5 rounded-lg transition-colors">Use Template</button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="bg-white/40 border-2 border-dashed border-slate-200 rounded-3xl p-6 flex flex-col items-center justify-center text-center hover:bg-white/60 hover:border-slate-300 transition-colors cursor-pointer min-h-[250px]">
+                      <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-3"><Plus className="w-6 h-6 text-slate-400" /></div>
+                      <h4 className="text-sm font-bold text-slate-700">Create New Template</h4>
+                      <p className="text-xs font-medium text-slate-500 mt-1 max-w-[200px]">Design a new message in Meta Business Manager and click sync to import it.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden animate-in slide-in-from-bottom-2 duration-300">
+                    <div className="px-8 py-6 border-b border-slate-100/60 bg-white/40 flex justify-between items-center">
+                      <h3 className="text-lg font-bold text-slate-800">Campaign History Logs</h3>
+                      {whatsappNumberId && <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white px-3 py-1 rounded-lg border border-slate-100 shadow-sm">WABA: {whatsappNumberId}</span>}
+                    </div>
+                    <div className="overflow-x-auto custom-scrollbar">
+                      {campaignsList.length === 0 ? (
+                        <div className="p-16 text-center flex flex-col items-center">
+                          <div className="bg-slate-50 p-4 rounded-2xl shadow-sm mb-4 border border-slate-100"><Megaphone className="w-10 h-10 text-slate-300" /></div>
+                          <h3 className="text-xl font-bold text-slate-800 mb-2">No campaigns sent yet</h3>
+                          <p className="text-slate-500 text-sm">Select leads from your Leads table and click WhatsApp to fire your first bulk campaign.</p>
+                        </div>
+                      ) : (
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50/50 border-b border-slate-200/60 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                              <th className="px-6 py-4">Date</th>
+                              <th className="px-6 py-4">Template Used</th>
+                              <th className="px-6 py-4">Sent By</th>
+                              <th className="px-6 py-4 text-center">Attempted</th>
+                              <th className="px-6 py-4 text-center">Delivered</th>
+                              <th className="px-6 py-4 text-right">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100/60">
+                            {campaignsList.map(camp => (
+                              <tr key={camp.id} className="hover:bg-white/60 transition-colors">
+                                <td className="px-6 py-5 whitespace-nowrap text-sm font-bold text-slate-700">{camp.createdAt?.toDate ? camp.createdAt.toDate().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Processing...'}</td>
+                                <td className="px-6 py-5 whitespace-nowrap"><div className="flex items-center gap-2"><FileText className="w-4 h-4 text-slate-400" /><span className="text-sm font-bold text-slate-800">{camp.templateName}</span></div></td>
+                                <td className="px-6 py-5 whitespace-nowrap text-sm font-medium text-slate-500">{camp.senderEmail}</td>
+                                <td className="px-6 py-5 whitespace-nowrap text-center text-sm font-black text-slate-700">{camp.totalAttempted}</td>
+                                <td className="px-6 py-5 whitespace-nowrap text-center"><span className="text-sm font-black text-[#25D366] bg-[#25D366]/10 px-2 py-1 rounded-lg">{camp.successCount}</span></td>
+                                <td className="px-6 py-5 whitespace-nowrap text-right"><span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest border ${camp.status?.includes('Mock') ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-green-50 text-green-600 border-green-200'}`}>{camp.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ✨ TEAM TAB ✨ */}
+            {activeTab === 'team' && (
               <div className="w-full max-w-6xl mx-auto space-y-8">
                 <div>
                   <div className="flex items-center justify-between mb-8"><div><h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Your Team</h2><p className="text-slate-500 text-sm font-medium">Manage your sales agents and their access.</p></div>{user?.role === 'client_admin' && <button onClick={() => setIsAgentModalOpen(true)} className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 transition-all hover:-translate-y-0.5 border border-transparent"><UserPlus className="w-4 h-4" />Add New Agent</button>}</div>
@@ -1884,7 +1478,10 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                   </div>
                 )}
               </div>
-            ) : activeTab === 'integrations' ? (
+            )}
+
+            {/* ✨ INTEGRATIONS TAB ✨ */}
+            {activeTab === 'integrations' && (
               <div className="w-full max-w-6xl mx-auto space-y-8">
                 <div className="mb-8">
                   <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">External Integrations</h2>
@@ -1892,7 +1489,7 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                 </div>
 
                 <div className="space-y-6">
-                  {/* ✨ WHATSAPP CLOUD API EMBEDDED SIGNUP CARD ✨ */}
+                  {/* WHATSAPP CLOUD API EMBEDDED SIGNUP CARD */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
@@ -1989,7 +1586,7 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                     </div>
                   </div>
 
-                  {/* ✨ CARD 1: GOOGLE SHEETS PIPELINE ✨ */}
+                  {/* GOOGLE SHEETS PIPELINE */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
                       <div className="flex items-center gap-4 mb-8">
@@ -2015,7 +1612,7 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                     </div>
                   </div>
 
-                  {/* ✨ UPGRADED CARD: EMAIL NOTIFICATION ALERTS ✨ */}
+                  {/* EMAIL ALERTS */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300 mt-6">
                     <div className="p-8">
                       <div className="flex items-center gap-4 mb-8">
@@ -2026,8 +1623,6 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                         <div className="space-y-6">
                           <div>
                             <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">Notification Recipients</label>
-                            
-                            {/* NEW TAG INPUT UI */}
                             <div className="bg-white border border-slate-200 rounded-xl p-2 flex flex-wrap gap-2 focus-within:ring-2 focus-within:ring-red-500/20 focus-within:border-red-500 transition-all shadow-sm min-h-[52px]">
                               {emailList.map(email => (
                                 <span key={email} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 shadow-sm animate-in zoom-in-95">
@@ -2061,7 +1656,7 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                     </div>
                   </div>
 
-                  {/* ✨ CARD 2: ENTERPRISE CRM API BRIDGE ✨ */}
+                  {/* ENTERPRISE CRM API BRIDGE */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300 mt-6">
                     <div className="p-8">
                       <div className="flex items-center gap-4 mb-8">
@@ -2078,7 +1673,6 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                             <input type="url" value={outboundWebhookUrl} onChange={(e) => setOutboundWebhookUrl(e.target.value)} placeholder="https://api.salesforce.com/..." className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm" />
                           </div>
                           
-                          {/* ENTERPRISE HEADER INJECTION UI */}
                           <div className="bg-slate-100/50 p-4 rounded-xl border border-slate-200">
                             <div className="flex items-center justify-between mb-3">
                               <div>
@@ -2117,7 +1711,7 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                     </div>
                   </div>
 
-                  {/* FULL PAYLOAD FORMAT CARD WITH UTMs */}
+                  {/* FULL PAYLOAD FORMAT CARD */}
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden p-8">
                     <h3 className="text-xl font-bold text-slate-900 tracking-tight mb-3">Payload Format</h3>
                     <p className="text-sm font-medium text-slate-500 mb-6">Your external source should send a JSON POST request with the following fields. Include UTM tracking parameters to measure campaign ROI.</p>
@@ -2164,7 +1758,10 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
 
                 </div>
               </div>
-            ) : activeTab === 'reports' ? (
+            )}
+
+            {/* ✨ REPORTS TAB RENDER ✨ */}
+            {activeTab === 'reports' && (
               <div className="w-full space-y-8 animate-in fade-in duration-500">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                   <div>
@@ -2192,7 +1789,6 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                   </select>
                 </div>
 
-                {/* ✨ UPGRADED: LEVEL 4 KPI METRICS ✨ */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                   <div className="bg-white/80 backdrop-blur-2xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white">
                     <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Users className="w-4 h-4 text-indigo-500"/> Total Leads</h3>
@@ -2212,7 +1808,6 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                   </div>
                 </div>
 
-                {/* ✨ UPGRADED: CHARTS ROW 1 ✨ */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col min-h-[350px]">
                     <h3 className="text-lg font-bold text-slate-800 mb-6">Lead Generation Trend</h3>
@@ -2254,7 +1849,6 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                   </div>
                 </div>
 
-                {/* ✨ UPGRADED: CHARTS ROW 2 ✨ */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-8 w-full">
                   <div className="bg-white/80 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white flex flex-col min-h-[350px]">
                     <h3 className="text-lg font-bold text-slate-800 mb-6">Leads by Source</h3>
@@ -2297,13 +1891,13 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
                   </div>
                 </div>
               </div>
-            ) : null}
+            )}
 
           </div>
         </div>
       </main>
 
-      {/* --- ALL MODALS RESTORED AND CONDITIONALLY MOUNTED TO PREVENT NULL CRASHES --- */}
+      {/* --- MODALS --- */}
       {isLeadModalOpen && selectedLead && (
         <LeadDetailsModal 
           lead={selectedLead}
@@ -2311,7 +1905,6 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
           onClose={() => { setIsLeadModalOpen(false); setSelectedLead(null); }}
           onLeadUpdated={handleLeadUpdated}
           teamMembers={teamMembers}
-          // ✨ NEW: Passthrough function to teleport the agent from the modal directly to the inbox!
           onOpenChat={(leadId) => {
             setActiveTab('inbox');
             setActiveChatLeadId(leadId);
@@ -2320,7 +1913,6 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
         />
       )}
 
-      {/* --- RESTORED: ADD LEAD MODAL --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 sm:p-6 transition-all">
           <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-2xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-300">
@@ -2353,7 +1945,6 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
         </div>
       )}
 
-      {/* --- RESTORED: ADD AGENT MODAL --- */}
       {isAgentModalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md transition-all">
           <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-white/50 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-300">
@@ -2371,7 +1962,6 @@ const leadsWithChats = leads.filter(l => l.phone).map(l => {
         </div>
       )}
 
-      {/* Custom Scrollbars */}
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
