@@ -545,9 +545,15 @@ const handleConnectWhatsApp = () => {
       return; 
     }
 
-    // ✨ LEVEL 5 FIX: Removed FB.init() entirely! 
-    // By passing 'client_id' below, we force the popup to use the WhatsApp App 
-    // without resetting the whole SDK, ensuring zero delay so the popup blocker ignores it.
+    // ✨ FIX 1: Synchronously switch to the WhatsApp App ID. 
+    // Doing this synchronously immediately before FB.login bypasses popup blockers perfectly.
+    window.FB.init({ 
+      appId: '1263110839094881', // Your WhatsApp App ID
+      cookie: true, 
+      xfbml: true, 
+      version: 'v25.0' 
+    });
+
     window.FB.login(async (response: any) => {
       if (response.authResponse && response.authResponse.accessToken && user?.clientId) {
         try {
@@ -568,9 +574,9 @@ const handleConnectWhatsApp = () => {
         setIsLinkingWhatsApp(false); 
       }
     }, { 
-      client_id: '1263110839094881', // Forces the WhatsApp App ID just for this popup
       config_id: '1083197781534526', 
-      response_type: 'code,token', 
+      // ✨ FIX 2: Meta explicitly requires this to be ONLY 'code' for Embedded Signup
+      response_type: 'code', 
       override_default_response_type: true, 
       extras: { setup: {}, featureType: '', sessionInfoVersion: '2' } 
     });
