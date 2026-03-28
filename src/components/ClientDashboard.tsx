@@ -545,22 +545,9 @@ const handleConnectWhatsApp = () => {
       return; 
     }
 
-    // Force synchronous App ID switch so the browser doesn't block the popup
-    window.FB.init({ 
-      appId: '1263110839094881', 
-      cookie: true, 
-      xfbml: true, 
-      version: 'v25.0' 
-    });
-
-    const fallbackTimer = setTimeout(() => { 
-      setIsLinkingWhatsApp(false); 
-    }, 60000);
-
-    // Fire login immediately to maintain the "Trusted Click Context"
+    // ✨ LEVEL 5 FIX: Removed FB.init() from here. 
+    // Firing FB.login() instantly and synchronously to bypass the browser's popup blocker.
     window.FB.login(async (response: any) => {
-      clearTimeout(fallbackTimer);
-      
       if (response.authResponse && response.authResponse.accessToken && user?.clientId) {
         try {
           const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
@@ -580,13 +567,11 @@ const handleConnectWhatsApp = () => {
         setIsLinkingWhatsApp(false); 
       }
     }, { 
-      client_id: '1263110839094881', 
       config_id: '1083197781534526', 
       response_type: 'code,token', 
       override_default_response_type: true, 
-      scope: 'whatsapp_business_management,whatsapp_business_messaging', 
-      // ✨ THE FIX: Meta explicitly requires this to be a JSON string, NOT a JavaScript object! ✨
-      extras: JSON.stringify({ setup: {}, featureType: '', sessionInfoVersion: '2' })
+      // Reverted to a standard JavaScript object as required by Meta's core SDK
+      extras: { setup: {}, featureType: '', sessionInfoVersion: '2' }
     });
   };
 
