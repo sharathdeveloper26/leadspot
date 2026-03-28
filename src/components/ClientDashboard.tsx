@@ -541,49 +541,50 @@ const handleConnectWhatsApp = () => {
     
     if (!window.FB) { 
       setIsLinkingWhatsApp(false); 
-      showDialog('error', 'SDK Loading', 'Wait for SDK to load or disable adblock.'); 
+      showDialog('error', 'SDK Blocked', 'Please disable your ad-blocker or refresh the page to load the Meta SDK.'); 
       return; 
     }
 
-    // ✨ FIX 1: Safely force the SDK to switch to your WhatsApp App ID without crashing
-    try {
-      window.FB.init({ 
-        appId: '1263110839094881', 
-        cookie: true, 
-        xfbml: true, 
-        version: 'v25.0' 
-      });
-    } catch (e) {
-      console.warn("FB SDK already initialized, proceeding to login...");
-    }
+    // ✨ LEVEL 5 FIX: Force synchronous App ID switch so the browser doesn't block the popup
+    window.FB.init({ 
+      appId: '1263110839094881', 
+      cookie: true, 
+      xfbml: true, 
+      version: 'v25.0' 
+    });
 
     const fallbackTimer = setTimeout(() => { 
       setIsLinkingWhatsApp(false); 
     }, 60000);
 
+    // ✨ Fire login immediately to maintain the "Trusted Click Context"
     window.FB.login(async (response: any) => {
       clearTimeout(fallbackTimer);
+      
       if (response.authResponse && response.authResponse.accessToken && user?.clientId) {
         try {
           const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
           await linkWaFn({ accessToken: response.authResponse.accessToken });
+          
           setWhatsappConnected(true); 
           fetchWhatsAppIntegration(); 
-          showDialog('success', 'Connected', `WhatsApp linked!`);
+          showDialog('success', 'Connected', `WhatsApp linked successfully!`);
         } catch (e: any) { 
-          showDialog('error', 'Failed', 'Failed to link WA.'); 
+          console.error("Link Error:", e);
+          showDialog('error', 'Failed', 'Failed to link WA account. Please try again.'); 
         } finally { 
           setIsLinkingWhatsApp(false); 
         }
       } else { 
+        // Handles if the user clicks the 'X' and closes the Meta popup manually
         setIsLinkingWhatsApp(false); 
       }
     }, { 
+      client_id: '1263110839094881', // Hard-override for the OAuth string
       config_id: '1083197781534526', 
       response_type: 'code,token', 
       override_default_response_type: true, 
-      // ✨ FIX 2: Explicitly passing the required WhatsApp scopes to bypass Meta's silent block
-      scope: 'whatsapp_business_management,whatsapp_business_messaging',
+      scope: 'whatsapp_business_management,whatsapp_business_messaging', // Required for v25.0
       extras: { setup: {}, featureType: '', sessionInfoVersion: '2' } 
     });
   };
