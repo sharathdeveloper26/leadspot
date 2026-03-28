@@ -545,7 +545,7 @@ const handleConnectWhatsApp = () => {
       return; 
     }
 
-    // ✨ LEVEL 5 FIX: Force synchronous App ID switch so the browser doesn't block the popup
+    // Force synchronous App ID switch so the browser doesn't block the popup
     window.FB.init({ 
       appId: '1263110839094881', 
       cookie: true, 
@@ -557,7 +557,7 @@ const handleConnectWhatsApp = () => {
       setIsLinkingWhatsApp(false); 
     }, 60000);
 
-    // ✨ Fire login immediately to maintain the "Trusted Click Context"
+    // Fire login immediately to maintain the "Trusted Click Context"
     window.FB.login(async (response: any) => {
       clearTimeout(fallbackTimer);
       
@@ -580,12 +580,13 @@ const handleConnectWhatsApp = () => {
         setIsLinkingWhatsApp(false); 
       }
     }, { 
-      client_id: '1263110839094881', // Hard-override for the OAuth string
+      client_id: '1263110839094881', 
       config_id: '1083197781534526', 
       response_type: 'code,token', 
       override_default_response_type: true, 
-      scope: 'whatsapp_business_management,whatsapp_business_messaging', // Required for v25.0
-      extras: { setup: {}, featureType: '', sessionInfoVersion: '2' } 
+      scope: 'whatsapp_business_management,whatsapp_business_messaging', 
+      // ✨ THE FIX: Meta explicitly requires this to be a JSON string, NOT a JavaScript object! ✨
+      extras: JSON.stringify({ setup: {}, featureType: '', sessionInfoVersion: '2' })
     });
   };
 
