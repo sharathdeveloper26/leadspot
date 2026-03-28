@@ -1045,7 +1045,104 @@ export default function ClientDashboard() {
 
         <div className={`flex-1 overflow-y-auto custom-scrollbar ${activeTab === 'inbox' ? 'p-0 sm:p-4 md:p-8' : 'p-4 md:p-8'}`}>
           <div className={`max-w-7xl mx-auto h-full flex flex-col ${activeTab === 'inbox' ? 'min-w-0' : 'min-w-[800px] md:min-w-0'}`}>
-            
+            {/* ✨ INBOX TAB ✨ */}
+            {activeTab === 'inbox' && (
+              <div className="flex h-[calc(100vh-140px)] bg-white/80 backdrop-blur-2xl sm:rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden animate-in fade-in duration-300">
+                <div className={`w-full sm:w-[320px] md:w-[360px] border-r border-slate-100 flex flex-col bg-slate-50/50 shrink-0 ${activeChatLeadId ? 'hidden sm:flex' : 'flex'}`}>
+                  <div className="p-4 border-b border-slate-200/60 bg-white/50 backdrop-blur-md sticky top-0 z-10"><h2 className="text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2"><MessageCircle className="w-5 h-5 text-[#25D366]"/> Messages</h2><div className="mt-3 relative"><Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" /><input type="text" placeholder="Search chats..." className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-[#25D366]/30 outline-none shadow-sm" /></div></div>
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                    {(() => {
+                      const leadsWithChats = leads.filter(l => l.phone).map(l => {
+                        const normalizedPhone = normalizePhone(l.phone);
+                        const msgsForLead = waMessages.filter(m => m.senderPhone === normalizedPhone);
+                        return { ...l, msgs: msgsForLead, lastMsg: msgsForLead[msgsForLead.length - 1] };
+                      }).filter(l => l.msgs.length > 0 || l.id === activeChatLeadId).sort((a, b) => {
+                        const timeA = a.lastMsg ? (a.lastMsg.timestamp?.toMillis ? a.lastMsg.timestamp.toMillis() : new Date(a.lastMsg.timestamp).getTime()) : 0;
+                        const timeB = b.lastMsg ? (b.lastMsg.timestamp?.toMillis ? b.lastMsg.timestamp.toMillis() : new Date(b.lastMsg.timestamp).getTime()) : 0;
+                        return timeB - timeA;
+                      });
+
+                      if (leadsWithChats.length === 0) return (<div className="text-center p-6 mt-10"><MessageCircle className="w-8 h-8 text-slate-300 mx-auto mb-3" /><p className="text-sm font-bold text-slate-500">No messages yet</p><p className="text-xs text-slate-400 mt-1">When leads reply, they will appear here.</p></div>);
+
+                      return leadsWithChats.map(l => {
+                        const unreadC = l.msgs.filter(m => m.direction === 'inbound' && !m.isRead).length;
+                        return (
+                          <button key={l.id} onClick={() => setActiveChatLeadId(l.id)} className={`w-full text-left p-3 rounded-2xl transition-all flex gap-3 items-center ${activeChatLeadId === l.id ? 'bg-white shadow-md border border-slate-200' : 'hover:bg-slate-100/80 border border-transparent'}`}>
+                            <div className="relative"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#74ebd5]/20 to-[#9face6]/20 text-[#50bdaf] flex items-center justify-center font-bold shadow-inner">{l.firstName.charAt(0)}</div>{unreadC > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 border-2 border-white rounded-full"></span>}</div>
+                            <div className="flex-1 min-w-0"><div className="flex justify-between items-center mb-0.5"><h4 className="text-sm font-bold text-slate-800 truncate">{l.firstName} {l.lastName === 'Lead' ? '' : l.lastName}</h4><span className="text-[10px] font-bold text-slate-400 shrink-0">{(l.lastMsg && l.lastMsg.timestamp) ? new Date(l.lastMsg.timestamp.toDate ? l.lastMsg.timestamp.toDate() : l.lastMsg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span></div><p className={`text-xs truncate ${unreadC > 0 ? 'text-slate-900 font-bold' : 'text-slate-500 font-medium'}`}>{l.lastMsg ? (l.lastMsg.direction === 'outbound' ? `You: ${l.lastMsg.text}` : l.lastMsg.text) : 'No messages'}</p></div>
+                          </button>
+                        )
+                      });
+                    })()}
+                  </div>
+                </div>
+
+                <div className={`flex-1 flex flex-col bg-slate-50 relative ${!activeChatLeadId ? 'hidden sm:flex items-center justify-center' : 'flex'}`}>
+                  {!activeChatLeadId ? (
+                    <div className="text-center p-8 bg-white rounded-3xl border border-slate-100 shadow-sm max-w-md"><div className="w-16 h-16 bg-[#25D366]/10 rounded-2xl flex items-center justify-center mx-auto mb-4"><MessageCircle className="w-8 h-8 text-[#25D366]" /></div><h3 className="text-xl font-bold text-slate-800 mb-2">Mintage Omnichannel</h3><p className="text-sm text-slate-500 font-medium">Select a conversation from the left to start chatting securely with your leads.</p></div>
+                  ) : (
+                    <>
+                      {(() => {
+                        const activeLead = leads.find(l => l.id === activeChatLeadId); if (!activeLead) return null;
+                        return (
+                          <div className="h-16 px-4 border-b border-slate-200/60 bg-white/90 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between shrink-0 shadow-sm">
+                            <div className="flex items-center gap-3"><button onClick={() => setActiveChatLeadId(null)} className="sm:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg"><ChevronDown className="w-5 h-5 rotate-90" /></button><div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#74ebd5]/20 to-[#9face6]/20 text-[#50bdaf] flex items-center justify-center font-bold">{activeLead.firstName.charAt(0)}</div><div><h3 className="text-sm font-bold text-slate-800">{activeLead.firstName} {activeLead.lastName === 'Lead' ? '' : activeLead.lastName}</h3><span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold border mt-0.5 ${getStatusBadgeClass(activeLead.status)}`}>{activeLead.status}</span></div></div>
+                            <div className="flex items-center gap-2"><button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"><Phone className="w-4 h-4"/></button><button onClick={() => openLeadDetails(activeLead)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Open Full Details"><MoreVertical className="w-4 h-4"/></button></div>
+                          </div>
+                        );
+                      })()}
+                      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-[url('https://i.pinimg.com/originals/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg')] bg-cover bg-center bg-fixed bg-opacity-10 custom-scrollbar">
+                        {(() => {
+                          const activeLead = leads.find(l => l.id === activeChatLeadId); if (!activeLead) return null;
+                          const normalizedPhone = normalizePhone(activeLead.phone);
+                          const msgs = waMessages.filter(m => m.senderPhone === normalizedPhone);
+                          if (msgs.length === 0) return (<div className="bg-white/80 backdrop-blur border border-slate-100 text-slate-500 text-xs font-bold p-3 rounded-xl mx-auto w-fit shadow-sm mt-4">This is the start of your conversation with {activeLead.firstName}.</div>);
+                          return msgs.map((msg) => {
+                            const isOutbound = msg.direction === 'outbound';
+                            return (
+                              <div key={msg.id} className={`flex w-full ${isOutbound ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
+                                <div className={`max-w-[75%] sm:max-w-[60%] rounded-2xl px-4 py-2.5 shadow-sm relative ${isOutbound ? 'bg-[#D9FDD3] text-slate-800 rounded-tr-sm border border-[#25D366]/20' : 'bg-white text-slate-800 rounded-tl-sm border border-slate-100'}`}>
+                                  {msg.type === 'image' && (<div className="mb-2 bg-black/5 rounded-xl h-32 flex items-center justify-center border border-black/10"><ImageIcon className="w-6 h-6 text-slate-400" /></div>)}
+                                  <p className="text-sm font-medium leading-relaxed">{msg.text}</p>
+                                  <div className={`flex justify-end items-center gap-1 mt-1 ${isOutbound ? 'text-green-800/60' : 'text-slate-400'}`}><span className="text-[9px] font-bold">{(msg.timestamp) ? new Date(msg.timestamp.toDate ? msg.timestamp.toDate() : msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Now'}</span>{isOutbound && (<Check className={`w-3 h-3 ${msg.status === 'read' ? 'text-blue-500' : ''}`} />)}</div>
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                        <div ref={messagesEndRef} />
+                      </div>
+                      <div className="p-4 bg-white border-t border-slate-200/60 shrink-0">
+                        <form onSubmit={handleSendWhatsAppReply} className="flex items-end gap-2">
+                          <button type="button" className="p-3 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors shrink-0"><Plus className="w-5 h-5" /></button>
+                          <div className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2 focus-within:ring-2 focus-within:ring-[#25D366]/30 focus-within:border-[#25D366] transition-all flex items-center shadow-inner min-h-[50px]"><textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendWhatsAppReply(e); } }} placeholder="Type a message..." className="w-full bg-transparent border-none focus:ring-0 resize-none outline-none text-sm font-medium text-slate-800 max-h-[120px] custom-scrollbar py-1.5" rows={1} /></div>
+                          <button type="submit" disabled={!chatInput.trim()} className="p-3 bg-[#25D366] text-white rounded-xl hover:bg-[#1EBE57] transition-all shadow-md disabled:opacity-50 disabled:transform-none hover:-translate-y-0.5 shrink-0 flex items-center justify-center w-[50px] h-[50px]"><Send className="w-5 h-5 ml-1" /></button>
+                        </form>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {activeChatLeadId && (
+                  <div className="w-[300px] border-l border-slate-100 bg-white/50 backdrop-blur-xl hidden lg:flex flex-col shrink-0 animate-in slide-in-from-right-4 duration-300">
+                    {(() => {
+                      const activeLead = leads.find(l => l.id === activeChatLeadId); if (!activeLead) return null;
+                      return (
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                          <div className="text-center pb-6 border-b border-slate-200/60"><div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-[#74ebd5] to-[#9face6] text-white flex items-center justify-center text-3xl font-black shadow-lg shadow-[#74ebd5]/20 mb-4">{activeLead.firstName.charAt(0)}</div><h3 className="text-lg font-extrabold text-slate-900">{activeLead.firstName} {activeLead.lastName === 'Lead' ? '' : activeLead.lastName}</h3><p className="text-sm font-bold text-slate-500 mt-1">{activeLead.phone || 'No Phone'}</p></div>
+                          <div className="space-y-3">
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Project Inquiry</p><p className="text-sm font-bold text-slate-800 flex items-center gap-2"><Home className="w-4 h-4 text-amber-500"/>{activeLead.projectProperty || 'General'}</p></div>
+                            {activeLead.truecallerName && activeLead.truecallerName !== "Unknown" && (<div className="bg-blue-50/50 p-4 rounded-2xl shadow-sm border border-blue-100"><p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Truecaller Verified</p><p className="text-sm font-bold text-blue-900">{activeLead.truecallerName}</p></div>)}
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Lead Source</p>{getSourceBadge(activeLead.source, activeLead.subSource)}</div>
+                          </div>
+                          <button onClick={() => openLeadDetails(activeLead)} className="w-full py-3 bg-slate-900 text-white text-sm font-bold rounded-xl shadow-lg shadow-slate-900/20 hover:bg-slate-800 transition-all flex items-center justify-center gap-2"><LayoutDashboard className="w-4 h-4"/> Open Full Profile</button>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
             {/* ✨ DASHBOARD TAB ✨ */}
             {activeTab === 'dashboard' && (
               <div className="w-full space-y-8 animate-in fade-in duration-500">
