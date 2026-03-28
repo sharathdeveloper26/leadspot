@@ -541,19 +541,18 @@ const handleConnectWhatsApp = () => {
     
     if (!window.FB) { 
       setIsLinkingWhatsApp(false); 
-      showDialog('error', 'SDK Loading', 'Wait for SDK to load or disable adblock.'); 
+      showDialog('error', 'SDK Loading', 'Please wait for the Meta SDK to load or disable your ad-blocker.'); 
       return; 
     }
 
-    // ✨ THE CRITICAL FIX: Explicitly tell Meta to switch to your WhatsApp App ID before opening the popup
+    // ✨ THE FIX: Pointing exactly to your WhatsApp App ID and the v25.0 Graph API
     window.FB.init({ 
       appId: '1263110839094881', 
       cookie: true, 
       xfbml: true, 
-      version: 'v25.0' // Upgraded to v20.0 to ensure Embedded Signup compatibility
+      version: 'v25.0' // Upgraded to match your Meta Dashboard exactly
     });
 
-    // 60-second fallback timer in case the user closes the popup without finishing
     const fallbackTimer = setTimeout(() => { 
       setIsLinkingWhatsApp(false); 
     }, 60000);
@@ -571,10 +570,10 @@ const handleConnectWhatsApp = () => {
             
             setWhatsappConnected(true); 
             fetchWhatsAppIntegration(); 
-            showDialog('success', 'Connected', `WhatsApp linked successfully!`);
+            showDialog('success', 'WhatsApp Connected', `Successfully linked to your WhatsApp Business number!`);
           } catch (error: any) { 
             console.error("Link Error:", error);
-            showDialog('error', 'Connection Failed', 'Failed to link WA account.'); 
+            showDialog('error', 'Connection Failed', error.message || 'Failed to link WhatsApp account.'); 
           } finally { 
             setIsLinkingWhatsApp(false); 
           }
@@ -582,7 +581,7 @@ const handleConnectWhatsApp = () => {
           setIsLinkingWhatsApp(false);
         }
       } else { 
-        // User clicked the 'X' and closed the popup manually
+        // Handles the user closing the popup window manually
         setIsLinkingWhatsApp(false); 
       }
     }, { 
