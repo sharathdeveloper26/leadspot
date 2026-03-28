@@ -536,25 +536,50 @@ export default function ClientDashboard() {
     }, { scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,business_management', auth_type: 'rerequest', return_scopes: true }); 
   };
 
-  const handleConnectWhatsApp = () => {
+const handleConnectWhatsApp = () => {
     setIsLinkingWhatsApp(true);
-    if (!window.FB) { setIsLinkingWhatsApp(false); showDialog('error', 'SDK Loading', 'Please wait a moment for the Meta SDK to load or disable ad-blockers.'); return; }
-    const fallbackTimer = setTimeout(() => { setIsLinkingWhatsApp(false); }, 60000);
+    
+    if (!window.FB) { 
+      setIsLinkingWhatsApp(false); 
+      showDialog('error', 'SDK Loading', 'Wait for SDK to load or disable adblock.'); 
+      return; 
+    }
+
+    // ✨ THE FIX: Explicitly switch the Meta SDK to your WhatsApp App ID before the popup
+    window.FB.init({ 
+      appId: '1263110839094881', 
+      cookie: true, 
+      xfbml: true, 
+      version: 'v19.0' 
+    });
+
+    const fallbackTimer = setTimeout(() => { 
+      setIsLinkingWhatsApp(false); 
+    }, 60000);
 
     window.FB.login(async (response: any) => {
       clearTimeout(fallbackTimer);
-      if (response.authResponse && response.authResponse.accessToken) {
-        const accessToken = response.authResponse.accessToken;
-        if (user?.clientId) {
-          try {
-            const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
-            await linkWaFn({ accessToken: accessToken });
-            setWhatsappConnected(true); fetchWhatsAppIntegration();
-            showDialog('success', 'WhatsApp Connected', `Successfully linked to phone number!`);
-          } catch (error: any) { showDialog('error', 'Connection Failed', error.message || 'Failed to link WhatsApp account.'); } finally { setIsLinkingWhatsApp(false); }
+      if (response.authResponse && response.authResponse.accessToken && user?.clientId) {
+        try {
+          const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
+          await linkWaFn({ accessToken: response.authResponse.accessToken });
+          setWhatsappConnected(true); 
+          fetchWhatsAppIntegration(); 
+          showDialog('success', 'Connected', `WhatsApp linked!`);
+        } catch (e: any) { 
+          showDialog('error', 'Failed', 'Failed to link WA.'); 
+        } finally { 
+          setIsLinkingWhatsApp(false); 
         }
-      } else { setIsLinkingWhatsApp(false); }
-    }, { config_id: '1083197781534526', response_type: 'code,token', override_default_response_type: true, extras: { setup: {}, featureType: '', sessionInfoVersion: '2' } });
+      } else { 
+        setIsLinkingWhatsApp(false); 
+      }
+    }, { 
+      config_id: '1083197781534526', 
+      response_type: 'code,token', 
+      override_default_response_type: true, 
+      extras: { setup: {}, featureType: '', sessionInfoVersion: '2' } 
+    });
   };
 
   const handleLinkPage = async (page: any) => {
