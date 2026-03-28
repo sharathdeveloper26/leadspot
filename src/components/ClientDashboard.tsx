@@ -545,33 +545,44 @@ const handleConnectWhatsApp = () => {
       return; 
     }
 
-    // ✨ THE FIX: Explicitly switch the Meta SDK to your WhatsApp App ID before the popup
+    // ✨ THE CRITICAL FIX: Explicitly tell Meta to switch to your WhatsApp App ID before opening the popup
     window.FB.init({ 
       appId: '1263110839094881', 
       cookie: true, 
       xfbml: true, 
-      version: 'v19.0' 
+      version: 'v20.0' // Upgraded to v20.0 to ensure Embedded Signup compatibility
     });
 
+    // 60-second fallback timer in case the user closes the popup without finishing
     const fallbackTimer = setTimeout(() => { 
       setIsLinkingWhatsApp(false); 
     }, 60000);
 
     window.FB.login(async (response: any) => {
       clearTimeout(fallbackTimer);
-      if (response.authResponse && response.authResponse.accessToken && user?.clientId) {
-        try {
-          const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
-          await linkWaFn({ accessToken: response.authResponse.accessToken });
-          setWhatsappConnected(true); 
-          fetchWhatsAppIntegration(); 
-          showDialog('success', 'Connected', `WhatsApp linked!`);
-        } catch (e: any) { 
-          showDialog('error', 'Failed', 'Failed to link WA.'); 
-        } finally { 
-          setIsLinkingWhatsApp(false); 
+      
+      if (response.authResponse && response.authResponse.accessToken) {
+        const accessToken = response.authResponse.accessToken;
+        
+        if (user?.clientId) {
+          try {
+            const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
+            await linkWaFn({ accessToken: accessToken });
+            
+            setWhatsappConnected(true); 
+            fetchWhatsAppIntegration(); 
+            showDialog('success', 'Connected', `WhatsApp linked successfully!`);
+          } catch (error: any) { 
+            console.error("Link Error:", error);
+            showDialog('error', 'Connection Failed', 'Failed to link WA account.'); 
+          } finally { 
+            setIsLinkingWhatsApp(false); 
+          }
+        } else {
+          setIsLinkingWhatsApp(false);
         }
       } else { 
+        // User clicked the 'X' and closed the popup manually
         setIsLinkingWhatsApp(false); 
       }
     }, { 
