@@ -541,17 +541,21 @@ const handleConnectWhatsApp = () => {
     
     if (!window.FB) { 
       setIsLinkingWhatsApp(false); 
-      showDialog('error', 'SDK Loading', 'Please wait for the Meta SDK to load or disable your ad-blocker.'); 
+      showDialog('error', 'SDK Loading', 'Wait for SDK to load or disable adblock.'); 
       return; 
     }
 
-    // ✨ THE FIX: Pointing exactly to your WhatsApp App ID and the v25.0 Graph API
-    window.FB.init({ 
-      appId: '1263110839094881', 
-      cookie: true, 
-      xfbml: true, 
-      version: 'v25.0' // Upgraded to match your Meta Dashboard exactly
-    });
+    // ✨ FIX 1: Safely force the SDK to switch to your WhatsApp App ID without crashing
+    try {
+      window.FB.init({ 
+        appId: '1263110839094881', 
+        cookie: true, 
+        xfbml: true, 
+        version: 'v25.0' 
+      });
+    } catch (e) {
+      console.warn("FB SDK already initialized, proceeding to login...");
+    }
 
     const fallbackTimer = setTimeout(() => { 
       setIsLinkingWhatsApp(false); 
@@ -559,35 +563,27 @@ const handleConnectWhatsApp = () => {
 
     window.FB.login(async (response: any) => {
       clearTimeout(fallbackTimer);
-      
-      if (response.authResponse && response.authResponse.accessToken) {
-        const accessToken = response.authResponse.accessToken;
-        
-        if (user?.clientId) {
-          try {
-            const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
-            await linkWaFn({ accessToken: accessToken });
-            
-            setWhatsappConnected(true); 
-            fetchWhatsAppIntegration(); 
-            showDialog('success', 'WhatsApp Connected', `Successfully linked to your WhatsApp Business number!`);
-          } catch (error: any) { 
-            console.error("Link Error:", error);
-            showDialog('error', 'Connection Failed', error.message || 'Failed to link WhatsApp account.'); 
-          } finally { 
-            setIsLinkingWhatsApp(false); 
-          }
-        } else {
-          setIsLinkingWhatsApp(false);
+      if (response.authResponse && response.authResponse.accessToken && user?.clientId) {
+        try {
+          const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
+          await linkWaFn({ accessToken: response.authResponse.accessToken });
+          setWhatsappConnected(true); 
+          fetchWhatsAppIntegration(); 
+          showDialog('success', 'Connected', `WhatsApp linked!`);
+        } catch (e: any) { 
+          showDialog('error', 'Failed', 'Failed to link WA.'); 
+        } finally { 
+          setIsLinkingWhatsApp(false); 
         }
       } else { 
-        // Handles the user closing the popup window manually
         setIsLinkingWhatsApp(false); 
       }
     }, { 
       config_id: '1083197781534526', 
       response_type: 'code,token', 
       override_default_response_type: true, 
+      // ✨ FIX 2: Explicitly passing the required WhatsApp scopes to bypass Meta's silent block
+      scope: 'whatsapp_business_management,whatsapp_business_messaging',
       extras: { setup: {}, featureType: '', sessionInfoVersion: '2' } 
     });
   };
