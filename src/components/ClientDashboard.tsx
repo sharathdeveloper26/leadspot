@@ -535,48 +535,57 @@ export default function ClientDashboard() {
       } else { setIsLoadingFb(false); }
     }, { scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,business_management', auth_type: 'rerequest', return_scopes: true }); 
   };
-
 const handleConnectWhatsApp = () => {
-    setIsLinkingWhatsApp(true);
-    
     if (!window.FB) { 
-      setIsLinkingWhatsApp(false); 
-      showDialog('error', 'SDK Blocked', 'Please disable your ad-blocker or refresh the page.'); 
+      showDialog('error', 'SDK Blocked', 'Please disable your ad-blocker or refresh the page to load the Meta SDK.'); 
       return; 
     }
 
-    // ✨ FIX 1: Synchronously switch to the WhatsApp App ID. 
-    // Doing this synchronously immediately before FB.login bypasses popup blockers perfectly.
+    // ✨ LEVEL 5 FIX #1: Force the WhatsApp App ID safely.
     window.FB.init({ 
-      appId: '1263110839094881', // Your WhatsApp App ID
+      appId: '1263110839094881', 
       cookie: true, 
       xfbml: true, 
-      version: 'v25.0' 
+      version: 'v20.0' 
     });
 
-    window.FB.login(async (response: any) => {
-      if (response.authResponse && response.authResponse.accessToken && user?.clientId) {
-        try {
+    // ✨ LEVEL 5 FIX #2: DO NOT set React state before this call. 
+    // We must call FB.login instantly to bypass the browser's popup blocker.
+    window.FB.login((response: any) => {
+      // Now that the popup is closed, we can safely update the UI state
+      setIsLinkingWhatsApp(true); 
+
+      if (response.authResponse) {
+        // ✨ LEVEL 5 FIX #3: Embedded signup returns a 'code', not an 'accessToken'. 
+        // We must gracefully capture whichever one Meta decides to send.
+        const tokenOrCode = response.authResponse.accessToken || response.authResponse.code;
+        
+        if (user?.clientId && tokenOrCode) {
           const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
-          await linkWaFn({ accessToken: response.authResponse.accessToken });
           
-          setWhatsappConnected(true); 
-          fetchWhatsAppIntegration(); 
-          showDialog('success', 'Connected', `WhatsApp linked successfully!`);
-        } catch (e: any) { 
-          console.error("Link Error:", e);
-          showDialog('error', 'Failed', 'Failed to link WA account. Please try again.'); 
-        } finally { 
+          linkWaFn({ accessToken: tokenOrCode })
+            .then(() => {
+              setWhatsappConnected(true); 
+              fetchWhatsAppIntegration(); 
+              showDialog('success', 'Connected', 'WhatsApp linked successfully!');
+            })
+            .catch((e: any) => {
+              console.error("Link Error:", e);
+              showDialog('error', 'Connection Failed', 'Failed to link WA account. Please try again.');
+            })
+            .finally(() => {
+              setIsLinkingWhatsApp(false); 
+            });
+        } else {
           setIsLinkingWhatsApp(false); 
         }
       } else { 
-        // User clicked the 'X' and closed the popup
+        // User clicked the 'X' and closed the popup manually
         setIsLinkingWhatsApp(false); 
       }
     }, { 
       config_id: '1083197781534526', 
-      // ✨ FIX 2: Meta explicitly requires this to be ONLY 'code' for Embedded Signup
-      response_type: 'code', 
+      response_type: 'code', // Strictly enforces Meta's Embedded Signup requirement
       override_default_response_type: true, 
       extras: { setup: {}, featureType: '', sessionInfoVersion: '2' } 
     });
