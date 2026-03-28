@@ -541,12 +541,13 @@ const handleConnectWhatsApp = () => {
     
     if (!window.FB) { 
       setIsLinkingWhatsApp(false); 
-      showDialog('error', 'SDK Blocked', 'Please disable your ad-blocker or refresh the page to load the Meta SDK.'); 
+      showDialog('error', 'SDK Blocked', 'Please disable your ad-blocker or refresh the page.'); 
       return; 
     }
 
-    // ✨ LEVEL 5 FIX: Removed FB.init() from here. 
-    // Firing FB.login() instantly and synchronously to bypass the browser's popup blocker.
+    // ✨ LEVEL 5 FIX: Removed FB.init() entirely! 
+    // By passing 'client_id' below, we force the popup to use the WhatsApp App 
+    // without resetting the whole SDK, ensuring zero delay so the popup blocker ignores it.
     window.FB.login(async (response: any) => {
       if (response.authResponse && response.authResponse.accessToken && user?.clientId) {
         try {
@@ -563,15 +564,15 @@ const handleConnectWhatsApp = () => {
           setIsLinkingWhatsApp(false); 
         }
       } else { 
-        // Handles if the user clicks the 'X' and closes the Meta popup manually
+        // User clicked the 'X' and closed the popup
         setIsLinkingWhatsApp(false); 
       }
     }, { 
+      client_id: '1263110839094881', // Forces the WhatsApp App ID just for this popup
       config_id: '1083197781534526', 
       response_type: 'code,token', 
       override_default_response_type: true, 
-      // Reverted to a standard JavaScript object as required by Meta's core SDK
-      extras: { setup: {}, featureType: '', sessionInfoVersion: '2' }
+      extras: { setup: {}, featureType: '', sessionInfoVersion: '2' } 
     });
   };
 
