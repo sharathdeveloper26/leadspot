@@ -524,16 +524,30 @@ export default function ClientDashboard() {
 
   const handleConnectFacebook = async () => {
     setIsLoadingFb(true);
-    if (window.FB) window.FB.init({ appId: '1439047481212574', cookie: true, xfbml: true, version: 'v19.0' });
+    if (window.FB) window.FB.init({ appId: '1439047481212574', cookie: true, xfbml: true, version: 'v20.0' });
+    
     window.FB.login((response: any) => {
       if (response.authResponse) {
         setFbUserToken(response.authResponse.accessToken); 
         window.FB.api('/me/accounts', (apiResponse: any) => {
-          if (apiResponse && !apiResponse.error) { setFbPages(apiResponse.data || []); } else { showDialog('error', 'Facebook API Error', apiResponse?.error?.message || 'Failed to fetch Facebook Pages.'); }
+          if (apiResponse && !apiResponse.error) { 
+            setFbPages(apiResponse.data || []); 
+          } else { 
+            showDialog('error', 'Facebook API Error', apiResponse?.error?.message || 'Failed to fetch Facebook Pages.'); 
+          }
           setIsLoadingFb(false);
         });
-      } else { setIsLoadingFb(false); }
-    }, { scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,business_management', auth_type: 'rerequest', return_scopes: true }); 
+      } else { 
+        setIsLoadingFb(false); 
+      }
+    }, { 
+      scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,business_management', 
+      // ✨ LEVEL 5 MULTI-TENANT FIX: 
+      // This forces Meta to ask for re-authentication, which brings up the 
+      // "Select Pages" screen again so clients can add new pages securely!
+      auth_type: 'reauthenticate', 
+      return_scopes: true 
+    }); 
   };
 const handleConnectWhatsApp = () => {
     if (!window.FB) { 
