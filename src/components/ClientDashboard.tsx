@@ -1678,7 +1678,16 @@ const handleConnectWhatsApp = () => {
                             <p className="text-slate-500 text-sm font-medium">Automatically sync leads from your Facebook Lead Ads directly into your CRM.</p>
                           </div>
                         </div>
-                        <div><button onClick={handleConnectFacebook} disabled={isLoadingFb} className="px-6 py-3 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-sm font-bold transition-all shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none">{isLoadingFb ? 'Connecting...' : 'Connect Facebook'}</button></div>
+                        <div className="flex flex-col items-end gap-2">
+  <button onClick={handleConnectFacebook} disabled={isLoadingFb} className="px-6 py-3 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-sm font-bold transition-all shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none">
+    {isLoadingFb ? 'Connecting...' : 'Connect Facebook'}
+  </button>
+  
+  {/* ✨ LEVEL 5 MULTI-TENANT FIX: Deep link allows users to safely check new pages without breaking existing webhooks ✨ */}
+  <a href="https://www.facebook.com/settings?tab=business_tools&ref=settings" target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-[#7b8ed3] hover:text-indigo-600 hover:underline transition-colors text-right">
+    Missing a new page? Edit Meta Permissions here.
+  </a>
+</div>
                       </div>
                       
                       {linkedPages.length > 0 && (
