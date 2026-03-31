@@ -233,6 +233,7 @@ export const incomingLeadWebhook = onRequest({
       }
 
       // 🧠 CACHE CHECK: Auto-Assignment Rules
+      // 🧠 CACHE CHECK: Auto-Assignment Rules
       let assignedToId = null;
       let assignedToName = null;
       let rules: any[] = [];
@@ -246,10 +247,32 @@ export const incomingLeadWebhook = onRequest({
         assignmentRulesCache.set(clientId, { rules, expiresAt: now + CACHE_TTL });
       }
 
-      const activeRule = rules.find(r => r.sourceName === leadData.source);
-      if (activeRule) {
-        assignedToId = activeRule.agentId;
-        assignedToName = activeRule.agentName;
+      // ✨ LEVEL 5 MULTI-TENANT FIX: Waterfall Routing Engine ✨
+      // Normalize strings to lowercase to prevent case-sensitive mismatches from Facebook
+      const safeProject = (incomingProject || "").trim().toLowerCase();
+      const safeSource = (incomingSource || "").trim().toLowerCase();
+
+      let matchedRule = null;
+
+      for (const rule of rules) {
+        const ruleProject = (rule.projectName || "").trim().toLowerCase();
+        const ruleSource = (rule.sourceName || "").trim().toLowerCase();
+
+        // Priority 1: Exact Project Match
+        if (ruleProject && ruleProject === safeProject) {
+          matchedRule = rule;
+          break; // Found the highest priority match, stop looking!
+        } 
+        // Priority 2: Fallback to Source Match
+        else if (!matchedRule && ruleSource && ruleSource === safeSource && !ruleProject) {
+          matchedRule = rule;
+          // Note: We don't 'break' here, because a Project match might still be found later in the loop!
+        }
+      }
+
+      if (matchedRule) {
+        assignedToId = matchedRule.agentId;
+        assignedToName = matchedRule.agentName;
       }
 
       let fName = leadData.firstName || leadData.name || "Unknown";

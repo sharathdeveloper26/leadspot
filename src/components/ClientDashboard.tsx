@@ -268,7 +268,7 @@ export default function ClientDashboard() {
   const [currentPage, setCurrentPage] = useState(1); const leadsPerPage = 10; const [selectedLeads, setSelectedLeads] = useState<string[]>([]); const [expandedLeads, setExpandedLeads] = useState<string[]>([]);
   const [fbPages, setFbPages] = useState<any[]>([]); const [linkedPages, setLinkedPages] = useState<any[]>([]); const [isLoadingLinkedPages, setIsLoadingLinkedPages] = useState(true); const [isLoadingFb, setIsLoadingFb] = useState(false);
   const [leadSources, setLeadSources] = useState<{id: string, name: string}[]>([]); const [leadSubSources, setLeadSubSources] = useState<{id: string, name: string}[]>([]);
-  const [assignmentRules, setAssignmentRules] = useState<{id: string, sourceName: string, agentId: string, agentName: string}[]>([]); const [newRuleSource, setNewRuleSource] = useState(''); const [newRuleAgentId, setNewRuleAgentId] = useState(''); const [addingRule, setAddingRule] = useState(false);
+  const [assignmentRules, setAssignmentRules] = useState<{id: string, sourceName?: string, projectName?: string, agentId: string, agentName: string}[]>([]); const [newRuleProject, setNewRuleProject] = useState(''); const [newRuleAgentId, setNewRuleAgentId] = useState(''); const [addingRule, setAddingRule] = useState(false);
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false); const [campaignTab, setCampaignTab] = useState<'email' | 'whatsapp'>('whatsapp'); const [emailSubject, setEmailSubject] = useState(''); const [emailBody, setEmailBody] = useState(''); const [isSendingCampaign, setIsSendingCampaign] = useState(false); const [whatsappTemplate, setWhatsappTemplate] = useState('project_launch_01');
 
   const combinedSources = useMemo(() => {
@@ -277,7 +277,10 @@ export default function ClientDashboard() {
     leads.forEach(lead => { if (lead.source) sourcesSet.add(lead.source); });
     return Array.from(sourcesSet).sort((a, b) => a.localeCompare(b));
   }, [leadSources, leads]);
-
+const uniqueProjects = useMemo(() => {
+    const projSet = new Set<string>(); leads.forEach(lead => { if (lead.projectProperty) projSet.add(lead.projectProperty); });
+    return Array.from(projSet).sort((a, b) => a.localeCompare(b));
+  }, [leads]);
   const webhookUrl = `https://us-central1-mintage-crm.cloudfunctions.net/incomingLeadWebhook?clientId=${user?.clientId}`;
 
   useEffect(() => {
@@ -405,17 +408,14 @@ export default function ClientDashboard() {
     } catch (error) { console.error("Error fetching assignment rules:", error); }
   };
 
-  const handleAddAssignmentRule = async () => {
-    if (!user?.clientId || !newRuleSource || !newRuleAgentId) return;
-    setAddingRule(true);
+ const handleAddAssignmentRule = async () => {
+    if (!user?.clientId || !newRuleProject || !newRuleAgentId) return; setAddingRule(true);
     try {
-      const agent = teamMembers.find(m => m.id === newRuleAgentId);
-      if (!agent) return;
-      const docRef = await addDoc(collection(db, 'lead_assignment_rules'), { clientId: user.clientId, sourceName: newRuleSource, agentId: newRuleAgentId, agentName: agent.name, createdAt: serverTimestamp() });
-      setAssignmentRules([...assignmentRules, { id: docRef.id, sourceName: newRuleSource, agentId: newRuleAgentId, agentName: agent.name }]);
-      setNewRuleSource(''); setNewRuleAgentId('');
-      showDialog('success', 'Success', 'Auto-assignment rule added successfully.');
-    } catch (error) { showDialog('error', 'Error', 'Failed to add rule.'); } finally { setAddingRule(false); }
+      const agent = teamMembers.find(m => m.id === newRuleAgentId); if (!agent) return;
+      const docRef = await addDoc(collection(db, 'lead_assignment_rules'), { clientId: user.clientId, projectName: newRuleProject, agentId: newRuleAgentId, agentName: agent.name, createdAt: serverTimestamp() });
+      setAssignmentRules([...assignmentRules, { id: docRef.id, projectName: newRuleProject, agentId: newRuleAgentId, agentName: agent.name }]);
+      setNewRuleProject(''); setNewRuleAgentId(''); showDialog('success', 'Success', 'Project routing rule added.');
+    } catch (e) { showDialog('error', 'Error', 'Failed to add rule.'); } finally { setAddingRule(false); }
   };
 
   const handleDeleteRule = async (ruleId: string) => {
@@ -1044,12 +1044,59 @@ const handleConnectWhatsApp = () => {
           </button>
           <button onClick={() => { setActiveTab('campaigns'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'campaigns' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><Megaphone className="w-5 h-5" /> Campaigns</button>
 
-          {user?.role === 'client_admin' && (
-            <>
-              <button onClick={() => { setActiveTab('team'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'team' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><UserCog className="w-5 h-5" /> Team</button>
-              <button onClick={() => { setActiveTab('integrations'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'integrations' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><Link2 className="w-5 h-5" /> Integrations</button>
-            </>
-          )}
+         {user?.role === 'client_admin' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-6 mt-12"><div><h2 className="text-2xl font-bold text-slate-800 tracking-tight mb-1">Project Auto-Assignment</h2><p className="text-slate-500 text-sm font-medium">Automatically route incoming leads based on the Project or Property they inquired about.</p></div></div>
+                    <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
+                      <div className="p-6 border-b border-white/80 bg-white/40">
+                        <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Create New Rule</h3>
+                        <div className="flex flex-col sm:flex-row gap-4 items-end">
+                          <div className="flex-1 w-full">
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Project / Property Name</label>
+                            <input type="text" list="project-list" value={newRuleProject} onChange={(e) => setNewRuleProject(e.target.value)} placeholder="Type or select a project..." className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all" />
+                            <datalist id="project-list">
+                              {uniqueProjects.map(proj => <option key={proj} value={proj} />)}
+                            </datalist>
+                          </div>
+                          <div className="flex-1 w-full">
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Assign To Agent</label>
+                            <select value={newRuleAgentId} onChange={(e) => setNewRuleAgentId(e.target.value)} className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all cursor-pointer">
+                              <option value="">Select an agent...</option>
+                              {teamMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
+                            </select>
+                          </div>
+                          <button onClick={handleAddAssignmentRule} disabled={!newRuleProject || !newRuleAgentId || addingRule} className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-slate-900/10 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                            {addingRule ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <><Plus className="w-4 h-4 mr-2" /> Add Rule</>}
+                          </button>
+                        </div>
+                      </div>
+                      {assignmentRules.length === 0 ? (
+                        <div className="p-10 text-center text-slate-400 text-sm font-medium">No auto-assignment rules configured yet.</div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50/50 border-b border-slate-200/60 text-xs uppercase tracking-wider text-slate-500 font-bold">
+                                <th className="px-6 py-4">Project Name</th>
+                                <th className="px-6 py-4">Assigned Agent</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100/60">
+                              {assignmentRules.map((rule) => (
+                                <tr key={rule.id} className="hover:bg-white/60 transition-colors">
+                                  <td className="px-6 py-5 whitespace-nowrap"><div className="font-bold text-slate-800 flex items-center gap-3"><div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Building2 className="w-4 h-4" /></div>{rule.projectName || rule.sourceName || 'Unknown Project'}</div></td>
+                                  <td className="px-6 py-5 whitespace-nowrap"><div className="flex items-center gap-3 text-sm font-medium text-slate-600"><div className="p-1.5 bg-indigo-50 rounded-md text-indigo-400"><UserCircle2 className="w-4 h-4" /></div>{rule.agentName}</div></td>
+                                  <td className="px-6 py-5 whitespace-nowrap text-right"><button onClick={() => handleDeleteRule(rule.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Rule"><Trash2 className="w-4 h-4" /></button></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
           <button onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'reports' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><BarChart2 className="w-5 h-5" /> Reports</button>
         </nav>
         <div className="p-5 border-t border-slate-100/50 bg-white/20">
@@ -1560,11 +1607,21 @@ const handleConnectWhatsApp = () => {
               </div>
             )}
 
-            {/* ✨ TEAM TAB ✨ */}
+         {/* ✨ TEAM TAB ✨ */}
             {activeTab === 'team' && (
               <div className="w-full max-w-6xl mx-auto space-y-8">
                 <div>
-                  <div className="flex items-center justify-between mb-8"><div><h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Your Team</h2><p className="text-slate-500 text-sm font-medium">Manage your sales agents and their access.</p></div>{user?.role === 'client_admin' && <button onClick={() => setIsAgentModalOpen(true)} className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 transition-all hover:-translate-y-0.5 border border-transparent"><UserPlus className="w-4 h-4" />Add New Agent</button>}</div>
+                  <div className="flex items-center justify-between mb-8">
+                    <div>
+                      <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Your Team</h2>
+                      <p className="text-slate-500 text-sm font-medium">Manage your sales agents and their access.</p>
+                    </div>
+                    {user?.role === 'client_admin' && (
+                      <button onClick={() => setIsAgentModalOpen(true)} className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 transition-all hover:-translate-y-0.5 border border-transparent">
+                        <UserPlus className="w-4 h-4 mr-2" />Add New Agent
+                      </button>
+                    )}
+                  </div>
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
                     {agents.length === 0 ? (
                       <div className="p-16 text-center flex flex-col items-center"><div className="bg-white p-4 rounded-2xl shadow-sm mb-4"><Users className="w-10 h-10 text-slate-300" /></div><h3 className="text-xl font-bold text-slate-800 mb-2">No agents found</h3><p className="text-slate-500 text-sm">Get started by adding a new agent to your team.</p></div>
@@ -1576,9 +1633,9 @@ const handleConnectWhatsApp = () => {
                             {agents.map((agent) => (
                               <tr key={agent.id} className="hover:bg-white/60 transition-colors group">
                                 <td className="px-6 py-5 whitespace-nowrap">{inlineEditingAgentId === agent.id ? <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl shadow-sm border border-slate-200"><input type="text" value={inlineEditingName} onChange={(e) => setInlineEditingName(e.target.value)} className="px-3 py-1.5 text-sm font-medium border-none rounded-lg focus:ring-2 focus:ring-[#74ebd5] outline-none w-48" autoFocus /><button onClick={() => handleSaveInlineEdit(agent.id)} className="text-white bg-[#74ebd5] hover:bg-[#50bdaf] px-3 py-1.5 rounded-lg font-bold text-xs transition-colors">Save</button><button onClick={() => setInlineEditingAgentId(null)} className="text-slate-500 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors">Cancel</button></div> : <div className="font-bold text-slate-800">{agent.name}</div>}</td>
-                                <td className="px-6 py-5 whitespace-nowrap"><div className="flex items-center gap-2 text-sm font-medium text-slate-600"><div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Mail className="w-3.5 h-3.5" /></div>{agent.email}</div></td>
+                                <td className="px-6 py-5 whitespace-nowrap"><div className="flex items-center gap-2 text-sm font-medium text-slate-600"><Mail className="w-3.5 h-3.5 text-slate-400" />{agent.email}</div></td>
                                 <td className="px-6 py-5 whitespace-nowrap"><span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold bg-[#74ebd5]/10 text-[#4cb8a5] border border-[#74ebd5]/30 uppercase tracking-widest">Agent</span></td>
-                                <td className="px-6 py-5 whitespace-nowrap text-sm font-medium text-slate-500"><div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-slate-400" />{agent.createdAt ? new Date(agent.createdAt.toDate()).toLocaleDateString() : 'Just now'}</div></td>
+                                <td className="px-6 py-5 whitespace-nowrap text-sm font-medium text-slate-500"><div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-slate-400" />{agent.createdAt ? new Date(agent.createdAt.toDate ? agent.createdAt.toDate() : agent.createdAt).toLocaleDateString() : 'Just now'}</div></td>
                                 <td className="px-6 py-5 whitespace-nowrap text-right text-sm font-medium"><button onClick={() => handleEditAgent(agent)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors mr-2"><Edit2 className="w-4 h-4" /></button><button onClick={() => handleDeleteAgent(agent.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button></td>
                               </tr>
                             ))}
@@ -1591,14 +1648,33 @@ const handleConnectWhatsApp = () => {
 
                 {user?.role === 'client_admin' && (
                   <div>
-                    <div className="flex items-center justify-between mb-6 mt-12"><div><h2 className="text-2xl font-bold text-slate-800 tracking-tight mb-1">Auto-Assignment Rules</h2><p className="text-slate-500 text-sm font-medium">Automatically route incoming leads based on their source.</p></div></div>
+                    <div className="flex items-center justify-between mb-6 mt-12">
+                      <div>
+                        <h2 className="text-2xl font-bold text-slate-800 tracking-tight mb-1">Project Auto-Assignment</h2>
+                        <p className="text-slate-500 text-sm font-medium">Automatically route incoming leads based on the Project or Property they inquired about.</p>
+                      </div>
+                    </div>
                     <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
                       <div className="p-6 border-b border-white/80 bg-white/40">
                         <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Create New Rule</h3>
                         <div className="flex flex-col sm:flex-row gap-4 items-end">
-                          <div className="flex-1 w-full"><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Lead Source</label><select value={newRuleSource} onChange={(e) => setNewRuleSource(e.target.value)} className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all cursor-pointer"><option value="">Select a source...</option>{leadSources.map(source => <option key={source.id} value={source.name}>{source.name}</option>)}</select></div>
-                          <div className="flex-1 w-full"><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Assign To Agent</label><select value={newRuleAgentId} onChange={(e) => setNewRuleAgentId(e.target.value)} className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all cursor-pointer"><option value="">Select an agent...</option>{teamMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></div>
-                          <button onClick={handleAddAssignmentRule} disabled={!newRuleSource || !newRuleAgentId || addingRule} className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-slate-900/10 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">{addingRule ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <Plus className="w-4 h-4" />}Add Rule</button>
+                          <div className="flex-1 w-full">
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Project / Property Name</label>
+                            <input type="text" list="project-list" value={newRuleProject} onChange={(e) => setNewRuleProject(e.target.value)} placeholder="Type or select a project..." className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all" />
+                            <datalist id="project-list">
+                              {uniqueProjects.map(proj => <option key={proj} value={proj} />)}
+                            </datalist>
+                          </div>
+                          <div className="flex-1 w-full">
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Assign To Agent</label>
+                            <select value={newRuleAgentId} onChange={(e) => setNewRuleAgentId(e.target.value)} className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all cursor-pointer">
+                              <option value="">Select an agent...</option>
+                              {teamMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
+                            </select>
+                          </div>
+                          <button onClick={handleAddAssignmentRule} disabled={!newRuleProject || !newRuleAgentId || addingRule} className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-slate-900/10 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                            {addingRule ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <><Plus className="w-4 h-4 mr-2" /> Add Rule</>}
+                          </button>
                         </div>
                       </div>
                       {assignmentRules.length === 0 ? (
@@ -1606,13 +1682,25 @@ const handleConnectWhatsApp = () => {
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full text-left border-collapse">
-                            <thead><tr className="bg-slate-50/50 border-b border-slate-200/60 text-xs uppercase tracking-wider text-slate-500 font-bold"><th className="px-6 py-4">Lead Source</th><th className="px-6 py-4">Assigned Agent</th><th className="px-6 py-4 text-right">Actions</th></tr></thead>
+                            <thead><tr className="bg-slate-50/50 border-b border-slate-200/60 text-xs uppercase tracking-wider text-slate-500 font-bold"><th className="px-6 py-4">Project Name</th><th className="px-6 py-4">Assigned Agent</th><th className="px-6 py-4 text-right">Actions</th></tr></thead>
                             <tbody className="divide-y divide-slate-100/60">
                               {assignmentRules.map((rule) => (
                                 <tr key={rule.id} className="hover:bg-white/60 transition-colors">
-                                  <td className="px-6 py-5 whitespace-nowrap"><div className="font-bold text-slate-800 flex items-center gap-3"><div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Globe className="w-4 h-4" /></div>{rule.sourceName}</div></td>
-                                  <td className="px-6 py-5 whitespace-nowrap"><div className="flex items-center gap-3 text-sm font-medium text-slate-600"><div className="p-1.5 bg-indigo-50 rounded-md text-indigo-400"><UserCircle2 className="w-4 h-4" /></div>{rule.agentName}</div></td>
-                                  <td className="px-6 py-5 whitespace-nowrap text-right"><button onClick={() => handleDeleteRule(rule.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Rule"><Trash2 className="w-4 h-4" /></button></td>
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    <div className="font-bold text-slate-800 flex items-center gap-3">
+                                      <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Building2 className="w-4 h-4" /></div>
+                                      {rule.projectName || rule.sourceName || 'Unknown Project'}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    <div className="flex items-center gap-3 text-sm font-medium text-slate-600">
+                                      <div className="p-1.5 bg-indigo-50 rounded-md text-indigo-400"><UserCircle2 className="w-4 h-4" /></div>
+                                      {rule.agentName}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap text-right">
+                                    <button onClick={() => handleDeleteRule(rule.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Rule"><Trash2 className="w-4 h-4" /></button>
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1624,7 +1712,6 @@ const handleConnectWhatsApp = () => {
                 )}
               </div>
             )}
-
             {/* ✨ INTEGRATIONS TAB ✨ */}
             {activeTab === 'integrations' && (
               <div className="w-full max-w-6xl mx-auto space-y-8">
