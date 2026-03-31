@@ -1042,61 +1042,14 @@ const handleConnectWhatsApp = () => {
             <div className="flex items-center gap-3"><MessageCircle className="w-5 h-5" /> Inbox</div>
             {unreadWhatsAppCount > 0 && (<span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'inbox' ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>{unreadWhatsAppCount}</span>)}
           </button>
-          <button onClick={() => { setActiveTab('campaigns'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'campaigns' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><Megaphone className="w-5 h-5" /> Campaigns</button>
+         <button onClick={() => { setActiveTab('campaigns'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'campaigns' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><Megaphone className="w-5 h-5" /> Campaigns</button>
 
-         {user?.role === 'client_admin' && (
-                  <div>
-                    <div className="flex items-center justify-between mb-6 mt-12"><div><h2 className="text-2xl font-bold text-slate-800 tracking-tight mb-1">Project Auto-Assignment</h2><p className="text-slate-500 text-sm font-medium">Automatically route incoming leads based on the Project or Property they inquired about.</p></div></div>
-                    <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden">
-                      <div className="p-6 border-b border-white/80 bg-white/40">
-                        <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Create New Rule</h3>
-                        <div className="flex flex-col sm:flex-row gap-4 items-end">
-                          <div className="flex-1 w-full">
-                            <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Project / Property Name</label>
-                            <input type="text" list="project-list" value={newRuleProject} onChange={(e) => setNewRuleProject(e.target.value)} placeholder="Type or select a project..." className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all" />
-                            <datalist id="project-list">
-                              {uniqueProjects.map(proj => <option key={proj} value={proj} />)}
-                            </datalist>
-                          </div>
-                          <div className="flex-1 w-full">
-                            <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Assign To Agent</label>
-                            <select value={newRuleAgentId} onChange={(e) => setNewRuleAgentId(e.target.value)} className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all cursor-pointer">
-                              <option value="">Select an agent...</option>
-                              {teamMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
-                            </select>
-                          </div>
-                          <button onClick={handleAddAssignmentRule} disabled={!newRuleProject || !newRuleAgentId || addingRule} className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-slate-900/10 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
-                            {addingRule ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <><Plus className="w-4 h-4 mr-2" /> Add Rule</>}
-                          </button>
-                        </div>
-                      </div>
-                      {assignmentRules.length === 0 ? (
-                        <div className="p-10 text-center text-slate-400 text-sm font-medium">No auto-assignment rules configured yet.</div>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left border-collapse">
-                            <thead>
-                              <tr className="bg-slate-50/50 border-b border-slate-200/60 text-xs uppercase tracking-wider text-slate-500 font-bold">
-                                <th className="px-6 py-4">Project Name</th>
-                                <th className="px-6 py-4">Assigned Agent</th>
-                                <th className="px-6 py-4 text-right">Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100/60">
-                              {assignmentRules.map((rule) => (
-                                <tr key={rule.id} className="hover:bg-white/60 transition-colors">
-                                  <td className="px-6 py-5 whitespace-nowrap"><div className="font-bold text-slate-800 flex items-center gap-3"><div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Building2 className="w-4 h-4" /></div>{rule.projectName || rule.sourceName || 'Unknown Project'}</div></td>
-                                  <td className="px-6 py-5 whitespace-nowrap"><div className="flex items-center gap-3 text-sm font-medium text-slate-600"><div className="p-1.5 bg-indigo-50 rounded-md text-indigo-400"><UserCircle2 className="w-4 h-4" /></div>{rule.agentName}</div></td>
-                                  <td className="px-6 py-5 whitespace-nowrap text-right"><button onClick={() => handleDeleteRule(rule.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Rule"><Trash2 className="w-4 h-4" /></button></td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+          {user?.role === 'client_admin' && (
+            <>
+              <button onClick={() => { setActiveTab('team'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'team' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><UserCog className="w-5 h-5" /> Team</button>
+              <button onClick={() => { setActiveTab('integrations'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'integrations' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><Link2 className="w-5 h-5" /> Integrations</button>
+            </>
+          )}
           <button onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'reports' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><BarChart2 className="w-5 h-5" /> Reports</button>
         </nav>
         <div className="p-5 border-t border-slate-100/50 bg-white/20">
@@ -1682,25 +1635,19 @@ const handleConnectWhatsApp = () => {
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full text-left border-collapse">
-                            <thead><tr className="bg-slate-50/50 border-b border-slate-200/60 text-xs uppercase tracking-wider text-slate-500 font-bold"><th className="px-6 py-4">Project Name</th><th className="px-6 py-4">Assigned Agent</th><th className="px-6 py-4 text-right">Actions</th></tr></thead>
+                            <thead>
+                              <tr className="bg-slate-50/50 border-b border-slate-200/60 text-xs uppercase tracking-wider text-slate-500 font-bold">
+                                <th className="px-6 py-4">Project Name</th>
+                                <th className="px-6 py-4">Assigned Agent</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
+                              </tr>
+                            </thead>
                             <tbody className="divide-y divide-slate-100/60">
                               {assignmentRules.map((rule) => (
                                 <tr key={rule.id} className="hover:bg-white/60 transition-colors">
-                                  <td className="px-6 py-5 whitespace-nowrap">
-                                    <div className="font-bold text-slate-800 flex items-center gap-3">
-                                      <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Building2 className="w-4 h-4" /></div>
-                                      {rule.projectName || rule.sourceName || 'Unknown Project'}
-                                    </div>
-                                  </td>
-                                  <td className="px-6 py-5 whitespace-nowrap">
-                                    <div className="flex items-center gap-3 text-sm font-medium text-slate-600">
-                                      <div className="p-1.5 bg-indigo-50 rounded-md text-indigo-400"><UserCircle2 className="w-4 h-4" /></div>
-                                      {rule.agentName}
-                                    </div>
-                                  </td>
-                                  <td className="px-6 py-5 whitespace-nowrap text-right">
-                                    <button onClick={() => handleDeleteRule(rule.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Rule"><Trash2 className="w-4 h-4" /></button>
-                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap"><div className="font-bold text-slate-800 flex items-center gap-3"><div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Building2 className="w-4 h-4" /></div>{rule.projectName || rule.sourceName || 'Unknown Project'}</div></td>
+                                  <td className="px-6 py-5 whitespace-nowrap"><div className="flex items-center gap-3 text-sm font-medium text-slate-600"><div className="p-1.5 bg-indigo-50 rounded-md text-indigo-400"><UserCircle2 className="w-4 h-4" /></div>{rule.agentName}</div></td>
+                                  <td className="px-6 py-5 whitespace-nowrap text-right"><button onClick={() => handleDeleteRule(rule.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Rule"><Trash2 className="w-4 h-4" /></button></td>
                                 </tr>
                               ))}
                             </tbody>
