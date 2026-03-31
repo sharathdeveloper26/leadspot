@@ -98,9 +98,43 @@ export default function ClientDashboard() {
   const [whatsappConnected, setWhatsappConnected] = useState<boolean>(false);
   const [whatsappNumberId, setWhatsappNumberId] = useState<string>('');
 
-  const leads = useMemo(() => {
+const leads = useMemo(() => {
     const combined = [...realTimeLeads, ...olderLeads];
-    return Array.from(new Map(combined.map(item => [item.id, item])).values());
+    
+    // 1. Deduplicate by Firebase Document ID (prevents overlapping pagination glitches)
+    const uniqueById = Array.from(new Map(combined.map(item => [item.id, item])).values());
+    
+    // 2. Sort from Oldest to Newest so we accurately know which lead came "first"
+    const sortedOldestFirst = uniqueById.sort((a, b) => {
+      const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt as any).getTime() : Date.now());
+      const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt as any).getTime() : Date.now());
+      return timeA - timeB;
+    });
+
+    // 3. Setup memory trackers for unique identifiers
+    const seenPhones = new Set<string>();
+    const seenEmails = new Set<string>();
+
+    // 4. Evaluate each lead and flag the newer duplicates
+    const evaluatedLeads = sortedOldestFirst.map(lead => {
+      let isDup = false;
+      const cleanPhone = lead.phone ? String(lead.phone).replace(/[^0-9]/g, '') : '';
+      const cleanEmail = lead.email ? String(lead.email).trim().toLowerCase() : '';
+
+      // If we have seen this phone or email before, flag it!
+      if ((cleanPhone && seenPhones.has(cleanPhone)) || (cleanEmail && seenEmails.has(cleanEmail))) {
+        isDup = true;
+      }
+
+      // Add to our trackers for future iterations
+      if (cleanPhone) seenPhones.add(cleanPhone);
+      if (cleanEmail) seenEmails.add(cleanEmail);
+
+      return { ...lead, isDuplicate: isDup };
+    });
+
+    // 5. Reverse the array back to "Newest First" for your Dashboard UI
+    return evaluatedLeads.reverse();
   }, [realTimeLeads, olderLeads]);
 
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
