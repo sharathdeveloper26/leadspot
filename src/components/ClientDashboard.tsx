@@ -302,7 +302,7 @@ const leads = useMemo(() => {
   const [currentPage, setCurrentPage] = useState(1); const leadsPerPage = 10; const [selectedLeads, setSelectedLeads] = useState<string[]>([]); const [expandedLeads, setExpandedLeads] = useState<string[]>([]);
   const [fbPages, setFbPages] = useState<any[]>([]); const [linkedPages, setLinkedPages] = useState<any[]>([]); const [isLoadingLinkedPages, setIsLoadingLinkedPages] = useState(true); const [isLoadingFb, setIsLoadingFb] = useState(false);
   const [leadSources, setLeadSources] = useState<{id: string, name: string}[]>([]); const [leadSubSources, setLeadSubSources] = useState<{id: string, name: string}[]>([]);
-  const [assignmentRules, setAssignmentRules] = useState<{id: string, sourceName?: string, projectName?: string, agentId: string, agentName: string}[]>([]); const [newRuleProject, setNewRuleProject] = useState(''); const [newRuleAgentId, setNewRuleAgentId] = useState(''); const [addingRule, setAddingRule] = useState(false);
+  const [assignmentRules, setAssignmentRules] = useState<{id: string, sourceName?: string, projectName?: string, agentId: string, agentName: string}[]>([]); const [newRuleType, setNewRuleType] = useState('project'); const [newRuleValue, setNewRuleValue] = useState(''); const [newRuleAgentId, setNewRuleAgentId] = useState(''); const [addingRule, setAddingRule] = useState(false);
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false); const [campaignTab, setCampaignTab] = useState<'email' | 'whatsapp'>('whatsapp'); const [emailSubject, setEmailSubject] = useState(''); const [emailBody, setEmailBody] = useState(''); const [isSendingCampaign, setIsSendingCampaign] = useState(false); const [whatsappTemplate, setWhatsappTemplate] = useState('project_launch_01');
 
   const combinedSources = useMemo(() => {
@@ -442,15 +442,15 @@ const uniqueProjects = useMemo(() => {
     } catch (error) { console.error("Error fetching assignment rules:", error); }
   };
 
- const handleAddAssignmentRule = async () => {
-    if (!user?.clientId || !newRuleProject || !newRuleAgentId) return; setAddingRule(true);
-    try {
-      const agent = teamMembers.find(m => m.id === newRuleAgentId); if (!agent) return;
-      const docRef = await addDoc(collection(db, 'lead_assignment_rules'), { clientId: user.clientId, projectName: newRuleProject, agentId: newRuleAgentId, agentName: agent.name, createdAt: serverTimestamp() });
-      setAssignmentRules([...assignmentRules, { id: docRef.id, projectName: newRuleProject, agentId: newRuleAgentId, agentName: agent.name }]);
-      setNewRuleProject(''); setNewRuleAgentId(''); showDialog('success', 'Success', 'Project routing rule added.');
-    } catch (e) { showDialog('error', 'Error', 'Failed to add rule.'); } finally { setAddingRule(false); }
-  };
+//  const handleAddAssignmentRule = async () => {
+//     if (!user?.clientId || !newRuleProject || !newRuleAgentId) return; setAddingRule(true);
+//     try {
+//       const agent = teamMembers.find(m => m.id === newRuleAgentId); if (!agent) return;
+//       const docRef = await addDoc(collection(db, 'lead_assignment_rules'), { clientId: user.clientId, projectName: newRuleProject, agentId: newRuleAgentId, agentName: agent.name, createdAt: serverTimestamp() });
+//       setAssignmentRules([...assignmentRules, { id: docRef.id, projectName: newRuleProject, agentId: newRuleAgentId, agentName: agent.name }]);
+//       setNewRuleProject(''); setNewRuleAgentId(''); showDialog('success', 'Success', 'Project routing rule added.');
+//     } catch (e) { showDialog('error', 'Error', 'Failed to add rule.'); } finally { setAddingRule(false); }
+//   };
 
   const handleDeleteRule = async (ruleId: string) => {
     if (!ruleId) return;
@@ -1645,30 +1645,28 @@ const handleConnectWhatsApp = () => {
                       <div className="p-6 border-b border-white/80 bg-white/40">
                         <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Create New Routing Rule</h3>
                         
-                        {/* LEVEL 5 FIX: Unified Form handling both Source and Project routing seamlessly! */}
+                      {/* ✨ LEVEL 5 FIX: Dynamic rule type switching and smart datalist! */}
                         <form onSubmit={async (e) => {
                           e.preventDefault();
-                          if (!user?.clientId) return;
-                          const formData = new FormData(e.currentTarget);
-                          const type = formData.get('ruleType') as string;
-                          const value = formData.get('ruleValue') as string;
-                          const agentId = formData.get('agentId') as string;
-                          if (!value || !agentId) return;
+                          if (!user?.clientId || !newRuleValue || !newRuleAgentId) return;
 
                           setAddingRule(true);
                           try {
-                            const agent = teamMembers.find(m => m.id === agentId);
+                            const agent = teamMembers.find(m => m.id === newRuleAgentId);
                             if (!agent) return;
-                            const payload: any = { clientId: user.clientId, agentId, agentName: agent.name, createdAt: serverTimestamp() };
+                            const payload: any = { clientId: user.clientId, agentId: newRuleAgentId, agentName: agent.name, createdAt: serverTimestamp() };
                             
-                            // Dynamically save as either a Project rule or a Source rule
-                            if (type === 'project') payload.projectName = value;
-                            else payload.sourceName = value;
+                            // Save correctly based on the selected type
+                            if (newRuleType === 'project') payload.projectName = newRuleValue;
+                            else payload.sourceName = newRuleValue;
 
                             const docRef = await addDoc(collection(db, 'lead_assignment_rules'), payload);
                             setAssignmentRules(prev => [...prev, { id: docRef.id, ...payload }]);
-                            (e.target as HTMLFormElement).reset();
-                            showDialog('success', 'Success', `Rule added for ${value}.`);
+                            
+                            // Reset the form fields after successful save
+                            setNewRuleValue('');
+                            setNewRuleAgentId('');
+                            showDialog('success', 'Success', `Rule added for ${newRuleValue}.`);
                           } catch(err) {
                             showDialog('error', 'Error', 'Failed to add rule.');
                           } finally {
@@ -1678,7 +1676,7 @@ const handleConnectWhatsApp = () => {
                           
                           <div className="w-full sm:w-48">
                             <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Rule Type</label>
-                            <select name="ruleType" className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all cursor-pointer">
+                            <select value={newRuleType} onChange={(e) => { setNewRuleType(e.target.value); setNewRuleValue(''); }} className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all cursor-pointer">
                               <option value="project">Project Name</option>
                               <option value="source">Lead Source</option>
                             </select>
@@ -1686,22 +1684,26 @@ const handleConnectWhatsApp = () => {
 
                           <div className="flex-1 w-full">
                             <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Match Value</label>
-                            <input type="text" name="ruleValue" list="unified-list" placeholder="e.g. Candeur Twins or Facebook" required className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all" />
-                            <datalist id="unified-list">
-                              {uniqueProjects.map(proj => <option key={`p-${proj}`} value={proj} />)}
-                              {combinedSources.map(src => <option key={`s-${src}`} value={src} />)}
+                            {/* Placeholder changes dynamically based on selection */}
+                            <input type="text" value={newRuleValue} onChange={(e) => setNewRuleValue(e.target.value)} list="dynamic-list" placeholder={newRuleType === 'project' ? "e.g. Candeur Twins" : "e.g. Facebook"} required className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all" />
+                            <datalist id="dynamic-list">
+                              {/* Conditionally render the dropdown items! */}
+                              {newRuleType === 'project' 
+                                ? uniqueProjects.map(proj => <option key={`p-${proj}`} value={proj} />)
+                                : combinedSources.map(src => <option key={`s-${src}`} value={src} />)
+                              }
                             </datalist>
                           </div>
 
                           <div className="flex-1 w-full">
                             <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Assign To Agent</label>
-                            <select name="agentId" required className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all cursor-pointer">
+                            <select value={newRuleAgentId} onChange={(e) => setNewRuleAgentId(e.target.value)} required className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all cursor-pointer">
                               <option value="">Select an agent...</option>
                               {teamMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
                             </select>
                           </div>
 
-                          <button type="submit" disabled={addingRule} className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-slate-900/10 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                          <button type="submit" disabled={!newRuleValue || !newRuleAgentId || addingRule} className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-slate-900/10 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
                             {addingRule ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <><Plus className="w-4 h-4 mr-2" /> Add Rule</>}
                           </button>
                         </form>
