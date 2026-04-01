@@ -565,7 +565,13 @@ const uniqueProjects = useMemo(() => {
         setFbUserToken(response.authResponse.accessToken); 
         window.FB.api('/me/accounts', (apiResponse: any) => {
           if (apiResponse && !apiResponse.error) { 
-            setFbPages(apiResponse.data || []); 
+            const fetchedPages = apiResponse.data || [];
+            setFbPages(fetchedPages); 
+            
+            // ✨ ERROR CATCHER: Tell us if Meta returns 0 pages
+            if (fetchedPages.length === 0) {
+               showDialog('error', 'No Pages Found', 'Meta returned 0 pages. Make sure you selected a page in the popup.');
+            }
           } else { 
             showDialog('error', 'Facebook API Error', apiResponse?.error?.message || 'Failed to fetch Facebook Pages.'); 
           }
@@ -575,10 +581,9 @@ const uniqueProjects = useMemo(() => {
         setIsLoadingFb(false); 
       }
     }, { 
-      scope: 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,business_management', 
-      // ✨ LEVEL 5 MULTI-TENANT FIX: 
-      // This forces Meta to ask for re-authentication, which brings up the 
-      // "Select Pages" screen again so clients can add new pages securely!
+      // ✨ LEVEL 5 FIX: Removed unapproved scopes! 
+      // If you ask for scopes you don't have Advanced Access for, Meta silently gives you 0 pages.
+      scope: 'pages_show_list,pages_manage_metadata,leads_retrieval', 
       auth_type: 'reauthenticate', 
       return_scopes: true 
     }); 
@@ -1825,7 +1830,8 @@ const handleConnectWhatsApp = () => {
                         </div>
                       )}
 
-                      {fbPages.length > 0 && linkedPages.length === 0 && (
+                    {/* ✨ LEVEL 5 FIX: Removed the linkedPages length restriction so multiple pages can be added ✨ */}
+                      {fbPages.length > 0 && (
                         <div className="mt-8 pt-8 border-t border-slate-200/60">
                           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Available Pages to Link</h4>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
