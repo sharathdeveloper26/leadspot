@@ -580,13 +580,14 @@ const uniqueProjects = useMemo(() => {
       } else { 
         setIsLoadingFb(false); 
       }
-    }, { 
-      // ✨ LEVEL 5 FIX: Removed unapproved scopes! 
-      // If you ask for scopes you don't have Advanced Access for, Meta silently gives you 0 pages.
-      scope: 'pages_show_list,pages_manage_metadata,leads_retrieval', 
+    }, 
+    
+    { 
+      // ✨ LEVEL 5 FIX: Added business_management back so the API can see BM-owned pages!
+      scope: 'pages_show_list,pages_manage_metadata,leads_retrieval,business_management', 
       auth_type: 'reauthenticate', 
       return_scopes: true 
-    }); 
+    });
   };
 const handleConnectWhatsApp = () => {
     if (!window.FB) { 
