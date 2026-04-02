@@ -35,7 +35,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
     maxInstances: 10,
     timeoutSeconds: 15
 }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e;
     // 1. HANDSHAKE: Handle Meta Verification (GET Request)
     if (req.method === "GET") {
         const mode = req.query["hub.mode"];
@@ -92,25 +92,56 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 const fbData = fbResponse.data;
                 const fbFields = fbData.field_data || [];
                 let extractedProject = "";
+                let fbFullName = "";
+                let fbFirstName = "";
+                let fbLastName = "";
+                let fbEmail = "";
+                let fbPhone = "";
+                // ✨ LEVEL 5 FIX: Smart catch for Custom Questions with spaces
                 fbFields.forEach((field) => {
-                    if (!['full_name', 'email', 'phone_number'].includes(field.name)) {
-                        customAnswers[field.name] = field.values[0];
-                        // ✨ LEVEL 5 FIX: Intercept the Project Name from the Form Questions!
-                        const fieldNameClean = field.name.toLowerCase().trim();
+                    const fieldNameClean = field.name.toLowerCase().trim();
+                    const val = field.values[0];
+                    if (fieldNameClean === 'full_name' || fieldNameClean === 'full name' || fieldNameClean === 'name') {
+                        fbFullName = val;
+                    }
+                    else if (fieldNameClean === 'first_name' || fieldNameClean === 'first name') {
+                        fbFirstName = val;
+                    }
+                    else if (fieldNameClean === 'last_name' || fieldNameClean === 'last name') {
+                        fbLastName = val;
+                    }
+                    else if (fieldNameClean === 'email' || fieldNameClean === 'email address') {
+                        fbEmail = val;
+                    }
+                    else if (fieldNameClean === 'phone_number' || fieldNameClean === 'phone number' || fieldNameClean === 'phone' || fieldNameClean === 'contact number') {
+                        fbPhone = val;
+                    }
+                    else {
+                        // It is a true custom question, put it in the UI Form Questions bucket
+                        customAnswers[field.name] = val;
+                        // Intercept Project Name if it's hiding in the custom questions
                         if (fieldNameClean === 'project name' || fieldNameClean === 'project_name' || fieldNameClean === 'project') {
-                            extractedProject = field.values[0];
+                            extractedProject = val;
                         }
                     }
                 });
+                // Smart Combination Logic
+                if (!fbFullName && (fbFirstName || fbLastName)) {
+                    fbFullName = `${fbFirstName} ${fbLastName}`.trim();
+                }
+                if (!fbFirstName && fbFullName) {
+                    fbFirstName = fbFullName.split(' ')[0]; // Extract first name from full name if missing
+                }
                 incomingSource = "Facebook";
                 incomingSubSource = fbData.ad_name || "";
-                // ✨ LEVEL 5 FIX: If we caught a clean project name in the form, use it! 
-                // Otherwise, fall back to the campaign name.
                 incomingProject = extractedProject || fbData.campaign_name || "Facebook Ad Campaign";
+                // ✨ LEVEL 5 FIX: Hardcoded fallback safeguards to ensure "Facebook" is never saved as a person's name
                 leadData = {
-                    name: ((_f = fbFields.find((f) => f.name === "full_name")) === null || _f === void 0 ? void 0 : _f.values[0]) || "FB Lead",
-                    email: ((_g = fbFields.find((f) => f.name === "email")) === null || _g === void 0 ? void 0 : _g.values[0]) || "",
-                    phone: ((_h = fbFields.find((f) => f.name === "phone_number")) === null || _h === void 0 ? void 0 : _h.values[0]) || "",
+                    name: fbFullName || "Unknown Lead",
+                    firstName: fbFirstName || "Unknown",
+                    lastName: fbLastName || "",
+                    email: fbEmail || "",
+                    phone: fbPhone || "",
                     source: incomingSource,
                     subSource: incomingSubSource,
                     project: incomingProject,
@@ -119,37 +150,6 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                     adName: fbData.ad_name || "Unknown Ad",
                     campaignId: fbData.campaign_id || "",
                     campaignName: fbData.campaign_name || "Unknown Campaign"
-                };
-            }
-            else {
-                // 🔥 CUSTOM PAYLOAD PARSING
-                let data = req.body;
-                if (typeof data === 'string') {
-                    try {
-                        data = JSON.parse(data);
-                    }
-                    catch (e) { }
-                }
-                data = Object.assign(Object.assign({}, req.query), data);
-                clientId = data.clientId;
-                customAnswers = data.customAnswers || {};
-                incomingSource = data.source || "Webhook";
-                incomingSubSource = data.subSource || "";
-                incomingProject = data.projectProperty || data.project || "General Inquiry";
-                const finalFirstName = data.firstName || data.name || "Unknown";
-                const finalLastName = data.lastName || "";
-                leadData = {
-                    name: finalLastName ? `${finalFirstName} ${finalLastName}`.trim() : finalFirstName,
-                    firstName: finalFirstName,
-                    lastName: finalLastName,
-                    email: data.email || "",
-                    phone: data.phone || "",
-                    source: incomingSource,
-                    subSource: incomingSubSource,
-                    project: incomingProject,
-                    formId: "", adId: "", adName: data.adName || "", campaignId: "", campaignName: data.campaignName || "",
-                    utm_source: data.utm_source || "", utm_medium: data.utm_medium || "", utm_campaign: data.utm_campaign || "",
-                    message: data.message || ""
                 };
             }
             if (!clientId) {

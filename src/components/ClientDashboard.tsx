@@ -712,7 +712,48 @@ const handleConnectWhatsApp = () => {
       setIsModalOpen(false); showDialog('success', 'Lead Added', 'The lead was manually added successfully.');
     } catch (error) { showDialog('error', 'Error', 'Failed to add lead.'); } finally { setAddingLead(false); }
   };
-
+  // 🧹 TEMPORARY SCRIPT: One-Time Data Migration to fix "Facebook" names
+  const fixLegacyFacebookLeads = async () => {
+    if (!user?.clientId) return;
+    showDialog('alert', 'Processing...', 'Scanning database and fixing names. Please wait.');
+    
+    let fixedCount = 0;
+    
+    try {
+      // Loop through all the leads currently loaded in your dashboard
+      for (const lead of leads) {
+        // Check if the lead is suffering from the "Facebook" name bug
+        if (lead.name === 'Facebook' || lead.firstName === 'Facebook' || lead.name === 'FB Lead' || lead.name.includes('Facebook')) {
+          let realFirstName = '';
+          
+          // Dig into the customAnswers to find the real name
+          if (lead.customAnswers) {
+            const keys = Object.keys(lead.customAnswers);
+            // Look for keys like "FIRST NAME", "first_name", "Name", etc.
+            const nameKey = keys.find(k => k.toLowerCase().includes('name') || k.toLowerCase().includes('first'));
+            
+            if (nameKey && lead.customAnswers[nameKey]) {
+              realFirstName = lead.customAnswers[nameKey];
+            }
+          }
+          
+          // If we successfully dug up the real name, update the Firestore document!
+          if (realFirstName) {
+            await updateDoc(doc(db, 'leads', lead.id), {
+              name: realFirstName,
+              firstName: realFirstName,
+              lastName: '' // Clear out the broken last name
+            });
+            fixedCount++;
+          }
+        }
+      }
+      showDialog('success', 'Cleanup Complete', `Successfully recovered and fixed ${fixedCount} leads!`);
+    } catch (error) {
+      console.error("Error fixing leads:", error);
+      showDialog('error', 'Error', 'Something went wrong during cleanup.');
+    }
+  };
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user?.clientId) return;
@@ -1345,6 +1386,10 @@ const handleConnectWhatsApp = () => {
                   <div><h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Your Leads</h2><p className="text-slate-500 text-sm font-medium">Manage and track your prospective customers.</p></div>
                   <div className="flex items-center gap-3">
                     <input type="file" accept=".csv" ref={fileInputRef} onChange={handleImportCSV} className="hidden" />
+                   {/* ✨ TEMPORARY BUTTON: Click this once to clean the DB, then delete it! */}
+                    <button onClick={fixLegacyFacebookLeads} className="flex items-center gap-2 py-2.5 px-5 rounded-xl text-sm font-bold text-white bg-rose-500 hover:bg-rose-600 transition-all shadow-sm mr-2">
+                      Fix Facebook Names
+                    </button>
                     <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="flex items-center gap-2 py-2.5 px-5 rounded-xl text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50" title="Upload a CSV with First Name, Last Name, Phone, Email, and Source">{isImporting ? <div className="w-4 h-4 border-2 border-slate-300 border-t-[#74ebd5] rounded-full animate-spin" /> : <Upload className="w-4 h-4" />} Import CSV</button>
                     <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#74ebd5] transition-all hover:-translate-y-0.5 whitespace-nowrap"><Plus className="w-4 h-4" /> Add New Lead</button>
                   </div>
