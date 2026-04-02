@@ -1386,10 +1386,8 @@ const handleConnectWhatsApp = () => {
                   <div><h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">Your Leads</h2><p className="text-slate-500 text-sm font-medium">Manage and track your prospective customers.</p></div>
                   <div className="flex items-center gap-3">
                     <input type="file" accept=".csv" ref={fileInputRef} onChange={handleImportCSV} className="hidden" />
-                   {/* ✨ TEMPORARY BUTTON: Click this once to clean the DB, then delete it! */}
-                    <button onClick={fixLegacyFacebookLeads} className="flex items-center gap-2 py-2.5 px-5 rounded-xl text-sm font-bold text-white bg-rose-500 hover:bg-rose-600 transition-all shadow-sm mr-2">
-                      Fix Facebook Names
-                    </button>
+                  
+                  
                     <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="flex items-center gap-2 py-2.5 px-5 rounded-xl text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50" title="Upload a CSV with First Name, Last Name, Phone, Email, and Source">{isImporting ? <div className="w-4 h-4 border-2 border-slate-300 border-t-[#74ebd5] rounded-full animate-spin" /> : <Upload className="w-4 h-4" />} Import CSV</button>
                     <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#74ebd5]/30 text-sm font-bold text-white bg-gradient-to-r from-[#74ebd5] to-[#9face6] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#74ebd5] transition-all hover:-translate-y-0.5 whitespace-nowrap"><Plus className="w-4 h-4" /> Add New Lead</button>
                   </div>
