@@ -107,16 +107,26 @@ export const incomingLeadWebhook = onRequest({
         
         const fbData = fbResponse.data;
         const fbFields = fbData.field_data || [];
-        
+        let extractedProject = "";
+
         fbFields.forEach((field: any) => {
           if (!['full_name', 'email', 'phone_number'].includes(field.name)) {
             customAnswers[field.name] = field.values[0];
+            
+            // ✨ LEVEL 5 FIX: Intercept the Project Name from the Form Questions!
+            const fieldNameClean = field.name.toLowerCase().trim();
+            if (fieldNameClean === 'project name' || fieldNameClean === 'project_name' || fieldNameClean === 'project') {
+              extractedProject = field.values[0];
+            }
           }
         });
 
         incomingSource = "Facebook";
-        incomingProject = fbData.campaign_name || "Facebook Ad Campaign";
         incomingSubSource = fbData.ad_name || ""; 
+        
+        // ✨ LEVEL 5 FIX: If we caught a clean project name in the form, use it! 
+        // Otherwise, fall back to the campaign name.
+        incomingProject = extractedProject || fbData.campaign_name || "Facebook Ad Campaign";
 
         leadData = {
           name: fbFields.find((f: any) => f.name === "full_name")?.values[0] || "FB Lead",

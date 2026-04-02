@@ -91,14 +91,22 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 const fbResponse = await axios_1.default.get(`https://graph.facebook.com/v19.0/${leadgenId}?fields=field_data,form_id,ad_id,ad_name,campaign_id,campaign_name&access_token=${pageAccessToken}`, { timeout: 4000 });
                 const fbData = fbResponse.data;
                 const fbFields = fbData.field_data || [];
+                let extractedProject = "";
                 fbFields.forEach((field) => {
                     if (!['full_name', 'email', 'phone_number'].includes(field.name)) {
                         customAnswers[field.name] = field.values[0];
+                        // ✨ LEVEL 5 FIX: Intercept the Project Name from the Form Questions!
+                        const fieldNameClean = field.name.toLowerCase().trim();
+                        if (fieldNameClean === 'project name' || fieldNameClean === 'project_name' || fieldNameClean === 'project') {
+                            extractedProject = field.values[0];
+                        }
                     }
                 });
                 incomingSource = "Facebook";
-                incomingProject = fbData.campaign_name || "Facebook Ad Campaign";
                 incomingSubSource = fbData.ad_name || "";
+                // ✨ LEVEL 5 FIX: If we caught a clean project name in the form, use it! 
+                // Otherwise, fall back to the campaign name.
+                incomingProject = extractedProject || fbData.campaign_name || "Facebook Ad Campaign";
                 leadData = {
                     name: ((_f = fbFields.find((f) => f.name === "full_name")) === null || _f === void 0 ? void 0 : _f.values[0]) || "FB Lead",
                     email: ((_g = fbFields.find((f) => f.name === "email")) === null || _g === void 0 ? void 0 : _g.values[0]) || "",

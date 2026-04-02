@@ -312,7 +312,25 @@ const leads = useMemo(() => {
     return Array.from(sourcesSet).sort((a, b) => a.localeCompare(b));
   }, [leadSources, leads]);
 const uniqueProjects = useMemo(() => {
-    const projSet = new Set<string>(); leads.forEach(lead => { if (lead.projectProperty) projSet.add(lead.projectProperty); });
+    const projSet = new Set<string>(); 
+    
+    leads.forEach(lead => { 
+      let cleanProjectName = lead.projectProperty;
+
+      // ✨ LEVEL 5 FIX: Dig into the Form Questions to find the clean project name
+      if (lead.customAnswers) {
+        // Look for any custom question that contains the word "project"
+        const projectKey = Object.keys(lead.customAnswers).find(k => k.toLowerCase().includes('project'));
+        if (projectKey && lead.customAnswers[projectKey]) {
+          cleanProjectName = lead.customAnswers[projectKey];
+        }
+      }
+
+      if (cleanProjectName) {
+        projSet.add(cleanProjectName); 
+      }
+    });
+    
     return Array.from(projSet).sort((a, b) => a.localeCompare(b));
   }, [leads]);
   const webhookUrl = `https://us-central1-mintage-crm.cloudfunctions.net/incomingLeadWebhook?clientId=${user?.clientId}`;
