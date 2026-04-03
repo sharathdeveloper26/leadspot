@@ -2083,14 +2083,14 @@ const handleConnectWhatsApp = () => {
                           "lastName": "Kumar", 
                           "email": "ravi.kumar@example.com", 
                           "phone": "+919876543210", 
-                          "projectProperty": "Neopolis Luxury Villas", 
+                          "projectProperty": "Project Name", 
                           "source": "Website", 
                           "subSource": "Contact Us Form", 
-                          "adName": "Summer_Promo_01", 
-                          "campaignName": "Hyderabad_Villas_Q2", 
+                          "adName": "ad Name", 
+                          "campaignName": "Campaign Name", 
                           "utm_source": "google", 
                           "utm_medium": "cpc", 
-                          "utm_campaign": "hyderabad_luxury", 
+                          "utm_campaign": "utm Source", 
                           "message": "I am interested in a 4BHK villa." 
                         }; 
                         navigator.clipboard.writeText(JSON.stringify(payloadObject, null, 2)); 
