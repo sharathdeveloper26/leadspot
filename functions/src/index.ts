@@ -30,6 +30,7 @@ const outboundCache = new Map<string, { data: any, expiresAt: number }>();
 const discoveredSourcesCache = new Map<string, Set<string>>(); // Tracks auto-discovered sources
 
 // OPTIMIZATION: Memory restricted to 512MiB, concurrency set to 80, timeout capped at 15s.
+// OPTIMIZATION: Memory restricted to 512MiB, concurrency set to 80, timeout capped at 15s.
 export const incomingLeadWebhook = onRequest({ 
   cors: true,
   memory: "512MiB",
@@ -60,10 +61,16 @@ export const incomingLeadWebhook = onRequest({
       let clientId: string | null = null;
       let customAnswers: Record<string, string> = {}; 
       
-      let incomingSource = "";
+      let incomingSource = "Webhook";
       let incomingSubSource = "";
       let incomingProject = "";
 
+      // ✨ LEVEL 5 FIX: Smart Extractor catches the ID from URL Query OR JSON Body!
+      clientId = (req.query.clientId || req.query.client_id || req.body.clientId || req.body.client_id) as string | null;
+
+      // ====================================================================
+      // 🚀 SCENARIO A: Raw Native Facebook Lead (Has 'object: page')
+      // ====================================================================
       if (req.body.object === "page" && req.body.entry?.[0]?.changes?.[0]?.value?.leadgen_id) {
         const changes = req.body.entry[0].changes[0].value;
         const pageId = changes.page_id;
@@ -105,7 +112,7 @@ export const incomingLeadWebhook = onRequest({
           { timeout: 4000 }
         );
         
-      const fbData = fbResponse.data;
+        const fbData = fbResponse.data;
         const fbFields = fbData.field_data || [];
         
         let extractedProject = "";
@@ -136,10 +143,7 @@ export const incomingLeadWebhook = onRequest({
             fbPhone = val;
           }
           else {
-            // It is a true custom question, put it in the UI Form Questions bucket
             customAnswers[field.name] = val;
-            
-            // Intercept Project Name if it's hiding in the custom questions
             if (fieldNameClean === 'project name' || fieldNameClean === 'project_name' || fieldNameClean === 'project') {
               extractedProject = val;
             }
@@ -151,14 +155,13 @@ export const incomingLeadWebhook = onRequest({
           fbFullName = `${fbFirstName} ${fbLastName}`.trim();
         }
         if (!fbFirstName && fbFullName) {
-          fbFirstName = fbFullName.split(' ')[0]; // Extract first name from full name if missing
+          fbFirstName = fbFullName.split(' ')[0]; 
         }
 
         incomingSource = "Facebook";
         incomingSubSource = fbData.ad_name || ""; 
         incomingProject = extractedProject || fbData.campaign_name || "Facebook Ad Campaign"; 
 
-        // ✨ LEVEL 5 FIX: Hardcoded fallback safeguards to ensure "Facebook" is never saved as a person's name
         leadData = {
           name: fbFullName || "Unknown Lead",
           firstName: fbFirstName || "Unknown",
@@ -174,11 +177,41 @@ export const incomingLeadWebhook = onRequest({
           campaignId: fbData.campaign_id || "",
           campaignName: fbData.campaign_name || "Unknown Campaign"
         };
-      }
+      } 
+      // ====================================================================
+      // 🚀 SCENARIO B: Generic JSON Payload (Postman, Zapier, Web Forms)
+      // ====================================================================
+      else {
+        if (!clientId) {
+          res.status(400).send({ error: "Error: clientId is required in the webhook URL or JSON body." });
+          return;
+        }
 
-      if (!clientId) {
-        res.status(400).send({ error: "Error: clientId is required in the webhook URL." });
-        return;
+        incomingSource = req.body.source || "Webhook API";
+        incomingSubSource = req.body.subSource || req.body.adName || "";
+        incomingProject = req.body.projectProperty || req.body.project || "General Webhook Lead";
+
+        leadData = {
+          name: (req.body.firstName || "") + " " + (req.body.lastName || "").trim() || "Unknown Lead",
+          firstName: req.body.firstName || req.body.name || "Unknown",
+          lastName: req.body.lastName || "",
+          email: req.body.email || "",
+          phone: req.body.phone || req.body.phoneNumber || "",
+          source: incomingSource,
+          subSource: incomingSubSource,
+          project: incomingProject,
+          message: req.body.message || "",
+          utm_source: req.body.utm_source || "",
+          utm_medium: req.body.utm_medium || "",
+          utm_campaign: req.body.utm_campaign || ""
+        };
+        
+        // Collect any unknown fields into customAnswers
+        Object.keys(req.body).forEach(key => {
+            if (!['clientId', 'client_id', 'firstName', 'lastName', 'name', 'email', 'phone', 'phoneNumber', 'source', 'subSource', 'projectProperty', 'project', 'message', 'utm_source', 'utm_medium', 'utm_campaign'].includes(key)) {
+                customAnswers[key] = String(req.body[key]);
+            }
+        });
       }
 
       // --- PHONE ENRICHMENT LOGIC (Truecaller4 API via RapidAPI) ---
@@ -245,22 +278,20 @@ export const incomingLeadWebhook = onRequest({
       }
 
       // 🧠 CACHE CHECK: Auto-Assignment Rules
-      // 🧠 CACHE CHECK: Auto-Assignment Rules
       let assignedToId = null;
       let assignedToName = null;
       let rules: any[] = [];
 
-      const cachedRules = assignmentRulesCache.get(clientId);
+      const cachedRules = assignmentRulesCache.get(clientId as string);
       if (cachedRules && cachedRules.expiresAt > now) {
         rules = cachedRules.rules;
       } else {
         const rulesSnapshot = await db.collection("lead_assignment_rules").where("clientId", "==", clientId).get();
         rules = rulesSnapshot.docs.map(doc => doc.data());
-        assignmentRulesCache.set(clientId, { rules, expiresAt: now + CACHE_TTL });
+        assignmentRulesCache.set(clientId as string, { rules, expiresAt: now + CACHE_TTL });
       }
 
       // ✨ LEVEL 5 MULTI-TENANT FIX: Waterfall Routing Engine ✨
-      // Normalize strings to lowercase to prevent case-sensitive mismatches from Facebook
       const safeProject = (incomingProject || "").trim().toLowerCase();
       const safeSource = (incomingSource || "").trim().toLowerCase();
 
@@ -273,12 +304,11 @@ export const incomingLeadWebhook = onRequest({
         // Priority 1: Exact Project Match
         if (ruleProject && ruleProject === safeProject) {
           matchedRule = rule;
-          break; // Found the highest priority match, stop looking!
+          break; 
         } 
         // Priority 2: Fallback to Source Match
         else if (!matchedRule && ruleSource && ruleSource === safeSource && !ruleProject) {
           matchedRule = rule;
-          // Note: We don't 'break' here, because a Project match might still be found later in the loop!
         }
       }
 
@@ -318,11 +348,11 @@ export const incomingLeadWebhook = onRequest({
         linkedin: linkedinUrl,              
         truecallerName: truecallerName,     
         truecallerBusiness: truecallerBusiness, 
-        formId: leadData.formId,
-        adId: leadData.adId,
-        adName: leadData.adName,
-        campaignId: leadData.campaignId,
-        campaignName: leadData.campaignName,
+        formId: leadData.formId || "",
+        adId: leadData.adId || "",
+        adName: leadData.adName || "",
+        campaignId: leadData.campaignId || "",
+        campaignName: leadData.campaignName || "",
         customAnswers: customAnswers,
         utm_source: leadData.utm_source || "",
         utm_medium: leadData.utm_medium || "",
@@ -336,10 +366,10 @@ export const incomingLeadWebhook = onRequest({
 
       // 🧠 CACHE CHECK: Auto-Discovery Engine
       try {
-        if (!discoveredSourcesCache.has(clientId)) {
-          discoveredSourcesCache.set(clientId, new Set<string>());
+        if (!discoveredSourcesCache.has(clientId as string)) {
+          discoveredSourcesCache.set(clientId as string, new Set<string>());
         }
-        const clientDiscovered = discoveredSourcesCache.get(clientId)!;
+        const clientDiscovered = discoveredSourcesCache.get(clientId as string)!;
 
         if (incomingSource) {
           const cacheKey = `SRC_${incomingSource}`;
@@ -348,7 +378,7 @@ export const incomingLeadWebhook = onRequest({
             if (sourceQuery.empty) { 
               await db.collection('lead_sources').add({ clientId, name: incomingSource, autoDiscovered: true }); 
             }
-            clientDiscovered.add(cacheKey); // Mark known in RAM
+            clientDiscovered.add(cacheKey); 
           }
         }
 
@@ -359,7 +389,7 @@ export const incomingLeadWebhook = onRequest({
             if (subSourceQuery.empty) { 
               await db.collection('lead_sub_sources').add({ clientId, name: incomingSubSource, autoDiscovered: true }); 
             }
-            clientDiscovered.add(cacheKey); // Mark known in RAM
+            clientDiscovered.add(cacheKey); 
           }
         }
       } catch (autoDiscError) {
@@ -372,14 +402,14 @@ export const incomingLeadWebhook = onRequest({
       try {
         // 🧠 CACHE CHECK: Outbound Integrations
         let outboundData: any = null;
-        const cachedOutbound = outboundCache.get(clientId);
+        const cachedOutbound = outboundCache.get(clientId as string);
         
         if (cachedOutbound && cachedOutbound.expiresAt > now) {
           outboundData = cachedOutbound.data;
         } else {
-          const outboundDoc = await db.collection("outbound_integrations").doc(clientId).get();
+          const outboundDoc = await db.collection("outbound_integrations").doc(clientId as string).get();
           outboundData = outboundDoc.exists ? outboundDoc.data() : null;
-          outboundCache.set(clientId, { data: outboundData, expiresAt: now + CACHE_TTL });
+          outboundCache.set(clientId as string, { data: outboundData, expiresAt: now + CACHE_TTL });
         }
         
         if (outboundData) {

@@ -28,6 +28,7 @@ const assignmentRulesCache = new Map();
 const outboundCache = new Map();
 const discoveredSourcesCache = new Map(); // Tracks auto-discovered sources
 // OPTIMIZATION: Memory restricted to 512MiB, concurrency set to 80, timeout capped at 15s.
+// OPTIMIZATION: Memory restricted to 512MiB, concurrency set to 80, timeout capped at 15s.
 exports.incomingLeadWebhook = (0, https_1.onRequest)({
     cors: true,
     memory: "512MiB",
@@ -55,9 +56,14 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
             let leadData = {};
             let clientId = null;
             let customAnswers = {};
-            let incomingSource = "";
+            let incomingSource = "Webhook";
             let incomingSubSource = "";
             let incomingProject = "";
+            // ✨ LEVEL 5 FIX: Smart Extractor catches the ID from URL Query OR JSON Body!
+            clientId = (req.query.clientId || req.query.client_id || req.body.clientId || req.body.client_id);
+            // ====================================================================
+            // 🚀 SCENARIO A: Raw Native Facebook Lead (Has 'object: page')
+            // ====================================================================
             if (req.body.object === "page" && ((_e = (_d = (_c = (_b = (_a = req.body.entry) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.changes) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.value) === null || _e === void 0 ? void 0 : _e.leadgen_id)) {
                 const changes = req.body.entry[0].changes[0].value;
                 const pageId = changes.page_id;
@@ -117,9 +123,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                         fbPhone = val;
                     }
                     else {
-                        // It is a true custom question, put it in the UI Form Questions bucket
                         customAnswers[field.name] = val;
-                        // Intercept Project Name if it's hiding in the custom questions
                         if (fieldNameClean === 'project name' || fieldNameClean === 'project_name' || fieldNameClean === 'project') {
                             extractedProject = val;
                         }
@@ -130,12 +134,11 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                     fbFullName = `${fbFirstName} ${fbLastName}`.trim();
                 }
                 if (!fbFirstName && fbFullName) {
-                    fbFirstName = fbFullName.split(' ')[0]; // Extract first name from full name if missing
+                    fbFirstName = fbFullName.split(' ')[0];
                 }
                 incomingSource = "Facebook";
                 incomingSubSource = fbData.ad_name || "";
                 incomingProject = extractedProject || fbData.campaign_name || "Facebook Ad Campaign";
-                // ✨ LEVEL 5 FIX: Hardcoded fallback safeguards to ensure "Facebook" is never saved as a person's name
                 leadData = {
                     name: fbFullName || "Unknown Lead",
                     firstName: fbFirstName || "Unknown",
@@ -152,9 +155,37 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                     campaignName: fbData.campaign_name || "Unknown Campaign"
                 };
             }
-            if (!clientId) {
-                res.status(400).send({ error: "Error: clientId is required in the webhook URL." });
-                return;
+            // ====================================================================
+            // 🚀 SCENARIO B: Generic JSON Payload (Postman, Zapier, Web Forms)
+            // ====================================================================
+            else {
+                if (!clientId) {
+                    res.status(400).send({ error: "Error: clientId is required in the webhook URL or JSON body." });
+                    return;
+                }
+                incomingSource = req.body.source || "Webhook API";
+                incomingSubSource = req.body.subSource || req.body.adName || "";
+                incomingProject = req.body.projectProperty || req.body.project || "General Webhook Lead";
+                leadData = {
+                    name: (req.body.firstName || "") + " " + (req.body.lastName || "").trim() || "Unknown Lead",
+                    firstName: req.body.firstName || req.body.name || "Unknown",
+                    lastName: req.body.lastName || "",
+                    email: req.body.email || "",
+                    phone: req.body.phone || req.body.phoneNumber || "",
+                    source: incomingSource,
+                    subSource: incomingSubSource,
+                    project: incomingProject,
+                    message: req.body.message || "",
+                    utm_source: req.body.utm_source || "",
+                    utm_medium: req.body.utm_medium || "",
+                    utm_campaign: req.body.utm_campaign || ""
+                };
+                // Collect any unknown fields into customAnswers
+                Object.keys(req.body).forEach(key => {
+                    if (!['clientId', 'client_id', 'firstName', 'lastName', 'name', 'email', 'phone', 'phoneNumber', 'source', 'subSource', 'projectProperty', 'project', 'message', 'utm_source', 'utm_medium', 'utm_campaign'].includes(key)) {
+                        customAnswers[key] = String(req.body[key]);
+                    }
+                });
             }
             // --- PHONE ENRICHMENT LOGIC (Truecaller4 API via RapidAPI) ---
             let designation = "Unknown";
@@ -213,7 +244,6 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 }
             }
             // 🧠 CACHE CHECK: Auto-Assignment Rules
-            // 🧠 CACHE CHECK: Auto-Assignment Rules
             let assignedToId = null;
             let assignedToName = null;
             let rules = [];
@@ -227,7 +257,6 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 assignmentRulesCache.set(clientId, { rules, expiresAt: now + CACHE_TTL });
             }
             // ✨ LEVEL 5 MULTI-TENANT FIX: Waterfall Routing Engine ✨
-            // Normalize strings to lowercase to prevent case-sensitive mismatches from Facebook
             const safeProject = (incomingProject || "").trim().toLowerCase();
             const safeSource = (incomingSource || "").trim().toLowerCase();
             let matchedRule = null;
@@ -237,12 +266,11 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 // Priority 1: Exact Project Match
                 if (ruleProject && ruleProject === safeProject) {
                     matchedRule = rule;
-                    break; // Found the highest priority match, stop looking!
+                    break;
                 }
                 // Priority 2: Fallback to Source Match
                 else if (!matchedRule && ruleSource && ruleSource === safeSource && !ruleProject) {
                     matchedRule = rule;
-                    // Note: We don't 'break' here, because a Project match might still be found later in the loop!
                 }
             }
             if (matchedRule) {
@@ -281,11 +309,11 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                 linkedin: linkedinUrl,
                 truecallerName: truecallerName,
                 truecallerBusiness: truecallerBusiness,
-                formId: leadData.formId,
-                adId: leadData.adId,
-                adName: leadData.adName,
-                campaignId: leadData.campaignId,
-                campaignName: leadData.campaignName,
+                formId: leadData.formId || "",
+                adId: leadData.adId || "",
+                adName: leadData.adName || "",
+                campaignId: leadData.campaignId || "",
+                campaignName: leadData.campaignName || "",
                 customAnswers: customAnswers,
                 utm_source: leadData.utm_source || "",
                 utm_medium: leadData.utm_medium || "",
@@ -308,7 +336,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                         if (sourceQuery.empty) {
                             await db.collection('lead_sources').add({ clientId, name: incomingSource, autoDiscovered: true });
                         }
-                        clientDiscovered.add(cacheKey); // Mark known in RAM
+                        clientDiscovered.add(cacheKey);
                     }
                 }
                 if (incomingSubSource) {
@@ -318,7 +346,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                         if (subSourceQuery.empty) {
                             await db.collection('lead_sub_sources').add({ clientId, name: incomingSubSource, autoDiscovered: true });
                         }
-                        clientDiscovered.add(cacheKey); // Mark known in RAM
+                        clientDiscovered.add(cacheKey);
                     }
                 }
             }

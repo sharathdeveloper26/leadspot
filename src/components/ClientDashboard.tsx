@@ -1770,7 +1770,7 @@ const handleConnectWhatsApp = () => {
                           <div className="flex-1 w-full">
                             <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Match Value</label>
                             {/* Placeholder changes dynamically based on selection */}
-                            <input type="text" value={newRuleValue} onChange={(e) => setNewRuleValue(e.target.value)} list="dynamic-list" placeholder={newRuleType === 'project' ? "e.g. Candeur Twins" : "e.g. Facebook"} required className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all" />
+                            <input type="text" value={newRuleValue} onChange={(e) => setNewRuleValue(e.target.value)} list="dynamic-list" placeholder={newRuleType === 'project' ? "e.g. Your Project" : "e.g. Facebook"} required className="w-full text-sm font-medium border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all" />
                             <datalist id="dynamic-list">
                               {/* Conditionally render the dropdown items! */}
                               {newRuleType === 'project' 
