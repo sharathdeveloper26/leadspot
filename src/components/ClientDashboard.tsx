@@ -140,7 +140,7 @@ const leads = useMemo(() => {
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const alertedTasks = useRef<Set<string>>(new Set());
 
-  const timeoutRef = useRef<NodeJS.Timeout>();
+ const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     const resetTimer = () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -575,37 +575,46 @@ const uniqueProjects = useMemo(() => {
   useEffect(() => { initFacebookSdk('1263110839094881'); }, []); // Background load to prevent popup blocker
 
   const handleConnectFacebook = async () => {
-    setIsLoadingFb(true);
-    if (window.FB) window.FB.init({ appId: '1439047481212574', cookie: true, xfbml: true, version: 'v20.0' });
-    
-    window.FB.login((response: any) => {
-      if (response.authResponse) {
-        setFbUserToken(response.authResponse.accessToken); 
-        window.FB.api('/me/accounts', (apiResponse: any) => {
-          if (apiResponse && !apiResponse.error) { 
-            const fetchedPages = apiResponse.data || [];
-            setFbPages(fetchedPages); 
-            
-            // ✨ ERROR CATCHER: Tell us if Meta returns 0 pages
-            if (fetchedPages.length === 0) {
-               showDialog('error', 'No Pages Found', 'Meta returned 0 pages. Make sure you selected a page in the popup.');
-            }
+    // ✨ LEVEL 5 MULTI-TENANT FIX: The Pre-Flight Interceptor
+    showDialog(
+      'confirm', 
+      'Adding a New Page?', 
+      'If you have connected to this CRM before, Meta will try to skip the page checklist.\n\n🚨 CRITICAL: When the Facebook popup opens, DO NOT just click "Continue". You MUST click "Edit Settings" (or "Edit previous settings") to check the box for your new page!', 
+      () => {
+        setIsLoadingFb(true);
+        if (window.FB) window.FB.init({ appId: '1439047481212574', cookie: true, xfbml: true, version: 'v20.0' });
+        
+        window.FB.login((response: any) => {
+          if (response.authResponse) {
+            setFbUserToken(response.authResponse.accessToken); 
+            window.FB.api('/me/accounts', (apiResponse: any) => {
+              if (apiResponse && !apiResponse.error) { 
+                const fetchedPages = apiResponse.data || [];
+                setFbPages(fetchedPages); 
+                
+                // ✨ ERROR CATCHER: Tell us if Meta returns 0 pages
+                if (fetchedPages.length === 0) {
+                   showDialog('error', 'No Pages Found', 'Meta returned 0 pages. You forgot to click "Edit Settings" in the popup to check the new page.');
+                } else {
+                   showDialog('success', 'Pages Found', 'Please scroll down to the "Available Pages" section and click Link on the one you want.');
+                }
+              } else { 
+                showDialog('error', 'Facebook API Error', apiResponse?.error?.message || 'Failed to fetch Facebook Pages.'); 
+              }
+              setIsLoadingFb(false);
+            });
           } else { 
-            showDialog('error', 'Facebook API Error', apiResponse?.error?.message || 'Failed to fetch Facebook Pages.'); 
+            setIsLoadingFb(false); 
           }
-          setIsLoadingFb(false);
+        }, 
+        { 
+          // ✨ LEVEL 5 FIX: Includes business_management so the API can see BM-owned pages!
+          scope: 'pages_show_list,pages_manage_metadata,leads_retrieval,business_management', 
+          auth_type: 'reauthenticate', 
+          return_scopes: true 
         });
-      } else { 
-        setIsLoadingFb(false); 
       }
-    }, 
-    
-    { 
-      // ✨ LEVEL 5 FIX: Added business_management back so the API can see BM-owned pages!
-      scope: 'pages_show_list,pages_manage_metadata,leads_retrieval,business_management', 
-      auth_type: 'reauthenticate', 
-      return_scopes: true 
-    });
+    );
   };
 const handleConnectWhatsApp = () => {
     if (!window.FB) { 
@@ -680,10 +689,16 @@ const handleConnectWhatsApp = () => {
     } catch (error: any) { showDialog('error', 'Link Failed', error?.message || 'Failed to securely link the page. Check your Facebook permissions.'); } finally { setIsLinking(false); }
   };
 
-  const handleDisconnectPage = async (pageId: string) => {
+  const handleDisconnectPage = async (integrationDocId: string) => {
     if (!user?.clientId) return;
     showDialog('confirm', 'Disconnect Page', 'Are you sure you want to disconnect this Facebook page?', async () => {
-      try { await deleteDoc(doc(db, 'facebook_integrations', user.clientId)); fetchLinkedPages(); showDialog('success', 'Disconnected', 'Facebook page disconnected.'); } 
+      try { 
+        // ✨ LEVEL 5 FIX: We safely delete the specific integration Document ID!
+        // This makes TypeScript happy AND protects your multi-tenant data.
+        await deleteDoc(doc(db, 'facebook_integrations', integrationDocId)); 
+        fetchLinkedPages(); 
+        showDialog('success', 'Disconnected', 'Facebook page disconnected.'); 
+      } 
       catch (error) { showDialog('error', 'Error', 'Failed to disconnect. Please try again.'); }
     });
   };
@@ -722,8 +737,11 @@ const handleConnectWhatsApp = () => {
     try {
       // Loop through all the leads currently loaded in your dashboard
       for (const lead of leads) {
+        // ✨ LEVEL 5 FIX: Cast to 'any' to bypass TS strictness so we can read the broken DB fields
+        const leadData = lead as any; 
+        
         // Check if the lead is suffering from the "Facebook" name bug
-        if (lead.name === 'Facebook' || lead.firstName === 'Facebook' || lead.name === 'FB Lead' || lead.name.includes('Facebook')) {
+        if (leadData.name === 'Facebook' || leadData.firstName === 'Facebook' || leadData.name === 'FB Lead' || (leadData.name && leadData.name.includes('Facebook'))) {
           let realFirstName = '';
           
           // Dig into the customAnswers to find the real name
