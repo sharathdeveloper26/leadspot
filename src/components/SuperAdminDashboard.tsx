@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, getDocs, updateDoc, doc, deleteDoc, query, where, addDoc, serverTimestamp, getDoc, setDoc, getCountFromServer } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { LayoutDashboard, Users, Database, Settings, LogOut, Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, XCircle, Info, AlertCircle, Building2, Activity, Server, Search, Menu, X, Calendar, Globe, Key, Save, Facebook, MessageCircle, CheckSquare } from 'lucide-react';
+
 interface ClientData {
   id: string;
   name: string;
@@ -20,7 +21,9 @@ interface GlobalSource {
 
 export default function SuperAdminDashboard() {
   const { logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'lead_sources' | 'settings'>('settings');
+  
+  // ✨ LEVEL 5 FIX: Default tab set to 'dashboard' instead of 'settings'
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'lead_sources' | 'settings'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [clients, setClients] = useState<ClientData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,13 +31,15 @@ export default function SuperAdminDashboard() {
 
   // Global Stats
   const [totalAgents, setTotalAgents] = useState(0);
-// ✨ LEVEL 5 FIX: Platform Telemetry State
+
+  // ✨ LEVEL 5 FIX: Platform Telemetry State
   const [telemetry, setTelemetry] = useState({
     totalLeads: 0,
     totalMessages: 0,
     totalTasks: 0,
     totalFbPages: 0
   });
+
   // Global Sources State
   const [globalSources, setGlobalSources] = useState<GlobalSource[]>([]);
   const [newSourceName, setNewSourceName] = useState('');
@@ -81,7 +86,29 @@ export default function SuperAdminDashboard() {
     setDialogState(prev => ({ ...prev, isOpen: false }));
   };
 
-const fetchData = async () => {
+  // ✨ LEVEL 5 SECURITY: 15-Minute Inactivity Auto-Logout ✨
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  useEffect(() => {
+    const resetTimer = () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => { 
+        showDialog('alert', 'Session Expired', 'Your Super Admin session has expired due to 15 minutes of inactivity for security reasons.', undefined, () => { logout(); }); 
+      }, 900000); // 15 minutes
+    };
+    
+    resetTimer();
+    const events = ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'];
+    const handleActivity = () => resetTimer();
+    events.forEach(event => window.addEventListener(event, handleActivity, { passive: true }));
+    
+    return () => { 
+      if (timeoutRef.current) clearTimeout(timeoutRef.current); 
+      events.forEach(event => window.removeEventListener(event, handleActivity)); 
+    };
+  }, [logout]);
+
+  const fetchData = async () => {
     setLoading(true);
     try {
       // 1. Fetch Clients
@@ -121,6 +148,21 @@ const fetchData = async () => {
         setSystemSettings(prev => ({ ...prev, ...settingsDoc.data() }));
       }
 
+      // 5. ✨ LEVEL 5 FIX: Fetch Platform Telemetry inside fetchData!
+      const [leadsCount, msgsCount, tasksCount, fbCount] = await Promise.all([
+        getCountFromServer(collection(db, 'leads')),
+        getCountFromServer(collection(db, 'whatsapp_messages')),
+        getCountFromServer(collection(db, 'reminders')),
+        getCountFromServer(collection(db, 'facebook_integrations'))
+      ]);
+
+      setTelemetry({
+        totalLeads: leadsCount.data().count,
+        totalMessages: msgsCount.data().count,
+        totalTasks: tasksCount.data().count,
+        totalFbPages: fbCount.data().count
+      });
+
     } catch (error: any) {
       console.error("🔥 Detailed Sync Error:", error);
       showDialog('error', 'Sync Error', error.message || 'Failed to synchronize system data. Press F12 to check console.');
@@ -149,21 +191,6 @@ const fetchData = async () => {
       setIsAddClientModalOpen(false);
       await fetchData();
       showDialog('success', 'Workspace Created', `${companyName} has been successfully provisioned.`);
-      // 5. ✨ LEVEL 5 FIX: Enterprise Cloud Aggregation (Bypasses limits, saves $$$)
-      // We use Promise.all to run all 4 counting queries at the exact same time!
-      const [leadsCount, msgsCount, tasksCount, fbCount] = await Promise.all([
-        getCountFromServer(collection(db, 'leads')),
-        getCountFromServer(collection(db, 'whatsapp_messages')),
-        getCountFromServer(collection(db, 'reminders')),
-        getCountFromServer(collection(db, 'facebook_integrations'))
-      ]);
-
-      setTelemetry({
-        totalLeads: leadsCount.data().count,
-        totalMessages: msgsCount.data().count,
-        totalTasks: tasksCount.data().count,
-        totalFbPages: fbCount.data().count
-      });
     } catch (error: any) {
       console.error("Error creating client:", error);
       showDialog('error', 'Provisioning Failed', error.message || "Failed to create client workspace.");
@@ -468,7 +495,7 @@ const fetchData = async () => {
                   </div>
                 </div>
 
-               {/* ✨ LEVEL 5 UI: Platform Throughput Telemetry Grid */}
+                {/* ✨ LEVEL 5 UI: Platform Throughput Telemetry Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-in slide-in-from-bottom-4 duration-500">
                   {/* Total Leads Processed */}
                   <div className="bg-white/80 backdrop-blur-2xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
