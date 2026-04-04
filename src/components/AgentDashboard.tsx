@@ -82,23 +82,54 @@ export default function AgentDashboard() {
     }
   }, []);
 
+// ✨ LEVEL 5 FIX: Auto-Hydrating Lead Fetcher with Strict Gatekeeper
   useEffect(() => {
-    if (!user?.clientId || !user?.uid) return;
-    const q = query(
-      collection(db, 'reminders'),
-      where('clientId', '==', user.clientId),
-      where('agentId', '==', user.uid),
-      where('status', '==', 'Pending')
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const tasks: any[] = [];
-      snap.forEach(doc => tasks.push({ id: doc.id, ...doc.data() }));
-      tasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-      setPendingTasks(tasks);
-    }, (err) => console.error("Task sync error:", err));
-    return () => unsub();
-  }, [user?.clientId, user?.uid]);
+    // 1. CRITICAL: Wait until Firebase definitively loads BOTH the clientId AND the uid!
+    if (!user?.clientId || !user?.uid) return; 
 
+    setLoading(true);
+    
+    // 2. Query exactly what belongs to this specific agent
+    const q = query(
+      collection(db, 'leads'),
+      where('clientId', '==', user.clientId),
+      where('assignedTo', '==', user.uid),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedLeads: Lead[] = [];
+      snapshot.forEach((doc) => fetchedLeads.push({ id: doc.id, ...doc.data() } as Lead));
+      setRealTimeLeads(fetchedLeads);
+
+      if (!isInitialMount.current) {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const newLead = change.doc.data() as Lead;
+            const leadName = `${newLead.firstName} ${newLead.lastName === 'Lead' ? '' : newLead.lastName}`.trim() || 'Someone';
+            setToastData({ show: true, title: "New Lead Assigned!", message: `${leadName} was just assigned to you.`, color: "from-[#74ebd5] to-[#9face6]" });
+            setNotifications(prev => [{ id: change.doc.id + Date.now(), leadId: change.doc.id, title: "New Lead Assigned", message: `${leadName} - ${newLead.projectProperty || 'General Inquiry'}`, time: new Date(), isRead: false }, ...prev].slice(0, 30));
+            setTimeout(() => setToastData(null), 5000);
+          }
+        });
+      }
+      
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+        if (!lastVisibleLead && snapshot.docs.length > 0) {
+          setLastVisibleLead(snapshot.docs[snapshot.docs.length - 1]);
+          setHasMoreLeads(snapshot.docs.length === 50);
+        }
+        setLoading(false);
+      }
+    }, (error) => {
+      console.error("Error in onSnapshot:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user?.clientId, user?.uid]);
   useEffect(() => {
     const checkTasks = () => {
       const now = new Date().getTime();
