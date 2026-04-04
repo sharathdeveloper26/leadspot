@@ -260,6 +260,7 @@ export default function AgentDashboard() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All');
+  const [leadsProjectFilter, setLeadsProjectFilter] = useState('All');
   const [leadsStartDate, setLeadsStartDate] = useState('');
   const [leadsEndDate, setLeadsEndDate] = useState('');
   const [expandedLeads, setExpandedLeads] = useState<string[]>([]);
@@ -269,7 +270,26 @@ export default function AgentDashboard() {
 
   const [leadSources, setLeadSources] = useState<{id: string, name: string}[]>([]);
   const [leadSubSources, setLeadSubSources] = useState<{id: string, name: string}[]>([]);
-
+// ✨ LEVEL 5 FIX: Smart Project Extractor (Finds all unique projects across your leads)
+  const uniqueProjects = useMemo(() => {
+    const projSet = new Set<string>(); 
+    leads.forEach(lead => { 
+      let cleanProjectName = lead.projectProperty;
+      
+      // Look inside form answers just in case Meta buried the project name there
+      if (lead.customAnswers) {
+        const projectKey = Object.keys(lead.customAnswers).find(k => k.toLowerCase().includes('project'));
+        if (projectKey && lead.customAnswers[projectKey]) {
+          cleanProjectName = lead.customAnswers[projectKey];
+        }
+      }
+      
+      if (cleanProjectName && cleanProjectName.trim() !== '') {
+        projSet.add(cleanProjectName.trim()); 
+      }
+    });
+    return Array.from(projSet).sort((a, b) => a.localeCompare(b));
+  }, [leads]);
   const loadMoreLeads = async () => {
     if (!user?.clientId || !lastVisibleLead || loadingMoreLeads || !hasMoreLeads) return;
     setLoadingMoreLeads(true);
@@ -384,6 +404,17 @@ export default function AgentDashboard() {
       if (!fullName.includes(query) && !lead.email?.toLowerCase().includes(query) && !lead.phone?.toLowerCase().includes(query)) matches = false;
     }
     if (leadsViewSourceFilter !== 'All') { if (lead.source !== leadsViewSourceFilter) matches = false; }
+    // ✨ LEVEL 5 FIX: Apply the Project Filter
+    if (leadsProjectFilter !== 'All') {
+      let leadProject = lead.projectProperty;
+      if (lead.customAnswers) {
+        const projectKey = Object.keys(lead.customAnswers).find(k => k.toLowerCase().includes('project'));
+        if (projectKey && lead.customAnswers[projectKey]) {
+          leadProject = lead.customAnswers[projectKey];
+        }
+      }
+      if (leadProject?.trim() !== leadsProjectFilter) matches = false;
+    }
     if (leadsStartDate || leadsEndDate) {
       const leadDate = lead.createdAt ? lead.createdAt.toDate() : new Date();
       leadDate.setHours(0, 0, 0, 0);
@@ -871,6 +902,17 @@ export default function AgentDashboard() {
                     <option value="All">All Sources</option>
                     {leadSources.map(source => (
                       <option key={source.id} value={source.name}>{source.name}</option>
+                    ))}
+                  </select>
+                  {/* ✨ LEVEL 5 FIX: The Dynamic Project Dropdown */}
+                  <select
+                    value={leadsProjectFilter}
+                    onChange={(e) => { setLeadsProjectFilter(e.target.value); setCurrentPage(1); }}
+                    className="text-sm font-medium border border-slate-100 rounded-xl px-4 py-1.5 h-10 text-slate-600 bg-white/80 shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none cursor-pointer max-w-[200px] truncate"
+                  >
+                    <option value="All">All Projects</option>
+                    {uniqueProjects.map(proj => (
+                      <option key={proj} value={proj}>{proj}</option>
                     ))}
                   </select>
                   <div className="flex items-center bg-white/80 border border-slate-100 rounded-xl p-1 h-10 shadow-sm">
