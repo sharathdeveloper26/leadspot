@@ -75,7 +75,31 @@ export default function AgentDashboard() {
   // Task Engine Scanner
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const alertedTasks = useRef<Set<string>>(new Set());
-
+// ✨ LEVEL 5 SECURITY: 15-Minute Inactivity Auto-Logout ✨
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  useEffect(() => {
+    const resetTimer = () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => { 
+        showDialog('alert', 'Session Expired', 'Your session has expired due to 15 minutes of inactivity.', undefined, () => { logout(); }); 
+      }, 900000); // 900000ms = 15 minutes
+    };
+    
+    resetTimer();
+    
+    // Listen for any sign that the user is still at their desk
+    const events = ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'];
+    const handleActivity = () => resetTimer();
+    
+    events.forEach(event => window.addEventListener(event, handleActivity, { passive: true }));
+    
+    // Cleanup listeners when component unmounts
+    return () => { 
+      if (timeoutRef.current) clearTimeout(timeoutRef.current); 
+      events.forEach(event => window.removeEventListener(event, handleActivity)); 
+    };
+  }, [logout]);
   useEffect(() => {
     if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
       Notification.requestPermission();
