@@ -1479,17 +1479,17 @@ const handleConnectWhatsApp = () => {
                                   onClick={() => openLeadDetails(lead)}
                                   className="hover:bg-white/80 transition-all duration-200 cursor-pointer group relative"
                                 >
-                                  {/* ✨ LEVEL 5 Micro-Interaction: Left Accent Bar on Hover */}
-                                  <td className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-[#74ebd5] to-[#9face6] opacity-0 group-hover:opacity-100 transition-opacity rounded-r-full"></td>
-                                  
-                                  <td className="px-6 py-5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                  {/* ✨ LEVEL 5 FIX: Moved the hover accent INSIDE the first cell so it doesn't break the table grid! */}
+                                  <td className="px-6 py-5 whitespace-nowrap relative" onClick={(e) => e.stopPropagation()}>
+                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-[#74ebd5] to-[#9face6] opacity-0 group-hover:opacity-100 transition-opacity rounded-r-full"></div>
                                     <input 
                                       type="checkbox" 
-                                      className="rounded-md border-slate-300 text-[#74ebd5] focus:ring-[#74ebd5] cursor-pointer w-4 h-4"
+                                      className="rounded-md border-slate-300 text-[#74ebd5] focus:ring-[#74ebd5] cursor-pointer w-4 h-4 ml-1"
                                       checked={selectedLeads.includes(lead.id)}
                                       onChange={(e) => handleSelectLead(lead.id, e as any)}
                                     />
                                   </td>
+
                                   <td className="px-6 py-5 whitespace-nowrap" onClick={(e) => toggleExpandLead(lead.id, e)}>
                                     <button className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
                                       {expandedLeads.includes(lead.id) ? (
