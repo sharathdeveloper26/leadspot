@@ -296,7 +296,9 @@ const leads = useMemo(() => {
 
   const [firstName, setFirstName] = useState(''); const [lastName, setLastName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [projectProperty, setProjectProperty] = useState(''); const [status, setStatus] = useState('New'); const [source, setSource] = useState(''); const [subSource, setSubSource] = useState(''); const [assignedTo, setAssignedTo] = useState('');
   const [agentName, setAgentName] = useState(''); const [agentEmail, setAgentEmail] = useState(''); const [agentPassword, setAgentPassword] = useState(''); const [inlineEditingAgentId, setInlineEditingAgentId] = useState<string | null>(null); const [inlineEditingName, setInlineEditingName] = useState('');
-  const [searchQuery, setSearchQuery] = useState(''); const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All'); const [leadsStartDate, setLeadsStartDate] = useState(''); const [leadsEndDate, setLeadsEndDate] = useState('');
+  const [searchQuery, setSearchQuery] = useState(''); const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All'); 
+  const [leadsProjectFilter, setLeadsProjectFilter] = useState('All'); // ✨ LEVEL 5 FIX: Project Filter State
+  const [leadsStartDate, setLeadsStartDate] = useState(''); const [leadsEndDate, setLeadsEndDate] = useState('');
   const [startDate, setStartDate] = useState(''); const [endDate, setEndDate] = useState(''); const [leadSourceFilter, setLeadSourceFilter] = useState('All');
   const [feedbackStartDate, setFeedbackStartDate] = useState(''); const [feedbackEndDate, setFeedbackEndDate] = useState(''); const [feedbackSourceFilter, setFeedbackSourceFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1); const leadsPerPage = 10; const [selectedLeads, setSelectedLeads] = useState<string[]>([]); const [expandedLeads, setExpandedLeads] = useState<string[]>([]);
@@ -882,7 +884,17 @@ const handleConnectWhatsApp = () => {
     if (leadsViewSourceFilter !== 'All') { 
       if (lead.source !== leadsViewSourceFilter) matches = false; 
     }
-    
+    // ✨ LEVEL 5 FIX: Apply the Project Filter safely extracting from both standard and custom fields
+    if (leadsProjectFilter !== 'All') {
+      let leadProject = lead.projectProperty;
+      if (lead.customAnswers) {
+        const projectKey = Object.keys(lead.customAnswers).find(k => k.toLowerCase().includes('project'));
+        if (projectKey && lead.customAnswers[projectKey]) {
+          leadProject = lead.customAnswers[projectKey];
+        }
+      }
+      if (leadProject?.trim() !== leadsProjectFilter) matches = false;
+    }
     if (leadsStartDate || leadsEndDate) {
       const leadDate = lead.createdAt ? lead.createdAt.toDate() : new Date(); 
       leadDate.setHours(0, 0, 0, 0);
@@ -1450,6 +1462,17 @@ const handleConnectWhatsApp = () => {
   setCurrentPage(1); // ✨ LEVEL 5 FIX: Instantly resets to Page 1 so results are never hidden!
 }} className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent w-full outline-none placeholder:font-normal" /></div>
                   <select value={leadsViewSourceFilter} onChange={(e) => setLeadsViewSourceFilter(e.target.value)} className="text-sm font-medium border border-slate-100 rounded-xl px-4 py-1.5 h-10 text-slate-600 bg-white/80 shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none cursor-pointer"><option value="All">All Sources</option>{combinedSources.map(sourceName => <option key={sourceName} value={sourceName}>{sourceName}</option>)}</select>
+                  {/* ✨ LEVEL 5 FIX: The Dynamic Project Dropdown */}
+                  <select
+                    value={leadsProjectFilter}
+                    onChange={(e) => { setLeadsProjectFilter(e.target.value); setCurrentPage(1); }}
+                    className="text-sm font-medium border border-slate-100 rounded-xl px-4 py-1.5 h-10 text-slate-600 bg-white/80 shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none cursor-pointer max-w-[200px] truncate"
+                  >
+                    <option value="All">All Projects</option>
+                    {uniqueProjects.map(proj => (
+                      <option key={proj} value={proj}>{proj}</option>
+                    ))}
+                  </select>
                   <div className="flex items-center bg-white/80 border border-slate-100 rounded-xl p-1 h-10 shadow-sm"><button onClick={() => setViewMode('pipeline')} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition-all h-full ${viewMode === 'pipeline' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}><KanbanSquare className="w-4 h-4" /> Pipeline</button><button onClick={() => setViewMode('table')} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition-all h-full ${viewMode === 'table' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}><List className="w-4 h-4" /> Table</button></div>
                 </div>
                 {loading ? (<div className="p-12 flex justify-center"><div className="w-10 h-10 border-4 border-[#74ebd5]/30 border-t-[#74ebd5] rounded-full animate-spin" /></div>) : leads.length === 0 ? (<div className="bg-white/60 backdrop-blur-xl rounded-3xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)] p-16 text-center flex flex-col items-center"><div className="bg-white p-4 rounded-2xl shadow-sm mb-4"><Users className="w-10 h-10 text-slate-300" /></div><h3 className="text-xl font-bold text-slate-800 mb-2">No leads found</h3><p className="text-slate-500 text-sm max-w-sm">Your pipeline is empty. Get started by adding a new lead manually or checking your integrations.</p></div>) : viewMode === 'table' ? (
