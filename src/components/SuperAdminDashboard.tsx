@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, updateDoc, doc, deleteDoc, query, where, addDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, deleteDoc, query, where, addDoc, serverTimestamp, getDoc, setDoc, getCountFromServer } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -149,17 +149,20 @@ const fetchData = async () => {
       setIsAddClientModalOpen(false);
       await fetchData();
       showDialog('success', 'Workspace Created', `${companyName} has been successfully provisioned.`);
-      // 5. ✨ LEVEL 5 FIX: Fetch Platform Telemetry (Throughput)
-      const leadsSnap = await getDocs(collection(db, 'leads'));
-      const msgsSnap = await getDocs(collection(db, 'whatsapp_messages'));
-      const tasksSnap = await getDocs(collection(db, 'reminders'));
-      const fbSnap = await getDocs(collection(db, 'facebook_integrations'));
+      // 5. ✨ LEVEL 5 FIX: Enterprise Cloud Aggregation (Bypasses limits, saves $$$)
+      // We use Promise.all to run all 4 counting queries at the exact same time!
+      const [leadsCount, msgsCount, tasksCount, fbCount] = await Promise.all([
+        getCountFromServer(collection(db, 'leads')),
+        getCountFromServer(collection(db, 'whatsapp_messages')),
+        getCountFromServer(collection(db, 'reminders')),
+        getCountFromServer(collection(db, 'facebook_integrations'))
+      ]);
 
       setTelemetry({
-        totalLeads: leadsSnap.size,
-        totalMessages: msgsSnap.size,
-        totalTasks: tasksSnap.size,
-        totalFbPages: fbSnap.size
+        totalLeads: leadsCount.data().count,
+        totalMessages: msgsCount.data().count,
+        totalTasks: tasksCount.data().count,
+        totalFbPages: fbCount.data().count
       });
     } catch (error: any) {
       console.error("Error creating client:", error);
