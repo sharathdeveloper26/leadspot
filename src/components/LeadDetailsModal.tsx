@@ -230,29 +230,57 @@ export default function LeadDetailsModal({ lead, isOpen, onClose, onLeadUpdated,
     }
   };
 
+// ✨ LEVEL 5 FIX: Auto-Logging Modal Status Changes
   const handleStatusChange = async (newStatus: string) => {
     try {
-      await updateDoc(doc(db, 'leads', lead.id), { status: newStatus });
-      onLeadUpdated({ ...lead, status: newStatus });
+      const systemNote: LeadNote = {
+        text: `System: Status changed to ${newStatus}`,
+        authorEmail: user?.email || 'System',
+        authorRole: 'System',
+        timestamp: new Date().toISOString()
+      };
+
+      await updateDoc(doc(db, 'leads', lead.id), { 
+        status: newStatus,
+        notes: arrayUnion(systemNote)
+      });
+      
+      onLeadUpdated({ 
+        ...lead, 
+        status: newStatus,
+        notes: [...(lead.notes || []), systemNote]
+      });
     } catch (error) {
       console.error('Error updating status:', error);
     }
   };
 
+  // ✨ LEVEL 5 FIX: Auto-Logging Modal Assignments
   const handleAssignmentChange = async (newAssignedToId: string) => {
     try {
       const assignedUser = (teamMembers || []).find(m => m.id === newAssignedToId);
-      const assignedToName = assignedUser ? assignedUser.name : '';
+      const assignedToName = assignedUser ? assignedUser.name : 'Unassigned';
+      
+      const systemNote: LeadNote = {
+        text: `System: Lead reassigned to ${assignedToName}`,
+        authorEmail: user?.email || 'System',
+        authorRole: 'System',
+        timestamp: new Date().toISOString()
+      };
+
       await updateDoc(doc(db, 'leads', lead.id), { 
         assignedTo: newAssignedToId || null,
         assignedToId: newAssignedToId || null,
-        assignedToName: assignedToName || null
+        assignedToName: assignedToName || null,
+        notes: arrayUnion(systemNote)
       });
+      
       onLeadUpdated({ 
         ...lead, 
         assignedTo: newAssignedToId || undefined,
         assignedToId: newAssignedToId || undefined,
-        assignedToName: assignedToName || undefined
+        assignedToName: assignedToName || undefined,
+        notes: [...(lead.notes || []), systemNote]
       });
     } catch (error) {
       console.error('Error updating assignment:', error);

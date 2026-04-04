@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, onSnapshot, orderBy, limit, startAfter } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, onSnapshot, orderBy, limit, startAfter, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Users, Plus, LogOut, LayoutDashboard, UserCircle2, Mail, Calendar, Phone, Home, X, Search, Zap, List, KanbanSquare, ChevronDown, ChevronUp, Menu, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, AlertCircle, CheckCircle2, Info, XCircle, BellRing, CheckSquare, Check, Globe, Facebook } from 'lucide-react';
@@ -388,11 +388,23 @@ export default function AgentDashboard() {
     } finally { setAddingLead(false); }
   };
 
+ // ✨ LEVEL 5 FIX: Auto-Logging Status Changes (Agent)
   const handleStatusChange = async (leadId: string, newStatus: string) => {
     try {
-      setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus } : lead));
-      setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus } : lead));
-      await updateDoc(doc(db, 'leads', leadId), { status: newStatus });
+      const systemNote = {
+        text: `System: Status changed to ${newStatus}`,
+        authorEmail: user?.email || 'System',
+        authorRole: 'System',
+        timestamp: new Date().toISOString()
+      };
+
+      setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus, notes: [...(lead.notes || []), systemNote] } : lead));
+      setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus, notes: [...(lead.notes || []), systemNote] } : lead));
+      
+      await updateDoc(doc(db, 'leads', leadId), { 
+        status: newStatus,
+        notes: arrayUnion(systemNote)
+      });
     } catch (error) { console.error("Error updating status:", error); }
   };
 
