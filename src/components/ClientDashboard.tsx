@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc, onSnapshot, orderBy, limit, startAfter, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc, onSnapshot, orderBy, limit, startAfter, getDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -842,21 +842,48 @@ const handleConnectWhatsApp = () => {
     });
   };
 
+ // ✨ LEVEL 5 FIX: Auto-Logging Status Changes
   const handleStatusChange = async (leadId: string, newStatus: string) => {
     try {
-      setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus } : lead));
-      setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus } : lead));
-      await updateDoc(doc(db, 'leads', leadId), { status: newStatus });
+      const systemNote = {
+        text: `System: Status changed to ${newStatus}`,
+        authorEmail: user?.email || 'System',
+        authorRole: 'System',
+        timestamp: new Date().toISOString()
+      };
+
+      setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus, notes: [...(lead.notes || []), systemNote] } : lead));
+      setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus, notes: [...(lead.notes || []), systemNote] } : lead));
+      
+      await updateDoc(doc(db, 'leads', leadId), { 
+        status: newStatus,
+        notes: arrayUnion(systemNote)
+      });
     } catch (error) { console.error("Error updating status:", error); }
   };
 
+  // ✨ LEVEL 5 FIX: Auto-Logging Lead Assignments
   const handleAssignLead = async (leadId: string, agentId: string) => {
     try {
       const assignedUser = teamMembers.find(m => m.id === agentId);
-      const assignedToName = assignedUser ? assignedUser.name : '';
-      setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, assignedTo: agentId, assignedToId: agentId, assignedToName: assignedToName } : lead));
-      setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, assignedTo: agentId, assignedToId: agentId, assignedToName: assignedToName } : lead));
-      await updateDoc(doc(db, 'leads', leadId), { assignedTo: agentId, assignedToId: agentId, assignedToName: assignedToName });
+      const assignedToName = assignedUser ? assignedUser.name : 'Unassigned';
+      
+      const systemNote = {
+        text: `System: Lead assigned to ${assignedToName}`,
+        authorEmail: user?.email || 'System',
+        authorRole: 'System',
+        timestamp: new Date().toISOString()
+      };
+
+      setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, assignedTo: agentId, assignedToId: agentId, assignedToName: assignedToName, notes: [...(lead.notes || []), systemNote] } : lead));
+      setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, assignedTo: agentId, assignedToId: agentId, assignedToName: assignedToName, notes: [...(lead.notes || []), systemNote] } : lead));
+      
+      await updateDoc(doc(db, 'leads', leadId), { 
+        assignedTo: agentId, 
+        assignedToId: agentId, 
+        assignedToName: assignedToName,
+        notes: arrayUnion(systemNote)
+      });
     } catch (error) { console.error("Error assigning lead:", error); }
   };
 
