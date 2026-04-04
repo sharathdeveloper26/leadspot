@@ -860,18 +860,40 @@ const handleConnectWhatsApp = () => {
 
   const handleCopy = () => { navigator.clipboard.writeText(webhookUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); };
 
+// ✨ LEVEL 5 FIX: Bulletproof Search Engine
   const filteredLeadsView = leads.filter(lead => {
     let matches = true;
+    
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const fullName = `${lead.firstName} ${lead.lastName}`.toLowerCase();
-      if (!fullName.includes(query) && !lead.email?.toLowerCase().includes(query) && !lead.phone?.toLowerCase().includes(query)) matches = false;
+      const query = searchQuery.toLowerCase().trim();
+      
+      // Safely handle nulls and force everything to String to prevent fatal TypeErrors!
+      const safeFirstName = (lead.firstName || '').toLowerCase();
+      const safeLastName = (lead.lastName === 'Lead' ? '' : (lead.lastName || '')).toLowerCase();
+      const safeFullName = `${safeFirstName} ${safeLastName}`.trim();
+      const safeEmail = String(lead.email || '').toLowerCase();
+      const safePhone = String(lead.phone || '').toLowerCase();
+      
+      if (!safeFullName.includes(query) && !safeEmail.includes(query) && !safePhone.includes(query)) {
+        matches = false;
+      }
     }
-    if (leadsViewSourceFilter !== 'All') { if (lead.source !== leadsViewSourceFilter) matches = false; }
+    
+    if (leadsViewSourceFilter !== 'All') { 
+      if (lead.source !== leadsViewSourceFilter) matches = false; 
+    }
+    
     if (leadsStartDate || leadsEndDate) {
-      const leadDate = lead.createdAt ? lead.createdAt.toDate() : new Date(); leadDate.setHours(0, 0, 0, 0);
-      if (leadsStartDate) { const start = new Date(leadsStartDate); start.setHours(0, 0, 0, 0); if (leadDate < start) matches = false; }
-      if (leadsEndDate) { const end = new Date(leadsEndDate); end.setHours(23, 59, 59, 999); if (leadDate > end) matches = false; }
+      const leadDate = lead.createdAt ? lead.createdAt.toDate() : new Date(); 
+      leadDate.setHours(0, 0, 0, 0);
+      if (leadsStartDate) { 
+        const start = new Date(leadsStartDate); start.setHours(0, 0, 0, 0); 
+        if (leadDate < start) matches = false; 
+      }
+      if (leadsEndDate) { 
+        const end = new Date(leadsEndDate); end.setHours(23, 59, 59, 999); 
+        if (leadDate > end) matches = false; 
+      }
     }
     return matches;
   });
@@ -1412,7 +1434,10 @@ const handleConnectWhatsApp = () => {
                 </div>
                 <div className="flex flex-wrap items-center gap-4 bg-white/60 backdrop-blur-xl p-3 rounded-2xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)] mb-8 shrink-0">
                   <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-3 py-1.5 h-10 shadow-sm"><input type="date" value={leadsStartDate} max={leadsEndDate || undefined} onChange={(e) => { setLeadsStartDate(e.target.value); if (leadsEndDate && e.target.value > leadsEndDate) { setLeadsEndDate(e.target.value); } }} className="text-sm font-medium border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer" /><span className="text-slate-300 text-sm font-light">|</span><input type="date" value={leadsEndDate} min={leadsStartDate || undefined} onChange={(e) => { setLeadsEndDate(e.target.value); if (leadsStartDate && e.target.value < leadsStartDate) { setLeadsStartDate(e.target.value); } }} className="text-sm font-medium border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer" />{(leadsStartDate || leadsEndDate) && <button onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); }} className="ml-2 text-xs font-bold text-slate-500 hover:text-red-600 bg-slate-100 hover:bg-red-50 px-2.5 py-1 rounded-lg transition-colors">Clear</button>}</div>
-                  <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-4 py-1.5 h-10 flex-1 min-w-[200px] shadow-sm focus-within:ring-2 focus-within:ring-[#74ebd5]/30 transition-all"><Search className="w-4 h-4 text-slate-400 shrink-0" /><input type="text" placeholder="Search by name, email, or phone..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent w-full outline-none placeholder:font-normal" /></div>
+                  <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-4 py-1.5 h-10 flex-1 min-w-[200px] shadow-sm focus-within:ring-2 focus-within:ring-[#74ebd5]/30 transition-all"><Search className="w-4 h-4 text-slate-400 shrink-0" /><input type="text" placeholder="Search by name, email, or phone..." value={searchQuery} onChange={(e) => { 
+  setSearchQuery(e.target.value); 
+  setCurrentPage(1); // ✨ LEVEL 5 FIX: Instantly resets to Page 1 so results are never hidden!
+}} className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent w-full outline-none placeholder:font-normal" /></div>
                   <select value={leadsViewSourceFilter} onChange={(e) => setLeadsViewSourceFilter(e.target.value)} className="text-sm font-medium border border-slate-100 rounded-xl px-4 py-1.5 h-10 text-slate-600 bg-white/80 shadow-sm focus:ring-2 focus:ring-[#74ebd5]/30 outline-none cursor-pointer"><option value="All">All Sources</option>{combinedSources.map(sourceName => <option key={sourceName} value={sourceName}>{sourceName}</option>)}</select>
                   <div className="flex items-center bg-white/80 border border-slate-100 rounded-xl p-1 h-10 shadow-sm"><button onClick={() => setViewMode('pipeline')} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition-all h-full ${viewMode === 'pipeline' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}><KanbanSquare className="w-4 h-4" /> Pipeline</button><button onClick={() => setViewMode('table')} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition-all h-full ${viewMode === 'table' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}><List className="w-4 h-4" /> Table</button></div>
                 </div>
