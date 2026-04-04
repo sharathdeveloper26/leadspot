@@ -3,8 +3,7 @@ import { collection, getDocs, updateDoc, doc, deleteDoc, query, where, addDoc, s
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { LayoutDashboard, Users, Database, Settings, LogOut, Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, XCircle, Info, AlertCircle, Building2, Activity, Server, Search, Menu, X, Calendar, Globe, Key, Save, Facebook } from 'lucide-react';
-
+import { LayoutDashboard, Users, Database, Settings, LogOut, Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, XCircle, Info, AlertCircle, Building2, Activity, Server, Search, Menu, X, Calendar, Globe, Key, Save, Facebook, MessageCircle, CheckSquare } from 'lucide-react';
 interface ClientData {
   id: string;
   name: string;
@@ -29,7 +28,13 @@ export default function SuperAdminDashboard() {
 
   // Global Stats
   const [totalAgents, setTotalAgents] = useState(0);
-
+// ✨ LEVEL 5 FIX: Platform Telemetry State
+  const [telemetry, setTelemetry] = useState({
+    totalLeads: 0,
+    totalMessages: 0,
+    totalTasks: 0,
+    totalFbPages: 0
+  });
   // Global Sources State
   const [globalSources, setGlobalSources] = useState<GlobalSource[]>([]);
   const [newSourceName, setNewSourceName] = useState('');
@@ -144,6 +149,18 @@ const fetchData = async () => {
       setIsAddClientModalOpen(false);
       await fetchData();
       showDialog('success', 'Workspace Created', `${companyName} has been successfully provisioned.`);
+      // 5. ✨ LEVEL 5 FIX: Fetch Platform Telemetry (Throughput)
+      const leadsSnap = await getDocs(collection(db, 'leads'));
+      const msgsSnap = await getDocs(collection(db, 'whatsapp_messages'));
+      const tasksSnap = await getDocs(collection(db, 'reminders'));
+      const fbSnap = await getDocs(collection(db, 'facebook_integrations'));
+
+      setTelemetry({
+        totalLeads: leadsSnap.size,
+        totalMessages: msgsSnap.size,
+        totalTasks: tasksSnap.size,
+        totalFbPages: fbSnap.size
+      });
     } catch (error: any) {
       console.error("Error creating client:", error);
       showDialog('error', 'Provisioning Failed', error.message || "Failed to create client workspace.");
@@ -448,10 +465,63 @@ const fetchData = async () => {
                   </div>
                 </div>
 
-                <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden p-8 text-center">
-                  <Server className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-bold text-slate-800">More Telemetry Coming Soon</h3>
-                  <p className="text-sm text-slate-500 max-w-sm mx-auto mt-2">Future updates will include global MRR, storage usage, API limits, and cross-client lead volume analytics.</p>
+               {/* ✨ LEVEL 5 UI: Platform Throughput Telemetry Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-in slide-in-from-bottom-4 duration-500">
+                  {/* Total Leads Processed */}
+                  <div className="bg-white/80 backdrop-blur-2xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Leads Processed</h3>
+                      <div className="p-2.5 bg-blue-50 rounded-xl text-blue-500 shadow-inner">
+                        <Users className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="flex items-end gap-3">
+                      <p className="text-4xl font-black text-slate-800">{telemetry.totalLeads.toLocaleString()}</p>
+                    </div>
+                    <div className="mt-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">All Workspaces</div>
+                  </div>
+
+                  {/* Total WhatsApp Messages */}
+                  <div className="bg-white/80 backdrop-blur-2xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Messages Sent</h3>
+                      <div className="p-2.5 bg-[#25D366]/10 rounded-xl text-[#25D366] shadow-inner">
+                        <MessageCircle className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="flex items-end gap-3">
+                      <p className="text-4xl font-black text-slate-800">{telemetry.totalMessages.toLocaleString()}</p>
+                    </div>
+                    <div className="mt-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">API Throughput</div>
+                  </div>
+
+                  {/* Connected FB Pages */}
+                  <div className="bg-white/80 backdrop-blur-2xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Ad Links</h3>
+                      <div className="p-2.5 bg-[#1877F2]/10 rounded-xl text-[#1877F2] shadow-inner">
+                        <Facebook className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="flex items-end gap-3">
+                      <p className="text-4xl font-black text-slate-800">{telemetry.totalFbPages.toLocaleString()}</p>
+                    </div>
+                    <div className="mt-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pages Synced</div>
+                  </div>
+
+                  {/* Tasks Generated */}
+                  <div className="bg-white/80 backdrop-blur-2xl p-6 rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Agent Tasks</h3>
+                      <div className="p-2.5 bg-amber-50 rounded-xl text-amber-500 shadow-inner">
+                        <CheckSquare className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="flex items-end gap-3">
+                      <p className="text-4xl font-black text-slate-800">{telemetry.totalTasks.toLocaleString()}</p>
+                    </div>
+                    <div className="mt-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">System Automation</div>
+                  </div>
                 </div>
               </div>
 
