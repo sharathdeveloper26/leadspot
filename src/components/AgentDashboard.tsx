@@ -910,7 +910,7 @@ export default function AgentDashboard() {
                 ) : viewMode === 'table' ? (
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden shrink-0">
                     <div className="overflow-x-auto max-h-[calc(100vh-320px)] custom-scrollbar">
-                      <table className="w-full text-left border-collapse relative">
+                     <table className="w-full text-left border-collapse relative">
                         <thead className="sticky top-0 z-10 bg-slate-100/80 backdrop-blur-xl shadow-sm">
                           <tr className="text-xs uppercase tracking-wider text-slate-500 font-bold border-b border-slate-200/60">
                             <th className="px-6 py-4 w-10">
@@ -931,7 +931,7 @@ export default function AgentDashboard() {
                             <th className="px-6 py-4">Project</th>
                           </tr>
                         </thead>
-                       <tbody className="divide-y divide-slate-100/60 bg-transparent">
+                        <tbody className="divide-y divide-slate-100/60 bg-transparent">
                           {paginatedLeads.map((lead) => {
                             // ✨ Extract initials and colors
                             const leadInitials = (lead.firstName.charAt(0) + (lead.lastName === 'Lead' ? '' : lead.lastName.charAt(0) || '')).toUpperCase() || 'L';
@@ -943,17 +943,17 @@ export default function AgentDashboard() {
                                   onClick={() => openLeadDetails(lead)}
                                   className="hover:bg-white/80 transition-all duration-200 cursor-pointer group relative"
                                 >
-                                  {/* ✨ LEVEL 5 Micro-Interaction: Left Accent Bar on Hover */}
-                                  <td className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-[#74ebd5] to-[#9face6] opacity-0 group-hover:opacity-100 transition-opacity rounded-r-full"></td>
-                                  
-                                  <td className="px-6 py-5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                  {/* ✨ LEVEL 5 FIX: Moved the hover accent INSIDE the first cell so it doesn't break the table grid! */}
+                                  <td className="px-6 py-5 whitespace-nowrap relative" onClick={(e) => e.stopPropagation()}>
+                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-[#74ebd5] to-[#9face6] opacity-0 group-hover:opacity-100 transition-opacity rounded-r-full"></div>
                                     <input 
                                       type="checkbox" 
-                                      className="rounded-md border-slate-300 text-[#74ebd5] focus:ring-[#74ebd5] cursor-pointer w-4 h-4"
+                                      className="rounded-md border-slate-300 text-[#74ebd5] focus:ring-[#74ebd5] cursor-pointer w-4 h-4 ml-1"
                                       checked={selectedLeads.includes(lead.id)}
                                       onChange={(e) => handleSelectLead(lead.id, e as any)}
                                     />
                                   </td>
+                                  
                                   <td className="px-6 py-5 whitespace-nowrap" onClick={(e) => toggleExpandLead(lead.id, e)}>
                                     <button className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
                                       {expandedLeads.includes(lead.id) ? (
@@ -963,6 +963,7 @@ export default function AgentDashboard() {
                                       )}
                                     </button>
                                   </td>
+                                  
                                   <td className="px-6 py-5 whitespace-nowrap text-sm font-medium text-slate-500 group-hover:text-slate-700 transition-colors">
                                     {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}
                                   </td>
@@ -999,9 +1000,11 @@ export default function AgentDashboard() {
                                       )}
                                     </div>
                                   </td>
+                                  
                                   <td className="px-6 py-5 whitespace-nowrap">
                                     {getSourceBadge(lead.source, lead.subSource)}
                                   </td>
+                                  
                                   <td className="px-6 py-5 whitespace-nowrap">
                                     <div className="flex flex-wrap gap-1.5 max-w-[160px]">
                                       {lead.tags?.map(tag => (
@@ -1011,11 +1014,13 @@ export default function AgentDashboard() {
                                       ))}
                                     </div>
                                   </td>
+                                  
                                   <td className="px-6 py-5 whitespace-nowrap">
                                     <span className={`inline-flex items-center px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-black border shadow-sm ${colStyle.bg} ${colStyle.text} ${colStyle.border}`}>
                                       {lead.status}
                                     </span>
                                   </td>
+                                  
                                   <td className="px-6 py-5 whitespace-nowrap">
                                     <div className="flex items-center gap-2 text-slate-600 text-sm font-medium group-hover:text-slate-900 transition-colors">
                                       <div className="p-1.5 bg-slate-50 rounded-lg group-hover:bg-[#74ebd5]/10 transition-colors">
