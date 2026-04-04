@@ -1467,41 +1467,192 @@ const handleConnectWhatsApp = () => {
                     <div className="overflow-x-auto max-h-[calc(100vh-320px)] custom-scrollbar">
                       <table className="w-full text-left border-collapse relative">
                         <thead className="sticky top-0 z-10 bg-slate-100/80 backdrop-blur-xl shadow-sm"><tr className="text-xs uppercase tracking-wider text-slate-500 font-bold border-b border-slate-200/60"><th className="px-6 py-4 w-10"><input type="checkbox" className="rounded-md border-slate-300 text-[#74ebd5] focus:ring-[#74ebd5] cursor-pointer w-4 h-4" checked={paginatedLeads.length > 0 && selectedLeads.length === paginatedLeads.length} onChange={handleSelectAll} /></th><th className="px-6 py-4 w-10"></th><th className="px-6 py-4">Date</th><th className="px-6 py-4">Name</th><th className="px-6 py-4">Contact</th><th className="px-6 py-4">Source</th><th className="px-6 py-4">Tags</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Project</th><th className="px-6 py-4">Assignee</th></tr></thead>
-                        <tbody className="divide-y divide-slate-100/60 bg-transparent">
-                          {paginatedLeads.map((lead) => (
-                            <React.Fragment key={lead.id}>
-                              <tr onClick={() => openLeadDetails(lead)} className="hover:bg-white/60 transition-colors cursor-pointer group">
-                                <td className="px-6 py-5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}><input type="checkbox" className="rounded-md border-slate-300 text-[#74ebd5] focus:ring-[#74ebd5] cursor-pointer w-4 h-4" checked={selectedLeads.includes(lead.id)} onChange={(e) => handleSelectLead(lead.id, e as any)} /></td>
-                                <td className="px-6 py-5 whitespace-nowrap" onClick={(e) => toggleExpandLead(lead.id, e)}><button className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">{expandedLeads.includes(lead.id) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}</button></td>
-                                <td className="px-6 py-5 whitespace-nowrap text-sm font-medium text-slate-500">{lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}</td>
-                                <td className="px-6 py-5 whitespace-nowrap"><div className="font-bold text-slate-800">{lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}{lead.isDuplicate && <span className="ml-2.5 inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold bg-red-100 text-red-700 uppercase tracking-widest">Duplicate</span>}</div></td>
-                                <td className="px-6 py-5 whitespace-nowrap"><div className="flex flex-col gap-1 text-sm text-slate-600 font-medium"><div className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-slate-400" />{lead.phone || '-'}</div>{lead.email && <div className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-slate-400" />{lead.email}</div>}</div></td>
-                                <td className="px-6 py-5 whitespace-nowrap">{getSourceBadge(lead.source, lead.subSource)}</td>
-                                <td className="px-6 py-5 whitespace-nowrap"><div className="flex flex-wrap gap-1.5 max-w-[160px]">{lead.tags?.map(tag => <span key={tag} className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white text-slate-600 border border-slate-200 shadow-sm uppercase tracking-wider">{tag}</span>)}</div></td>
-                                <td className="px-6 py-5 whitespace-nowrap"><span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold border ${getStatusBadgeClass(lead.status)}`}>{lead.status}</span></td>
-                                <td className="px-6 py-5 whitespace-nowrap"><div className="flex items-center gap-2 text-slate-700 text-sm font-medium"><Home className="w-4 h-4 text-slate-400" />{lead.projectProperty || '-'}</div></td>
-                                <td className="px-6 py-5 whitespace-nowrap">{user?.role === 'client_admin' ? <select value={lead.assignedToId || lead.assignedTo || ''} onChange={(e) => { e.stopPropagation(); handleAssignLead(lead.id, e.target.value); }} onClick={(e) => e.stopPropagation()} className="text-sm font-medium bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-slate-700 focus:ring-2 focus:ring-[#74ebd5]/30 outline-none shadow-sm cursor-pointer"><option value="">Unassigned</option>{teamMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select> : <span className="text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl">{lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned'}</span>}</td>
-                              </tr>
-                              {expandedLeads.includes(lead.id) && (
-                                <tr className="bg-slate-50/50 backdrop-blur-sm border-b border-slate-200/50">
-                                  <td colSpan={10} className="px-6 py-5">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 text-sm bg-white/60 p-4 rounded-xl border border-white">
-                                      {(lead.designation && lead.designation !== "Unknown") && <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Designation</span><span className="text-slate-700 font-medium flex items-center gap-1.5">💼 {lead.designation}</span></div>}
-                                      {(lead.location && lead.location !== "Unknown") && <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Location</span><span className="text-slate-700 font-medium flex items-center gap-1.5">📍 {lead.location}</span></div>}
-                                      {lead.linkedin && <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">LinkedIn</span><a href={lead.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline text-xs font-bold flex items-center gap-1">🔗 View Profile</a></div>}
-                                      {(lead.truecallerName && lead.truecallerName !== "Unknown") && <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Truecaller Record</span><span className="text-blue-700 font-bold bg-blue-100 px-2 py-0.5 rounded flex items-center gap-1.5 w-fit"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/><path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/></svg>{lead.truecallerName}</span></div>}
-                                      {lead.adName && <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ad Name</span><span className="text-slate-700 font-medium">{lead.adName}</span></div>}
-                                      {lead.campaignName && <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Campaign Name</span><span className="text-slate-700 font-medium">{lead.campaignName}</span></div>}
-                                      {lead.formId && <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Form ID</span><span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.formId}</span></div>}
-                                      {lead.adId && <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ad ID</span><span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.adId}</span></div>}
-                                      {lead.campaignId && <div><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Campaign ID</span><span className="text-slate-700 font-mono text-xs bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm">{lead.campaignId}</span></div>}
-                                      {!lead.designation && !lead.adName && !lead.formId && !lead.campaignId && !lead.adId && !lead.truecallerName && <div className="col-span-4 text-slate-400 font-medium italic text-xs py-2">No extended marketing or enrichment data available for this lead.</div>}
+                      <tbody className="divide-y divide-slate-100/60 bg-transparent">
+                          {paginatedLeads.map((lead) => {
+                            // Extract initials and color styles just like the Kanban board!
+                            const leadInitials = (lead.firstName.charAt(0) + (lead.lastName === 'Lead' ? '' : lead.lastName.charAt(0) || '')).toUpperCase() || 'L';
+                            const colStyle = COLUMN_STYLES[lead.status] || COLUMN_STYLES['New'];
+
+                            return (
+                              <React.Fragment key={lead.id}>
+                                <tr 
+                                  onClick={() => openLeadDetails(lead)}
+                                  className="hover:bg-white/80 transition-all duration-200 cursor-pointer group relative"
+                                >
+                                  {/* ✨ LEVEL 5 Micro-Interaction: Left Accent Bar on Hover */}
+                                  <td className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-[#74ebd5] to-[#9face6] opacity-0 group-hover:opacity-100 transition-opacity rounded-r-full"></td>
+                                  
+                                  <td className="px-6 py-5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                    <input 
+                                      type="checkbox" 
+                                      className="rounded-md border-slate-300 text-[#74ebd5] focus:ring-[#74ebd5] cursor-pointer w-4 h-4"
+                                      checked={selectedLeads.includes(lead.id)}
+                                      onChange={(e) => handleSelectLead(lead.id, e as any)}
+                                    />
+                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap" onClick={(e) => toggleExpandLead(lead.id, e)}>
+                                    <button className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
+                                      {expandedLeads.includes(lead.id) ? (
+                                        <ChevronUp className="w-4 h-4" />
+                                      ) : (
+                                        <ChevronDown className="w-4 h-4" />
+                                      )}
+                                    </button>
+                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap text-sm font-medium text-slate-500 group-hover:text-slate-700 transition-colors">
+                                    {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}
+                                  </td>
+                                  
+                                  {/* ✨ LEVEL 5 FIX: Avatar & Typography Hierarchy */}
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    <div className="flex items-center gap-3">
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 border shadow-sm ${colStyle.bg} ${colStyle.text} ${colStyle.border}`}>
+                                        {leadInitials}
+                                      </div>
+                                      <div className="flex flex-col">
+                                        <span className="font-extrabold text-slate-800 text-sm group-hover:text-[#50bdaf] transition-colors">
+                                          {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
+                                        </span>
+                                        {lead.isDuplicate && (
+                                          <span className="w-fit mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-50 text-rose-600 border border-rose-100 uppercase tracking-widest shadow-sm">
+                                            Duplicate
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   </td>
+                                  
+                                  {/* ✨ LEVEL 5 FIX: Icon Hover Glows */}
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    <div className="flex flex-col gap-1.5 text-xs text-slate-500 font-medium">
+                                      <div className="flex items-center gap-2 group-hover:text-slate-700 transition-colors">
+                                        <Phone className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#50bdaf] transition-colors" />{lead.phone || '-'}
+                                      </div>
+                                      {lead.email && (
+                                        <div className="flex items-center gap-2 group-hover:text-slate-700 transition-colors">
+                                          <Mail className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#50bdaf] transition-colors" />{lead.email}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    {getSourceBadge(lead.source, lead.subSource)}
+                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    <div className="flex flex-wrap gap-1.5 max-w-[160px]">
+                                      {lead.tags?.map(tag => (
+                                        <span key={tag} className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-50 text-slate-600 border border-slate-200 shadow-sm uppercase tracking-wider group-hover:bg-white transition-colors">
+                                          {tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    <span className={`inline-flex items-center px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-black border shadow-sm ${colStyle.bg} ${colStyle.text} ${colStyle.border}`}>
+                                      {lead.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    <div className="flex items-center gap-2 text-slate-600 text-sm font-medium group-hover:text-slate-900 transition-colors">
+                                      <div className="p-1.5 bg-slate-50 rounded-lg group-hover:bg-[#74ebd5]/10 transition-colors">
+                                        <Home className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#50bdaf] transition-colors" />
+                                      </div>
+                                      {lead.projectProperty || '-'}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    {user?.role === 'client_admin' ? (
+                                      <select 
+                                        value={lead.assignedToId || lead.assignedTo || ''} 
+                                        onChange={(e) => { e.stopPropagation(); handleAssignLead(lead.id, e.target.value); }} 
+                                        onClick={(e) => e.stopPropagation()} 
+                                        className="text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-[#74ebd5]/30 outline-none shadow-sm cursor-pointer group-hover:bg-white transition-colors"
+                                      >
+                                        <option value="">Unassigned</option>
+                                        {teamMembers.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
+                                      </select>
+                                    ) : (
+                                      <span className="text-xs font-bold text-slate-600 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl shadow-sm">
+                                        {lead.assignedToName || teamMembers.find(m => m.id === (lead.assignedToId || lead.assignedTo))?.name || 'Unassigned'}
+                                      </span>
+                                    )}
+                                  </td>
                                 </tr>
-                              )}
-                            </React.Fragment>
-                          ))}
+                                
+                                {/* Expanded Row Content */}
+                                {expandedLeads.includes(lead.id) && (
+                                  <tr className="bg-slate-50/80 backdrop-blur-sm border-b border-slate-200/50 shadow-inner">
+                                    <td colSpan={10} className="px-6 py-5">
+                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 text-sm bg-white/80 p-5 rounded-2xl border border-white shadow-sm">
+                                        {(lead.designation && lead.designation !== "Unknown") && (
+                                          <div>
+                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Designation</span>
+                                            <span className="text-slate-700 font-bold flex items-center gap-1.5">💼 {lead.designation}</span>
+                                          </div>
+                                        )}
+                                        {(lead.location && lead.location !== "Unknown") && (
+                                          <div>
+                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Location</span>
+                                            <span className="text-slate-700 font-bold flex items-center gap-1.5">📍 {lead.location}</span>
+                                          </div>
+                                        )}
+                                        {lead.linkedin && (
+                                          <div>
+                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">LinkedIn</span>
+                                            <a href={lead.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline text-xs font-black flex items-center gap-1">🔗 View Profile</a>
+                                          </div>
+                                        )}
+                                        {(lead.truecallerName && lead.truecallerName !== "Unknown") && (
+                                          <div>
+                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Truecaller Record</span>
+                                            <span className="text-blue-700 font-black bg-blue-50 border border-blue-100 shadow-sm px-2.5 py-1 rounded-lg flex items-center gap-1.5 w-fit">
+                                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/><path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/></svg>
+                                              {lead.truecallerName}
+                                            </span>
+                                          </div>
+                                        )}
+                                        {lead.adName && (
+                                          <div>
+                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Ad Name</span>
+                                            <span className="text-slate-700 font-bold">{lead.adName}</span>
+                                          </div>
+                                        )}
+                                        {lead.campaignName && (
+                                          <div>
+                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Campaign Name</span>
+                                            <span className="text-slate-700 font-bold">{lead.campaignName}</span>
+                                          </div>
+                                        )}
+                                        {lead.formId && (
+                                          <div>
+                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Form ID</span>
+                                            <span className="text-slate-600 font-mono text-[10px] bg-slate-100 px-2 py-1 rounded-md border border-slate-200 shadow-sm break-all">{lead.formId}</span>
+                                          </div>
+                                        )}
+                                        {lead.adId && (
+                                          <div>
+                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Ad ID</span>
+                                            <span className="text-slate-600 font-mono text-[10px] bg-slate-100 px-2 py-1 rounded-md border border-slate-200 shadow-sm break-all">{lead.adId}</span>
+                                          </div>
+                                        )}
+                                        {lead.campaignId && (
+                                          <div>
+                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Campaign ID</span>
+                                            <span className="text-slate-600 font-mono text-[10px] bg-slate-100 px-2 py-1 rounded-md border border-slate-200 shadow-sm break-all">{lead.campaignId}</span>
+                                          </div>
+                                        )}
+                                        {!lead.designation && !lead.adName && !lead.formId && !lead.campaignId && !lead.adId && !lead.truecallerName && (
+                                          <div className="col-span-4 text-slate-400 font-medium italic text-xs py-2 flex items-center justify-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                                            No extended marketing or enrichment data available for this lead.
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
