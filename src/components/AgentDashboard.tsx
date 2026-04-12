@@ -27,13 +27,23 @@ export default function AgentDashboard() {
 
   useEffect(() => {
     if (!user?.clientId) return;
-    const unsubStatus = onSnapshot(doc(db, 'clients', user.clientId), (docSnap) => {
-      if (docSnap.exists()) {
-        setWorkspaceStatus(docSnap.data().status || 'ACTIVE');
+    
+    const unsubStatus = onSnapshot(doc(db, 'clients', user.clientId), 
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setWorkspaceStatus(docSnap.data().status || 'ACTIVE');
+        }
+      },
+      (error) => {
+        // ✨ LEVEL 5 FIX: If Firebase actively denies permission to read the status, 
+        // aggressively lock the gates to protect the system.
+        console.error("Status check blocked by Firebase:", error);
+        setWorkspaceStatus('SUSPENDED'); 
       }
-    });
+    );
+    
     return () => unsubStatus();
-  }, [user?.clientId])
+  }, [user?.clientId]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leads'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('pipeline');

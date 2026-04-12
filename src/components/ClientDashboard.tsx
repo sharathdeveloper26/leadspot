@@ -21,18 +21,26 @@ const normalizePhone = (phone?: string) => {
 
 export default function ClientDashboard() {
   const { user, logout } = useAuth(); 
-  // ✨ LEVEL 5 SECURITY: Real-Time Workspace Status Monitor
+  /// ✨ LEVEL 5 SECURITY: Real-Time Workspace Status Monitor
   const [workspaceStatus, setWorkspaceStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'LOADING'>('LOADING');
 
   useEffect(() => {
     if (!user?.clientId) return;
-    // This listener watches the client document in real-time. 
-    // If the Super Admin toggles it, this updates instantly.
-    const unsubStatus = onSnapshot(doc(db, 'clients', user.clientId), (docSnap) => {
-      if (docSnap.exists()) {
-        setWorkspaceStatus(docSnap.data().status || 'ACTIVE');
+    
+    const unsubStatus = onSnapshot(doc(db, 'clients', user.clientId), 
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setWorkspaceStatus(docSnap.data().status || 'ACTIVE');
+        }
+      },
+      (error) => {
+        // ✨ LEVEL 5 FIX: If Firebase actively denies permission to read the status, 
+        // aggressively lock the gates to protect the system.
+        console.error("Status check blocked by Firebase:", error);
+        setWorkspaceStatus('SUSPENDED'); 
       }
-    });
+    );
+    
     return () => unsubStatus();
   }, [user?.clientId]);
   const [greeting, setGreeting] = useState({ text: 'Welcome back', emoji: '👋' });
