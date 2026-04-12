@@ -610,18 +610,25 @@ export default function SuperAdminDashboard() {
                                 {client.subscriptionPlan || 'BASIC'}
                               </span>
                             </td>
+                            {/* ✨ LEVEL 5 FIX: Enterprise Status Toggle Switch */}
                             <td className="px-6 py-5 whitespace-nowrap">
-                              <button
-                                onClick={() => toggleClientStatus(client.id, client.status)}
-                                className={`inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold shadow-sm uppercase tracking-widest transition-colors ${
-                                  client.status === 'ACTIVE' 
-                                    ? 'bg-[#74ebd5]/20 text-[#4cb8a5] hover:bg-red-50 hover:text-red-600' 
-                                    : 'bg-slate-200 text-slate-600 hover:bg-[#74ebd5]/20 hover:text-[#4cb8a5]'
-                                }`}
-                                title={client.status === 'ACTIVE' ? "Click to Suspend" : "Click to Activate"}
-                              >
-                                {client.status}
-                              </button>
+                              <div className="flex items-center gap-3">
+                                <button
+                                  onClick={() => toggleClientStatus(client.id, client.status)}
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none shadow-inner cursor-pointer ${
+                                    client.status === 'ACTIVE' ? 'bg-[#4cb8a5]' : 'bg-slate-300'
+                                  }`}
+                                  title={client.status === 'ACTIVE' ? "Suspend Workspace" : "Activate Workspace"}
+                                >
+                                  <span 
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ease-in-out duration-200`} 
+                                    style={{ transform: client.status === 'ACTIVE' ? 'translateX(24px)' : 'translateX(4px)' }} 
+                                  />
+                                </button>
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${client.status === 'ACTIVE' ? 'text-[#4cb8a5]' : 'text-slate-400'}`}>
+                                  {client.status}
+                                </span>
+                              </div>
                             </td>
                             <td className="px-6 py-5 whitespace-nowrap">
                               {editingClientId === client.id ? (

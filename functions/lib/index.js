@@ -28,7 +28,6 @@ const assignmentRulesCache = new Map();
 const outboundCache = new Map();
 const discoveredSourcesCache = new Map(); // Tracks auto-discovered sources
 // OPTIMIZATION: Memory restricted to 512MiB, concurrency set to 80, timeout capped at 15s.
-// OPTIMIZATION: Memory restricted to 512MiB, concurrency set to 80, timeout capped at 15s.
 exports.incomingLeadWebhook = (0, https_1.onRequest)({
     cors: true,
     memory: "512MiB",
@@ -403,6 +402,9 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                     }
                     // ✨ Pipeline C: Instant Email Alert Notifications ✨
                     if (alertEmails && alertEmails.trim() !== '') {
+                        // ✨ LEVEL 5 FIX: Safely strip the "Lead" placeholder for the email output
+                        const cleanLastName = finalLead.lastName === 'Lead' ? '' : finalLead.lastName;
+                        const displayFullName = `${finalLead.firstName} ${cleanLastName}`.trim();
                         const emailHtml = `
               <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
                 <div style="background-color: #0f172a; padding: 20px; text-align: center;">
@@ -413,7 +415,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                   <table width="100%" cellpadding="12" cellspacing="0" style="border-collapse: collapse; text-align: left; font-size: 14px;">
                     <tr style="border-bottom: 1px solid #e2e8f0;">
                       <th style="width: 35%; color: #64748b;">Full Name</th>
-                      <td style="font-weight: bold; color: #0f172a;">${finalLead.firstName} ${finalLead.lastName}</td>
+                      <td style="font-weight: bold; color: #0f172a;">${displayFullName}</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #e2e8f0; background-color: #f8fafc;">
                       <th style="color: #64748b;">Phone Number</th>
@@ -447,7 +449,7 @@ exports.incomingLeadWebhook = (0, https_1.onRequest)({
                         const mailOptions = {
                             from: '"Mintage CRM" <sharathdeveloper20@gmail.com>',
                             to: alertEmails,
-                            subject: `New Lead: ${finalLead.firstName} ${finalLead.lastName} - ${finalLead.projectProperty}`,
+                            subject: `New Lead: ${displayFullName} - ${finalLead.projectProperty}`,
                             html: emailHtml
                         };
                         await mailTransporter.sendMail(mailOptions);

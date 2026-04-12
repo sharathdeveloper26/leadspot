@@ -21,6 +21,20 @@ const normalizePhone = (phone?: string) => {
 
 export default function ClientDashboard() {
   const { user, logout } = useAuth(); 
+  // ✨ LEVEL 5 SECURITY: Real-Time Workspace Status Monitor
+  const [workspaceStatus, setWorkspaceStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'LOADING'>('LOADING');
+
+  useEffect(() => {
+    if (!user?.clientId) return;
+    // This listener watches the client document in real-time. 
+    // If the Super Admin toggles it, this updates instantly.
+    const unsubStatus = onSnapshot(doc(db, 'clients', user.clientId), (docSnap) => {
+      if (docSnap.exists()) {
+        setWorkspaceStatus(docSnap.data().status || 'ACTIVE');
+      }
+    });
+    return () => unsubStatus();
+  }, [user?.clientId]);
   const [greeting, setGreeting] = useState({ text: 'Welcome back', emoji: '👋' });
 
   useEffect(() => {
@@ -1125,6 +1139,32 @@ const handleConnectWhatsApp = () => {
     'Closed Lost': { bg: 'bg-red-50/80', text: 'text-red-700', border: 'border-red-200/50', dot: 'bg-red-500' },
     'Junk / Invalid': { bg: 'bg-slate-100/80', text: 'text-slate-600', border: 'border-slate-200/50', dot: 'bg-slate-400' },
   };
+  // ✨ LEVEL 5 SECURITY: The Iron Gate UI Lock
+  if (workspaceStatus === 'SUSPENDED') {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 selection:bg-[#74ebd5] selection:text-slate-900 z-[9999] relative">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-[30%] -left-[10%] w-[70%] h-[70%] rounded-full bg-red-500/10 blur-3xl opacity-50 mix-blend-screen" />
+          <div className="absolute bottom-[10%] -right-[10%] w-[60%] h-[60%] rounded-full bg-orange-500/10 blur-3xl opacity-50 mix-blend-screen" />
+        </div>
+        <div className="bg-white/10 backdrop-blur-2xl p-10 rounded-3xl border border-white/10 shadow-2xl max-w-lg w-full text-center relative z-10 animate-in zoom-in-95 duration-500">
+          <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/30 shadow-inner">
+            <AlertCircle className="w-10 h-10 text-red-400" />
+          </div>
+          <h1 className="text-3xl font-black text-white mb-3 tracking-tight">Service Suspended</h1>
+          <p className="text-slate-300 font-medium mb-8 leading-relaxed">
+            Your workspace has been temporarily deactivated. Access to the CRM, incoming webhooks, and automation services are currently paused.
+          </p>
+          <div className="bg-slate-900/50 p-5 rounded-2xl border border-white/5 mb-8">
+            <p className="text-sm text-slate-400 font-medium">To restore service and reactivate your workspace, please contact your system administrator.</p>
+          </div>
+          <button onClick={logout} className="w-full py-3.5 bg-white text-slate-900 font-bold rounded-xl shadow-lg hover:bg-slate-100 transition-all hover:-translate-y-0.5">
+            Return to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
       
