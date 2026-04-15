@@ -3,7 +3,7 @@ import * as admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import axios from "axios"; 
 import * as nodemailer from "nodemailer";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentDeleted } from "firebase-functions/v2/firestore";
 
 // Initialize the Firebase Admin SDK
 admin.initializeApp();
@@ -962,5 +962,35 @@ export const sendOutboundWhatsApp = onDocumentCreated({
       status: "failed",
       errorLog: error.response?.data?.error?.message || error.message
     });
+  }
+});
+// ============================================================================
+// 🚀 LEVEL 5 SECURITY: AUTO-SYNC SUPER ADMIN CLAIMS 🚀
+// ============================================================================
+
+export const onSuperAdminAdded = onDocumentCreated({
+  document: "super_admins/{uid}",
+  database: "crmdb", 
+}, async (event) => {
+  const uid = event.params.uid;
+  try {
+    await admin.auth().setCustomUserClaims(uid, { role: "super_admin" });
+    console.log(`Successfully granted super_admin claims to UID: ${uid}`);
+  } catch (error) {
+    console.error("Error setting custom claims:", error);
+  }
+});
+
+export const onSuperAdminRemoved = onDocumentDeleted({
+  document: "super_admins/{uid}",
+  database: "crmdb", 
+}, async (event) => {
+  const uid = event.params.uid;
+  try {
+    // Revoke the role by setting it to null
+    await admin.auth().setCustomUserClaims(uid, { role: null });
+    console.log(`Successfully revoked super_admin claims from UID: ${uid}`);
+  } catch (error) {
+    console.error("Error removing custom claims:", error);
   }
 });

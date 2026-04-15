@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { auth } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore'; // ✨ LEVEL 5: Added Firestore imports
+import { auth, db } from '../firebase'; // ✨ LEVEL 5: Added db import
 
 export interface CustomUser extends User {
   clientId?: string | null;
@@ -33,10 +34,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           let extractedRole = (tokenResult.claims.role as string) || null;
           let extractedClientId = (tokenResult.claims.clientId as string) || null;
 
-          // Master Bypass for Super Admin
-          if (currentUser.email === 'sharath@mintagemarkcomm.com') {
-            extractedRole = 'SUPER_ADMIN';
-            extractedClientId = null;
+          // ✨ LEVEL 5 FIX: Dynamic Enterprise Super Admin Bypass ✨
+          // Instead of hardcoding an email, we check the super_admins collection!
+          const superAdminDocRef = doc(db, 'super_admins', currentUser.uid);
+          const superAdminSnap = await getDoc(superAdminDocRef);
+          
+          if (superAdminSnap.exists() || extractedRole === 'super_admin') {
+            extractedRole = 'SUPER_ADMIN'; // Elevate to master role
+            extractedClientId = null; // Super admins don't need a client ID
           }
 
           setRole(extractedRole);

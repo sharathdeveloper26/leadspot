@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
+exports.onSuperAdminRemoved = exports.onSuperAdminAdded = exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
@@ -847,6 +847,36 @@ exports.sendOutboundWhatsApp = (0, firestore_2.onDocumentCreated)({
             status: "failed",
             errorLog: ((_e = (_d = (_c = error.response) === null || _c === void 0 ? void 0 : _c.data) === null || _d === void 0 ? void 0 : _d.error) === null || _e === void 0 ? void 0 : _e.message) || error.message
         });
+    }
+});
+// ============================================================================
+// 🚀 LEVEL 5 SECURITY: AUTO-SYNC SUPER ADMIN CLAIMS 🚀
+// ============================================================================
+exports.onSuperAdminAdded = (0, firestore_2.onDocumentCreated)({
+    document: "super_admins/{uid}",
+    database: "crmdb",
+}, async (event) => {
+    const uid = event.params.uid;
+    try {
+        await admin.auth().setCustomUserClaims(uid, { role: "super_admin" });
+        console.log(`Successfully granted super_admin claims to UID: ${uid}`);
+    }
+    catch (error) {
+        console.error("Error setting custom claims:", error);
+    }
+});
+exports.onSuperAdminRemoved = (0, firestore_2.onDocumentDeleted)({
+    document: "super_admins/{uid}",
+    database: "crmdb",
+}, async (event) => {
+    const uid = event.params.uid;
+    try {
+        // Revoke the role by setting it to null
+        await admin.auth().setCustomUserClaims(uid, { role: null });
+        console.log(`Successfully revoked super_admin claims from UID: ${uid}`);
+    }
+    catch (error) {
+        console.error("Error removing custom claims:", error);
     }
 });
 //# sourceMappingURL=index.js.map

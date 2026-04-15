@@ -621,7 +621,7 @@ export default function SuperAdminDashboard() {
                                   title={client.status === 'ACTIVE' ? "Suspend Workspace" : "Activate Workspace"}
                                 >
                                   <span 
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ease-in-out duration-200`} 
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform   dow-sm ease-in-out duration-200`} 
                                     style={{ transform: client.status === 'ACTIVE' ? 'translateX(24px)' : 'translateX(4px)' }} 
                                   />
                                 </button>
