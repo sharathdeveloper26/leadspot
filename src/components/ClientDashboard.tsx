@@ -797,6 +797,7 @@ const handleConnectWhatsApp = () => {
     }
   };
  // ✨ LEVEL 5 FIX: Enterprise Historical Data & Attribution Importer
+// ✨ LEVEL 5 FIX: Enterprise Historical Data Importer (With Smart Date Parsing)
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user?.clientId) return;
@@ -815,8 +816,8 @@ const handleConnectWhatsApp = () => {
           return; 
         }
         
-        // Extract headers and normalize them for matching
-        const headers = rows[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
+        // ✨ LEVEL 5 BOM STRIPPER: Removes invisible Excel characters from the first header
+        const headers = rows[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(h => h.replace(/^"|"$/g, '').replace(/^\uFEFF/, '').trim().toLowerCase());
         
         let successCount = 0;
         
@@ -826,7 +827,6 @@ const handleConnectWhatsApp = () => {
           
           let parsedDate: Date | null = null;
           
-          // Base Enterprise Object Structure
           let leadObj: any = { 
             clientId: user.clientId, 
             status: 'New', 
@@ -838,12 +838,24 @@ const handleConnectWhatsApp = () => {
 
           headers.forEach((header, index) => {
             const val = rowValues[index] || '';
-            if (!val) return; // Skip empty cells
+            if (!val) return; 
 
-            // Smart Date Extraction
-            if (header === 'date' || header === 'created at' || header === 'createddate' || header === 'created') {
-              const d = new Date(val);
-              if (!isNaN(d.getTime())) parsedDate = d;
+            // ✨ LEVEL 5 AGGRESSIVE DATE PARSER
+            if (header.includes('date') || header.includes('created') || header === 'timestamp') {
+              let d = new Date(val);
+              
+              // If JavaScript fails to parse (usually because of DD-MM-YYYY format)
+              if (isNaN(d.getTime()) && (val.includes('-') || val.includes('/'))) {
+                const parts = val.split(/[-/]/);
+                // Force conversion from DD-MM-YYYY to YYYY-MM-DD
+                if (parts.length === 3 && parts[2].length === 4) {
+                  d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                }
+              }
+              
+              if (!isNaN(d.getTime())) {
+                parsedDate = d;
+              }
             }
             // Standard Field Mapping
             else if (header.includes('first') || header === 'name') leadObj.firstName = val;
@@ -860,16 +872,16 @@ const handleConnectWhatsApp = () => {
             else if (header === 'form id' || header === 'formid') leadObj.formId = val;
             else if (header === 'ad id' || header === 'adid') leadObj.adId = val;
             
-            // Unrecognized fields (Custom Form Questions) get pushed into customAnswers!
+            // Custom Fields (Infinite Scaling)
             else {
-              leadObj.customAnswers[rows[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)[index].replace(/^"|"$/g, '').trim()] = val;
+              leadObj.customAnswers[rows[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)[index].replace(/^"|"$/g, '').replace(/^\uFEFF/, '').trim()] = val;
             }
           });
 
-          // Apply historical date if found, otherwise use current time
+          // Set historical date if parsed successfully, otherwise fallback to exact moment of import
           leadObj.createdAt = parsedDate || serverTimestamp();
           
-          // Fallbacks for critical missing data
+          // Fallbacks
           if (!leadObj.firstName) leadObj.firstName = "Imported";
           if (!leadObj.lastName) leadObj.lastName = "Lead";
           if (!leadObj.source) leadObj.source = "Bulk Import";
@@ -878,7 +890,7 @@ const handleConnectWhatsApp = () => {
           successCount++;
         }
         
-        showDialog('success', 'Import Complete', `Successfully imported ${successCount} historical leads with attribution!`);
+        showDialog('success', 'Import Complete', `Successfully imported ${successCount} historical leads!`);
       } catch (error) { 
         console.error("CSV Import Error:", error);
         showDialog('error', 'Import Failed', 'Failed to import leads. Please check your CSV format.'); 
