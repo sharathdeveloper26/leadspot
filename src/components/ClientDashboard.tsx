@@ -432,7 +432,62 @@ const uniqueProjects = useMemo(() => {
       } else { setHasMoreLeads(false); }
     } catch (error) { console.error("Error loading more leads:", error); } finally { setLoadingMoreLeads(false); }
   };
+// ✨ LEVEL 5 ENTERPRISE UPGRADE: Debounced Server-Side Deep Search
+  useEffect(() => {
+    const performDeepServerSearch = async () => {
+      // Only trigger if they type at least 3 characters to save database read costs
+      if (searchQuery.trim().length < 3 || !user?.clientId) return;
+      
+      const qStr = searchQuery.trim();
+      const qStrLower = qStr.toLowerCase();
+      // Capitalize first letter for strict Firebase Name matching
+      const qStrTitle = qStr.charAt(0).toUpperCase() + qStr.slice(1).toLowerCase();
 
+      try {
+        // 1. Hunt for exact Phone Number match in the deep database
+        const phoneQ = query(collection(db, 'leads'), where('clientId', '==', user.clientId), where('phone', '==', qStr));
+        
+        // 2. Hunt for exact Email match
+        const emailQ = query(collection(db, 'leads'), where('clientId', '==', user.clientId), where('email', '==', qStrLower));
+        
+        // 3. Hunt for First Name Prefix match (e.g. typing "Aru" finds "Arun")
+        const nameQ = query(collection(db, 'leads'), where('clientId', '==', user.clientId), where('firstName', '>=', qStrTitle), where('firstName', '<=', qStrTitle + '\uf8ff'));
+
+        // Fire all 3 queries simultaneously for lightning-fast performance
+        const [phoneSnap, emailSnap, nameSnap] = await Promise.all([getDocs(phoneQ), getDocs(emailQ), getDocs(nameQ)]);
+        
+        const newlyFoundLeads: Lead[] = [];
+        
+        // Helper function to safely inject missing leads without creating duplicates
+        const safelyInjectLeads = (snap: any) => {
+          snap.forEach((doc: any) => {
+            // Check if the lead is ALREADY in our local memory to prevent table duplication bugs
+            if (!leads.some(l => l.id === doc.id)) { 
+              newlyFoundLeads.push({ id: doc.id, ...doc.data() } as Lead);
+            }
+          });
+        };
+
+        safelyInjectLeads(phoneSnap);
+        safelyInjectLeads(emailSnap);
+        safelyInjectLeads(nameSnap);
+
+        // If we found old leads, inject them directly into the "olderLeads" state array!
+        // Your local search bar will INSTANTLY pick them up and display them!
+        if (newlyFoundLeads.length > 0) {
+          setOlderLeads(prev => [...prev, ...newlyFoundLeads]);
+        }
+        
+      } catch (e) {
+        console.error("Deep server search failed:", e);
+      }
+    };
+
+    // DEBOUNCE: Wait 800ms after the user stops typing before hitting the database
+    const debounceTimer = setTimeout(performDeepServerSearch, 800); 
+    
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery, user?.clientId]); // This effect triggers every time the search bar changes!
   const fetchTeamMembers = async () => {
     if (!user?.clientId) return;
     try {
