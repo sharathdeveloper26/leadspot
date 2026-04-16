@@ -796,41 +796,98 @@ const handleConnectWhatsApp = () => {
       showDialog('error', 'Error', 'Something went wrong during cleanup.');
     }
   };
+ // ✨ LEVEL 5 FIX: Enterprise Historical Data & Attribution Importer
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user?.clientId) return;
+    
     setIsImporting(true);
     const reader = new FileReader();
+    
     reader.onload = async (event) => {
       try {
         const text = event.target?.result as string;
         const rows = text.split(/\r?\n/).filter(row => row.trim() !== '');
-        if (rows.length < 2) { showDialog('error', 'Invalid CSV', 'CSV file must contain headers and at least one row of data.'); setIsImporting(false); return; }
+        
+        if (rows.length < 2) { 
+          showDialog('error', 'Invalid CSV', 'CSV file must contain headers and at least one row of data.'); 
+          setIsImporting(false); 
+          return; 
+        }
+        
+        // Extract headers and normalize them for matching
         const headers = rows[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
+        
         let successCount = 0;
+        
         for (let i = 1; i < rows.length; i++) {
           const rowValues = rows[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/^"|"$/g, '').trim());
           if (rowValues.length === 0 || !rowValues[0]) continue;
-          let leadObj: any = { clientId: user.clientId, status: 'New', createdAt: serverTimestamp(), assignedTo: '', assignedToId: '', assignedToName: '' };
+          
+          let parsedDate: Date | null = null;
+          
+          // Base Enterprise Object Structure
+          let leadObj: any = { 
+            clientId: user.clientId, 
+            status: 'New', 
+            assignedTo: '', 
+            assignedToId: '', 
+            assignedToName: '',
+            customAnswers: {} 
+          };
+
           headers.forEach((header, index) => {
             const val = rowValues[index] || '';
-            if (header.includes('first') || header === 'name') leadObj.firstName = val;
+            if (!val) return; // Skip empty cells
+
+            // Smart Date Extraction
+            if (header === 'date' || header === 'created at' || header === 'createddate' || header === 'created') {
+              const d = new Date(val);
+              if (!isNaN(d.getTime())) parsedDate = d;
+            }
+            // Standard Field Mapping
+            else if (header.includes('first') || header === 'name') leadObj.firstName = val;
             else if (header.includes('last')) leadObj.lastName = val;
             else if (header.includes('email')) leadObj.email = val;
             else if (header.includes('phone') || header.includes('mobile')) leadObj.phone = val;
             else if (header.includes('project') || header.includes('property')) leadObj.projectProperty = val;
             else if (header.includes('source') && !header.includes('sub')) leadObj.source = val;
             else if (header.includes('sub')) leadObj.subSource = val;
+            
+            // Marketing Attribution Mapping
+            else if (header.includes('campaign')) leadObj.campaignName = val;
+            else if (header === 'ad name' || header === 'adname') leadObj.adName = val;
+            else if (header === 'form id' || header === 'formid') leadObj.formId = val;
+            else if (header === 'ad id' || header === 'adid') leadObj.adId = val;
+            
+            // Unrecognized fields (Custom Form Questions) get pushed into customAnswers!
+            else {
+              leadObj.customAnswers[rows[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)[index].replace(/^"|"$/g, '').trim()] = val;
+            }
           });
+
+          // Apply historical date if found, otherwise use current time
+          leadObj.createdAt = parsedDate || serverTimestamp();
+          
+          // Fallbacks for critical missing data
           if (!leadObj.firstName) leadObj.firstName = "Imported";
           if (!leadObj.lastName) leadObj.lastName = "Lead";
           if (!leadObj.source) leadObj.source = "Bulk Import";
+          
           await addDoc(collection(db, 'leads'), leadObj);
           successCount++;
         }
-        showDialog('success', 'Import Complete', `Successfully imported ${successCount} leads!`);
-      } catch (error) { showDialog('error', 'Import Failed', 'Failed to import leads. Format error.'); } finally { setIsImporting(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+        
+        showDialog('success', 'Import Complete', `Successfully imported ${successCount} historical leads with attribution!`);
+      } catch (error) { 
+        console.error("CSV Import Error:", error);
+        showDialog('error', 'Import Failed', 'Failed to import leads. Please check your CSV format.'); 
+      } finally { 
+        setIsImporting(false); 
+        if (fileInputRef.current) fileInputRef.current.value = ''; 
+      }
     };
+    
     reader.readAsText(file);
   };
 
