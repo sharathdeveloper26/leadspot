@@ -362,7 +362,33 @@ const uniqueProjects = useMemo(() => {
   useEffect(() => {
     if (!user?.clientId) return;
     setLoading(true);
-    const q = query(collection(db, 'leads'), where('clientId', '==', user.clientId), orderBy('createdAt', 'desc'), limit(50));
+    // Reset local memory so old data doesn't mix when you change calendar dates
+    setOlderLeads([]); 
+    setLastVisibleLead(null);
+    isInitialMount.current = true;
+
+    // 1. Build the dynamic server query
+    const queryConstraints: any[] = [
+      where('clientId', '==', user.clientId)
+    ];
+
+    // 2. 🚨 Inject Server-Side Date Boundaries! 🚨
+    // This forces Firebase to hunt through the entire database for your old leads!
+    if (leadsStartDate) {
+      const start = new Date(leadsStartDate);
+      start.setHours(0, 0, 0, 0);
+      queryConstraints.push(where('createdAt', '>=', Timestamp.fromDate(start)));
+    }
+    if (leadsEndDate) {
+      const end = new Date(leadsEndDate);
+      end.setHours(23, 59, 59, 999);
+      queryConstraints.push(where('createdAt', '<=', Timestamp.fromDate(end)));
+    }
+
+    // 3. Add sorting and bandwidth limits
+    queryConstraints.push(orderBy('createdAt', 'desc'));
+    queryConstraints.push(limit(50));
+    const q = query(collection(db, 'leads'), ...queryConstraints);
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedLeads: Lead[] = [];
       snapshot.forEach((doc) => fetchedLeads.push({ id: doc.id, ...doc.data() } as Lead));
@@ -389,7 +415,7 @@ const uniqueProjects = useMemo(() => {
       }
     }, (error) => { console.error("Error in onSnapshot:", error); setLoading(false); });
     return () => unsubscribe();
-  }, [user?.clientId]);
+  }, [user?.clientId,leadsStartDate, leadsEndDate]);
 
   const loadMoreLeads = async () => {
     if (!user?.clientId || !lastVisibleLead || loadingMoreLeads || !hasMoreLeads) return;
