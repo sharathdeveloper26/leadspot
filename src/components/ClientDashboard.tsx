@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc, onSnapshot, orderBy, limit, startAfter, getDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc, onSnapshot, orderBy, limit, startAfter, getDoc, arrayUnion, arrayRemove, Timestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -797,7 +797,7 @@ const handleConnectWhatsApp = () => {
     }
   };
  // ✨ LEVEL 5 FIX: Enterprise Historical Data & Attribution Importer
-// ✨ LEVEL 5 FIX: Enterprise Historical Data Importer (With Smart Date Parsing)
+// ✨ LEVEL 5 FIX: Enterprise Historical Data Importer (With Strict Timestamp Indexing)
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user?.clientId) return;
@@ -816,7 +816,7 @@ const handleConnectWhatsApp = () => {
           return; 
         }
         
-        // ✨ LEVEL 5 BOM STRIPPER: Removes invisible Excel characters from the first header
+        // Strip invisible Excel BOM characters and normalize headers
         const headers = rows[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(h => h.replace(/^"|"$/g, '').replace(/^\uFEFF/, '').trim().toLowerCase());
         
         let successCount = 0;
@@ -840,16 +840,22 @@ const handleConnectWhatsApp = () => {
             const val = rowValues[index] || '';
             if (!val) return; 
 
-            // ✨ LEVEL 5 AGGRESSIVE DATE PARSER
+            // ✨ LEVEL 5 STRICT DATE PARSER
             if (header.includes('date') || header.includes('created') || header === 'timestamp') {
               let d = new Date(val);
               
-              // If JavaScript fails to parse (usually because of DD-MM-YYYY format)
-              if (isNaN(d.getTime()) && (val.includes('-') || val.includes('/'))) {
+              // Force strict parsing for YYYY-MM-DD or DD-MM-YYYY to avoid Timezone bugs
+              if (val.includes('-') || val.includes('/')) {
                 const parts = val.split(/[-/]/);
-                // Force conversion from DD-MM-YYYY to YYYY-MM-DD
-                if (parts.length === 3 && parts[2].length === 4) {
-                  d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                if (parts.length === 3) {
+                  // If year is last (e.g. 01-04-2026)
+                  if (parts[2].length === 4) {
+                    d = new Date(`${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}T12:00:00Z`);
+                  } 
+                  // If year is first (e.g. 2026-04-01)
+                  else if (parts[0].length === 4) {
+                    d = new Date(`${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}T12:00:00Z`);
+                  }
                 }
               }
               
@@ -878,8 +884,8 @@ const handleConnectWhatsApp = () => {
             }
           });
 
-          // Set historical date if parsed successfully, otherwise fallback to exact moment of import
-          leadObj.createdAt = parsedDate || serverTimestamp();
+          // ✨ LEVEL 5 FIX: Force native Firestore Timestamp object to preserve sorting indexes!
+          leadObj.createdAt = parsedDate ? Timestamp.fromDate(parsedDate) : serverTimestamp();
           
           // Fallbacks
           if (!leadObj.firstName) leadObj.firstName = "Imported";
@@ -890,7 +896,11 @@ const handleConnectWhatsApp = () => {
           successCount++;
         }
         
-        showDialog('success', 'Import Complete', `Successfully imported ${successCount} historical leads!`);
+        // ✨ LEVEL 5 MEMORY RESET: Force a page reload so the pagination cursors reset and fetch the old data!
+        showDialog('success', 'Import Complete', `Successfully imported ${successCount} historical leads!`, undefined, () => {
+          window.location.reload(); 
+        });
+
       } catch (error) { 
         console.error("CSV Import Error:", error);
         showDialog('error', 'Import Failed', 'Failed to import leads. Please check your CSV format.'); 
