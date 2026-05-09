@@ -384,7 +384,7 @@ export default function SuperAdminDashboard() {
                 className={`flex-1 px-4 py-2.5 text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg ${
                   dialogState.type === 'confirm' ? 'bg-slate-900 shadow-slate-900/20' :
                   dialogState.type === 'error' ? 'bg-red-600 shadow-red-500/30' :
-                  'bg-slate-900 shadow-slate-900/20' // Enterprise Slate button
+                  'bg-slate-900 shadow-slate-900/20'
                 }`}
               >
                 {dialogState.type === 'confirm' ? 'Confirm' : 'OK'}
@@ -401,9 +401,10 @@ export default function SuperAdminDashboard() {
         <div className="absolute -bottom-[20%] left-[20%] w-[60%] h-[60%] rounded-full bg-slate-200/40 blur-3xl opacity-50 mix-blend-multiply" />
       </div>
 
-      <div className="md:hidden relative z-20 flex items-center justify-between bg-white border-b border-slate-200 p-4 shrink-0 shadow-sm">
-        <img src="/leadspot.png" alt="Leadspot CRM" className="h-12 w-auto" />
-        <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
+      {/* Mobile Menu Header (Midnight Theme) */}
+      <div className="md:hidden relative z-20 flex items-center justify-between bg-slate-900 border-b border-slate-800 p-4 shrink-0 shadow-sm">
+        <img src="/leadspot.png" alt="Leadspot CRM" className="h-10 w-auto brightness-0 invert opacity-90" />
+        <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-300 hover:text-white focus:outline-none">
           <Menu className="w-6 h-6" />
         </button>
       </div>
@@ -412,15 +413,16 @@ export default function SuperAdminDashboard() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-lg md:shadow-none ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="h-24 flex items-center justify-between px-6 border-b border-slate-100">
-          <img src="/leadspot.png" alt="Leadspot CRM" className="h-14 w-auto" />
-          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
+      {/* ✨ SIDEBAR: Midnight Slate Theme ✨ */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-2xl md:shadow-none ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="h-24 flex items-center justify-between px-6 border-b border-slate-800">
+          <img src="/leadspot.png" alt="Leadspot CRM" className="h-12 w-auto brightness-0 invert opacity-90" />
+          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
         
-        <div className="px-6 py-6 flex items-center gap-2 text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">
+        <div className="px-6 py-6 flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-[0.2em]">
           <ShieldAlert className="w-4 h-4 text-amber-500" />
           Super Admin
         </div>
@@ -428,10 +430,10 @@ export default function SuperAdminDashboard() {
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto custom-scrollbar">
           <button 
             onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-200 ${
+            className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${
               activeTab === 'dashboard' 
-                ? 'bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/10' 
-                : 'text-slate-500 font-medium hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' 
+                : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'
             }`}
           >
             <LayoutDashboard className={`w-5 h-5 ${activeTab === 'dashboard' ? 'text-amber-500' : ''}`} />
@@ -440,10 +442,10 @@ export default function SuperAdminDashboard() {
 
           <button 
             onClick={() => { setActiveTab('clients'); setIsMobileMenuOpen(false); }}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-200 ${
+            className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${
               activeTab === 'clients' 
-                ? 'bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/10' 
-                : 'text-slate-500 font-medium hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' 
+                : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'
             }`}
           >
             <Building2 className={`w-5 h-5 ${activeTab === 'clients' ? 'text-amber-500' : ''}`} />
@@ -452,10 +454,10 @@ export default function SuperAdminDashboard() {
 
           <button 
             onClick={() => { setActiveTab('lead_sources'); setIsMobileMenuOpen(false); }}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-200 ${
+            className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${
               activeTab === 'lead_sources' 
-                ? 'bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/10' 
-                : 'text-slate-500 font-medium hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' 
+                : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'
             }`}
           >
             <Database className={`w-5 h-5 ${activeTab === 'lead_sources' ? 'text-amber-500' : ''}`} />
@@ -464,10 +466,10 @@ export default function SuperAdminDashboard() {
 
           <button 
             onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-200 ${
+            className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${
               activeTab === 'settings' 
-                ? 'bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/10' 
-                : 'text-slate-500 font-medium hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' 
+                : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'
             }`}
           >
             <Settings className={`w-5 h-5 ${activeTab === 'settings' ? 'text-amber-500' : ''}`} />
@@ -475,10 +477,10 @@ export default function SuperAdminDashboard() {
           </button>
         </nav>
 
-        <div className="p-5 border-t border-slate-100">
+        <div className="p-5 border-t border-slate-800">
           <button 
             onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())}
-            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-500 font-medium hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-400 font-medium hover:bg-red-500/10 hover:text-red-400 transition-all duration-200"
           >
             <LogOut className="w-5 h-5" />
             Sign Out
@@ -488,7 +490,7 @@ export default function SuperAdminDashboard() {
 
       {/* Main Content */}
       <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0 bg-slate-50/50">
-        <header className="h-24 bg-white/80 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex">
+        <header className="h-24 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex">
           <h1 className="text-xl font-extrabold tracking-tight text-slate-900">
             {activeTab === 'dashboard' ? 'System Telemetry' : activeTab === 'clients' ? 'Client Workspaces' : activeTab === 'lead_sources' ? 'Global Configurations' : 'System Settings'}
           </h1>
@@ -505,7 +507,7 @@ export default function SuperAdminDashboard() {
             
             {loading ? (
               <div className="p-12 flex justify-center">
-                <div className="w-10 h-10 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin" />
+                <div className="w-10 h-10 border-4 border-slate-200 border-t-amber-500 rounded-full animate-spin" />
               </div>
             ) : activeTab === 'dashboard' ? (
               /* 👇 SYSTEM OVERVIEW TAB 👇 */
