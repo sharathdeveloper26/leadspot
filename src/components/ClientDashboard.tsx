@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon, Megaphone, RefreshCw, FileText } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon, Megaphone, RefreshCw, FileText, Sun, Moon } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 
@@ -21,6 +21,7 @@ const normalizePhone = (phone?: string) => {
 
 export default function ClientDashboard() {
   const { user, logout } = useAuth(); 
+  const [isDarkMode, setIsDarkMode] = useState(true);
   /// ✨ LEVEL 5 SECURITY: Real-Time Workspace Status Monitor
   const [workspaceStatus, setWorkspaceStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'LOADING'>('LOADING');
 
@@ -1335,8 +1336,7 @@ const handleConnectWhatsApp = () => {
     );
   }
   return (
-    <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
-      
+    <div className={`min-h-screen relative flex flex-col md:flex-row font-sans overflow-hidden transition-colors duration-300 ${isDarkMode ? 'bg-slate-900 text-slate-50 dark-theme' : 'bg-slate-50 text-slate-900 light-theme'}`}>    
       {dialogState.isOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/50 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300">
@@ -1450,8 +1450,12 @@ const handleConnectWhatsApp = () => {
           )}
           <button onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'reports' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><BarChart2 className="w-5 h-5" /> Reports</button>
         </nav>
-        <div className="p-5 border-t border-slate-100/50 bg-white/20">
-          <button onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())} className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-600 font-medium hover:bg-red-50/80 hover:text-red-600 hover:shadow-sm transition-all duration-200"><LogOut className="w-5 h-5" /> Sign Out</button>
+        <div className="p-5 border-t border-slate-200/50 space-y-3 z-50 relative">
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-500 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 border border-slate-200 dark:border-slate-700">
+            {isDarkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-slate-600" />}
+            {isDarkMode ? 'Light Mode' : 'Dark Mode'}
+          </button>
+          <button onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())} className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-500 font-medium hover:bg-red-500/10 hover:text-red-500 transition-all duration-200"><LogOut className="w-5 h-5" /> Sign Out</button>
         </div>
       </aside>
 
@@ -2852,6 +2856,34 @@ const handleConnectWhatsApp = () => {
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+        /* ENTERPRISE THEME ENGINE (LIGHT MODE OVERRIDES) */
+        .light-theme .from-\\[\\#74ebd5\\] { --tw-gradient-from: #0f172a !important; --tw-gradient-stops: var(--tw-gradient-from), #1e293b !important; color: #ffffff !important; }
+        .light-theme .to-\\[\\#9face6\\] { --tw-gradient-to: #1e293b !important; }
+        .light-theme .bg-\\[\\#74ebd5\\]\\/10 { background-color: rgba(15, 23, 42, 0.05) !important; color: #0f172a !important; }
+        .light-theme .text-\\[\\#50bdaf\\], .light-theme .text-\\[\\#74ebd5\\] { color: #d97706 !important; }
+        .light-theme .shadow-\\[\\#74ebd5\\]\\/30 { box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.1) !important; }
+        .light-theme .border-\\[\\#74ebd5\\] { border-color: #0f172a !important; }
+        
+        /* ENTERPRISE THEME ENGINE (DARK MODE OVERRIDES) */
+        .dark-theme .bg-slate-50, .dark-theme .bg-slate-50\\/50, .dark-theme .bg-slate-50\\/80 { background-color: #0f172a !important; }
+        .dark-theme .bg-white, .dark-theme .bg-white\\/60, .dark-theme .bg-white\\/70, .dark-theme .bg-white\\/80, .dark-theme .bg-white\\/90 { background-color: #1e293b !important; border-color: #334155 !important; color: #f8fafc !important; }
+        .dark-theme .text-slate-900, .dark-theme .text-slate-800 { color: #f8fafc !important; }
+        .dark-theme .text-slate-600, .dark-theme .text-slate-500 { color: #94a3b8 !important; }
+        .dark-theme .text-slate-400 { color: #64748b !important; }
+        .dark-theme .border-slate-100, .dark-theme .border-slate-200 { border-color: #334155 !important; }
+        .dark-theme .bg-slate-100, .dark-theme .bg-slate-200 { background-color: #334155 !important; color: #e2e8f0 !important; }
+        .dark-theme input, .dark-theme select, .dark-theme textarea { background-color: #0f172a !important; color: #f8fafc !important; border-color: #334155 !important; }
+        .dark-theme table th { background-color: #0f172a !important; border-bottom-color: #334155 !important; color: #94a3b8 !important; }
+        .dark-theme table td, .dark-theme tr { border-color: #334155 !important; }
+        .dark-theme aside { background-color: #0f172a !important; border-color: #1e293b !important; }
+        .dark-theme header { background-color: rgba(30, 41, 59, 0.8) !important; border-color: #334155 !important; }
+        
+        /* DARK MODE COPPER ACCENTS */
+        .dark-theme .from-\\[\\#74ebd5\\] { --tw-gradient-from: #f59e0b !important; --tw-gradient-stops: var(--tw-gradient-from), #d97706 !important; color: #0f172a !important; }
+        .dark-theme .text-\\[\\#50bdaf\\], .dark-theme .text-\\[\\#74ebd5\\] { color: #f59e0b !important; }
+        .dark-theme .bg-\\[\\#74ebd5\\]\\/10 { background-color: rgba(245, 158, 11, 0.1) !important; color: #f59e0b !important; }
+        .dark-theme .shadow-\\[\\#74ebd5\\]\\/30 { box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.2) !important; }
+        .dark-theme .border-\\[\\#74ebd5\\] { border-color: #f59e0b !important; }
       `}</style>
     </div>
   );
