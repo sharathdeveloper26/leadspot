@@ -3,6 +3,7 @@ import { getFunctions } from 'firebase/functions';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getAnalytics } from 'firebase/analytics';
+import { getStorage } from 'firebase/storage';
 
 // Your web app's new Firebase configuration (Leadspot CRM)
 const firebaseConfig = {
@@ -30,3 +31,4 @@ export const auth = getAuth(app);
 
 // Initialize Firestore with the specific database name 'crmdb'
 export const db = getFirestore(app, 'crmdb');
+export const storage = getStorage(app);

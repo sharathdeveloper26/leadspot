@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, getDocs, updateDoc, doc, deleteDoc, query, where, addDoc, serverTimestamp, getDoc, setDoc, getCountFromServer } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { db, functions, storage } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { LayoutDashboard, Users, Database, Settings, LogOut, Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, XCircle, Info, AlertCircle, Building2, Activity, Server, Search, Menu, X, Calendar, Globe, Key, Save, Facebook, MessageCircle, CheckSquare } from 'lucide-react';
+import { LayoutDashboard, Users, Database, Settings, LogOut, Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, XCircle, Info, AlertCircle, Building2, Activity, Server, Search, Menu, X, Calendar, Globe, Key, Save, Facebook, MessageCircle, CheckSquare, Image as ImageIcon, Link as LinkIcon } from 'lucide-react';
 
 interface ClientData {
   id: string;
@@ -12,6 +13,8 @@ interface ClientData {
   subscriptionPlan: string;
   maxAgents: number;
   createdAt: any;
+  logoUrl?: string;
+  customDomain?: string;
 }
 
 interface GlobalSource {
@@ -66,6 +69,13 @@ export default function SuperAdminDashboard() {
   // Inline Editing
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [editMaxAgents, setEditMaxAgents] = useState<number>(2);
+
+  // ✨ WHITE-LABEL BRANDING STATE ✨
+  const [isEditWorkspaceModalOpen, setIsEditWorkspaceModalOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<ClientData | null>(null);
+  const [editCustomDomain, setEditCustomDomain] = useState('');
+  const [editLogoUrl, setEditLogoUrl] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // Custom Global Dialog Engine
   const [dialogState, setDialogState] = useState<{
@@ -235,6 +245,55 @@ export default function SuperAdminDashboard() {
         showDialog('error', 'Deletion Failed', 'Failed to delete workspace. Check permissions.');
       }
     });
+  };
+
+  // --- WHITE-LABEL BRANDING FUNCTIONS ---
+  const openEditWorkspace = (client: ClientData) => {
+    setEditingClient(client);
+    setEditCustomDomain(client.customDomain || '');
+    setEditLogoUrl(client.logoUrl || '');
+    setIsEditWorkspaceModalOpen(true);
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingClient) return;
+
+    setUploadingLogo(true);
+    try {
+      const storageRef = ref(storage, `tenant_logos/${editingClient.id}_${file.name}`);
+      const uploadTask = await uploadBytesResumable(storageRef, file);
+      const downloadURL = await getDownloadURL(uploadTask.ref);
+
+      setEditLogoUrl(downloadURL);
+      showDialog('success', 'Upload Complete', 'Logo uploaded! Remember to save changes.');
+    } catch (error) {
+      console.error("Upload failed", error);
+      showDialog('error', 'Upload Failed', 'Could not upload the logo to storage.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const saveWorkspaceSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClient) return;
+    
+    try {
+      await updateDoc(doc(db, 'clients', editingClient.id), {
+        customDomain: editCustomDomain,
+        logoUrl: editLogoUrl
+      });
+      
+      setClients(prev => prev.map(c => 
+        c.id === editingClient.id ? { ...c, customDomain: editCustomDomain, logoUrl: editLogoUrl } : c
+      ));
+      
+      setIsEditWorkspaceModalOpen(false);
+      showDialog('success', 'Workspace Updated', 'White-label branding settings saved successfully.');
+    } catch (error) {
+      showDialog('error', 'Update Failed', 'Failed to save workspace settings.');
+    }
   };
 
   // --- GLOBAL SOURCES FUNCTIONS ---
@@ -621,7 +680,7 @@ export default function SuperAdminDashboard() {
                                   title={client.status === 'ACTIVE' ? "Suspend Workspace" : "Activate Workspace"}
                                 >
                                   <span 
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform   dow-sm ease-in-out duration-200`} 
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ease-in-out duration-200`} 
                                     style={{ transform: client.status === 'ACTIVE' ? 'translateX(24px)' : 'translateX(4px)' }} 
                                   />
                                 </button>
@@ -666,6 +725,14 @@ export default function SuperAdminDashboard() {
                               </div>
                             </td>
                             <td className="px-8 py-5 whitespace-nowrap text-right">
+                              {/* ✨ NEW WHITE-LABEL EDIT BUTTON ✨ */}
+                              <button
+                                onClick={() => openEditWorkspace(client)}
+                                className="p-2 text-slate-400 hover:text-[#50bdaf] hover:bg-[#74ebd5]/10 rounded-lg transition-colors inline-block mr-2"
+                                title="Edit Branding & Domain"
+                              >
+                                <Settings className="w-4 h-4" />
+                              </button>
                               <button
                                 onClick={() => deleteClient(client.id)}
                                 className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors inline-block"
@@ -887,7 +954,7 @@ export default function SuperAdminDashboard() {
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all text-sm font-medium"
-                  placeholder="e.g. Mintage CRM"
+                  placeholder="e.g. Leadspot CRM"
                 />
               </div>
 
@@ -933,6 +1000,94 @@ export default function SuperAdminDashboard() {
                   ) : (
                     'Create Client'
                   )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ✨ WHITE-LABEL BRANDING MODAL ✨ */}
+      {isEditWorkspaceModalOpen && editingClient && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md transition-all">
+          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/50 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-200/60 bg-slate-50/50">
+              <div>
+                <h3 className="text-xl font-extrabold text-slate-800">Workspace Settings</h3>
+                <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{editingClient.name}</p>
+              </div>
+              <button onClick={() => setIsEditWorkspaceModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={saveWorkspaceSettings} className="p-8 space-y-6">
+              
+              {/* Custom Domain Input */}
+              <div>
+                <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">
+                  <LinkIcon className="w-3.5 h-3.5" /> Custom Domain
+                </label>
+                <div className="flex items-center gap-0 bg-slate-50/50 border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#74ebd5]/30 transition-all">
+                  <span className="bg-slate-100 px-4 py-2.5 text-sm font-bold text-slate-400 border-r border-slate-200">https://</span>
+                  <input
+                    type="text"
+                    value={editCustomDomain}
+                    onChange={(e) => setEditCustomDomain(e.target.value)}
+                    placeholder="crm.clientcompany.com"
+                    className="w-full px-4 py-2.5 bg-transparent border-none outline-none text-sm font-medium text-slate-700"
+                  />
+                </div>
+                <p className="mt-2 text-[10px] font-bold text-slate-400">Map this domain via CNAME in your DNS settings.</p>
+              </div>
+
+              {/* Logo Upload Input */}
+              <div>
+                <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">
+                  <ImageIcon className="w-3.5 h-3.5" /> Client Logo
+                </label>
+                
+                <div className="flex items-center gap-6">
+                  {/* Logo Preview Circle */}
+                  <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0 shadow-inner relative group">
+                    {editLogoUrl ? (
+                      <img src={editLogoUrl} alt="Logo Preview" className="w-full h-full object-contain p-2" />
+                    ) : (
+                      <ImageIcon className="w-8 h-8 text-slate-300" />
+                    )}
+                  </div>
+                  
+                  {/* Upload Button */}
+                  <div className="flex-1">
+                    <input 
+                      type="file" 
+                      accept="image/png, image/jpeg, image/svg+xml" 
+                      onChange={handleLogoUpload}
+                      className="hidden" 
+                      id="logo-upload"
+                    />
+                    <label 
+                      htmlFor="logo-upload"
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm cursor-pointer w-full"
+                    >
+                      {uploadingLogo ? (
+                        <div className="w-4 h-4 border-2 border-[#74ebd5] border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        'Upload New Logo'
+                      )}
+                    </label>
+                    <p className="mt-2 text-[10px] font-bold text-slate-400 text-center">PNG, JPG, or SVG. Max 2MB.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-6 border-t border-slate-100 flex gap-3">
+                <button type="button" onClick={() => setIsEditWorkspaceModalOpen(false)} className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm">
+                  Cancel
+                </button>
+                <button type="submit" className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg shadow-[#74ebd5]/30 flex justify-center items-center">
+                  Save Settings
                 </button>
               </div>
             </form>
