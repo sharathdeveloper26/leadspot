@@ -44,7 +44,7 @@ export const incomingLeadWebhook = onRequest({
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
 
-    if (mode === "subscribe" && token === "MINTAGE_CRM_SECRET") {
+    if (mode === "subscribe" && token === "LEADSPOT_CRM_SECRET") {
       res.status(200).send(challenge);
       return;
     }
@@ -413,7 +413,6 @@ export const incomingLeadWebhook = onRequest({
         
         if (outboundData) {
           const clientWebhookUrl = outboundData.webhookUrl;
-          const googleSheetUrl = outboundData.googleSheetUrl; 
           const clientHeaders = outboundData.headers || [];
           const alertEmails = outboundData.alertEmails; 
 
@@ -425,15 +424,7 @@ export const incomingLeadWebhook = onRequest({
 
           const pushPromises = [];
 
-          // Pipeline A: Google Sheets
-          if (googleSheetUrl) {
-            pushPromises.push(
-              axios.post(googleSheetUrl, webhookPayload, {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 4000
-              }).catch(e => console.error(`Google Sheets push failed for client ${clientId}:`, e.message))
-            );
-          }
+          
 
           // Pipeline B: External Custom CRM 
           if (clientWebhookUrl) {
@@ -641,8 +632,8 @@ export const secureLinkFacebookPage = onCall(functionOpts, async (request) => {
 
   if (!clientId || !shortLivedUserToken || !pageId) throw new HttpsError("invalid-argument", "Missing required fields.");
 
-  const APP_ID = '1439047481212574'; 
-  const APP_SECRET = 'c8ea2e55436a18ecb2ca51ccdeac0937'; 
+  const APP_ID = '2060924228162885'; 
+  const APP_SECRET = '5fd7b76dfb90241e1ecc14505e479c83'; 
 
   try {
     const exchangeUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${shortLivedUserToken}`;
@@ -732,7 +723,7 @@ export const whatsappWebhook = onRequest({
   maxInstances: 10,
 }, async (req, res) => {
   
-  const WHATSAPP_VERIFY_TOKEN = "MINTAGE_WA_SECRET_2026"; // You will need this in Step 2!
+  const WHATSAPP_VERIFY_TOKEN = "LEADSPOT_WA_SECRET_2026"; // You will need this in Step 2!
 
   // 1. HANDSHAKE: Meta Webhook Verification
   if (req.method === "GET") {
@@ -962,6 +953,67 @@ export const sendOutboundWhatsApp = onDocumentCreated({
       status: "failed",
       errorLog: error.response?.data?.error?.message || error.message
     });
+  }
+});
+// ============================================================================
+// 🚀 BACKGROUND SYNC: AUTO-PUSH LEADS TO GOOGLE SHEETS 🚀
+// ============================================================================
+export const autoPushToGoogleSheets = onDocumentCreated({
+  document: "leads/{leadId}",
+  database: "crmdb", // Matches your specific database name
+  memory: "256MiB"
+}, async (event) => {
+  const snapshot = event.data;
+  if (!snapshot) return;
+
+  const newLead = snapshot.data();
+  const leadId = event.params.leadId;
+  const clientId = newLead.clientId;
+
+  // 1. Ensure the lead belongs to a client
+  if (!clientId) {
+    console.log(`No clientId on lead ${leadId}. Aborting Sheet push.`);
+    return;
+  }
+
+  try {
+    // 2. Fetch the client's saved Google Sheet URL
+    const integrationDoc = await db.collection('outbound_integrations').doc(clientId).get();
+    if (!integrationDoc.exists) return;
+
+    const googleSheetUrl = integrationDoc.data()?.googleSheetUrl;
+    if (!googleSheetUrl) {
+      console.log(`No Google Sheet configured for client ${clientId}`);
+      return; 
+    }
+
+    // 3. Prepare the standardized payload
+    const payload = {
+      id: leadId,
+      clientId: clientId,
+      firstName: newLead.firstName || newLead.name || "Unknown",
+      lastName: newLead.lastName || "",
+      email: newLead.email || "",
+      phone: newLead.phone || "",
+      projectProperty: newLead.projectProperty || "",
+      source: newLead.source || "System",
+      subSource: newLead.subSource || "",
+      status: newLead.status || "New",
+      createdAt: newLead.createdAt ? newLead.createdAt.toDate().toISOString() : new Date().toISOString()
+    };
+
+    // 4. Push to Google Apps Script using Axios
+    await axios.post(googleSheetUrl, payload, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 6000 // Give Apps Script 6 seconds to respond
+    });
+
+    console.log(`✅ Successfully pushed lead ${leadId} to Google Sheets`);
+
+  } catch (error: any) {
+    // Apps script often throws CORS/Redirect errors even when successful, 
+    // so we log it but don't crash the function.
+    console.error(`⚠️ Sheets push notice for client ${clientId}:`, error.message);
   }
 });
 // ============================================================================

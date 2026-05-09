@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, onSnapshot, orderBy, limit, startAfter, arrayUnion } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, onSnapshot, orderBy, limit, startAfter, arrayUnion, Timestamp, getCountFromServer } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Users, Plus, LogOut, LayoutDashboard, UserCircle2, Mail, Calendar, Phone, Home, X, Search, Zap, List, KanbanSquare, ChevronDown, ChevronUp, Menu, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, AlertCircle, CheckCircle2, Info, XCircle, BellRing, CheckSquare, Check, Globe, Facebook } from 'lucide-react';
@@ -20,30 +20,37 @@ const PIPELINE_STATUSES = [
 
 const notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
 
+// ✨ LEVEL 5 FIX: Bulletproof Name Extractor
+const getSafeName = (firstName?: string, lastName?: string) => {
+  const safeFirst = firstName || 'Unknown';
+  const safeLast = (lastName && lastName !== 'Lead') ? lastName : '';
+  const initials = (safeFirst.charAt(0) + (safeLast ? safeLast.charAt(0) : '')).toUpperCase() || 'U';
+  const fullName = `${safeFirst} ${safeLast}`.trim();
+  return { safeFirst, safeLast, initials, fullName };
+};
+
+// ✨ LEVEL 5 FIX: Bulletproof Date Extractor prevents WSOD crashes from legacy CSV data!
+const getSafeDate = (dateField: any): Date | null => {
+  if (!dateField) return null;
+  if (typeof dateField.toDate === 'function') return dateField.toDate();
+  const parsed = new Date(dateField);
+  return isNaN(parsed.getTime()) ? null : parsed;
+};
+
 export default function AgentDashboard() {
   const { user, logout } = useAuth();
-  // ✨ LEVEL 5 SECURITY: Real-Time Workspace Status Monitor
   const [workspaceStatus, setWorkspaceStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'LOADING'>('LOADING');
+  const [indexError, setIndexError] = useState(false); // Detects if Firebase needs an index built
 
   useEffect(() => {
     if (!user?.clientId) return;
-    
     const unsubStatus = onSnapshot(doc(db, 'clients', user.clientId), 
-      (docSnap) => {
-        if (docSnap.exists()) {
-          setWorkspaceStatus(docSnap.data().status || 'ACTIVE');
-        }
-      },
-      (error) => {
-        // ✨ LEVEL 5 FIX: If Firebase actively denies permission to read the status, 
-        // aggressively lock the gates to protect the system.
-        console.error("Status check blocked by Firebase:", error);
-        setWorkspaceStatus('SUSPENDED'); 
-      }
+      (docSnap) => { if (docSnap.exists()) { setWorkspaceStatus(docSnap.data().status || 'ACTIVE'); } },
+      (error) => { setWorkspaceStatus('SUSPENDED'); }
     );
-    
     return () => unsubStatus();
   }, [user?.clientId]);
+
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leads'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('pipeline');
@@ -60,88 +67,87 @@ export default function AgentDashboard() {
   const [realTimeLeads, setRealTimeLeads] = useState<Lead[]>([]);
   const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
 
-  // Dialog State
-  const [dialogState, setDialogState] = useState<{
-    isOpen: boolean; type: 'alert' | 'confirm' | 'success' | 'error'; title: string; message: string; onConfirm?: () => void; onCloseAction?: () => void;
-  }>({ isOpen: false, type: 'alert', title: '', message: '' });
+  const [trueTotalLeads, setTrueTotalLeads] = useState<number | null>(null);
 
-  const showDialog = (type: 'alert' | 'confirm' | 'success' | 'error', title: string, message: string, onConfirm?: () => void, onCloseAction?: () => void) => {
-    setDialogState({ isOpen: true, type, title, message, onConfirm, onCloseAction });
-  };
+  const [dialogState, setDialogState] = useState<{ isOpen: boolean; type: 'alert' | 'confirm' | 'success' | 'error'; title: string; message: string; onConfirm?: () => void; onCloseAction?: () => void; }>({ isOpen: false, type: 'alert', title: '', message: '' });
+  const showDialog = (type: 'alert' | 'confirm' | 'success' | 'error', title: string, message: string, onConfirm?: () => void, onCloseAction?: () => void) => { setDialogState({ isOpen: true, type, title, message, onConfirm, onCloseAction }); };
+  const closeDialog = () => { if (dialogState.onCloseAction && dialogState.type !== 'confirm') dialogState.onCloseAction(); setDialogState(prev => ({ ...prev, isOpen: false })); };
 
-  const closeDialog = () => {
-    if (dialogState.onCloseAction && dialogState.type !== 'confirm') dialogState.onCloseAction();
-    setDialogState(prev => ({ ...prev, isOpen: false }));
-  };
-
-  // Notifications
   const isInitialMount = useRef(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [toastData, setToastData] = useState<{show: boolean, title: string, message: string, color?: string} | null>(null);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
+  const markAllAsRead = () => { setNotifications(prev => prev.map(n => ({ ...n, isRead: true }))); setIsNotificationOpen(false); };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-    setIsNotificationOpen(false);
-  };
-
-  // Only show leads assigned to THIS agent
   const leads = useMemo(() => {
     const combined = [...realTimeLeads, ...olderLeads];
     const uniqueLeads = Array.from(new Map(combined.map(item => [item.id, item])).values());
     return uniqueLeads.filter(lead => lead.assignedToId === user?.uid || lead.assignedTo === user?.uid);
   }, [realTimeLeads, olderLeads, user?.uid]);
 
-  // Task Engine Scanner
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const alertedTasks = useRef<Set<string>>(new Set());
-// ✨ LEVEL 5 SECURITY: 15-Minute Inactivity Auto-Logout ✨
+
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   useEffect(() => {
     const resetTimer = () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => { 
-        showDialog('alert', 'Session Expired', 'Your session has expired due to 15 minutes of inactivity.', undefined, () => { logout(); }); 
-      }, 900000); // 900000ms = 15 minutes
+      timeoutRef.current = setTimeout(() => { showDialog('alert', 'Session Expired', 'Your session has expired due to 15 minutes of inactivity.', undefined, () => { logout(); }); }, 900000); 
     };
-    
     resetTimer();
-    
-    // Listen for any sign that the user is still at their desk
     const events = ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'];
     const handleActivity = () => resetTimer();
-    
     events.forEach(event => window.addEventListener(event, handleActivity, { passive: true }));
-    
-    // Cleanup listeners when component unmounts
-    return () => { 
-      if (timeoutRef.current) clearTimeout(timeoutRef.current); 
-      events.forEach(event => window.removeEventListener(event, handleActivity)); 
-    };
+    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); events.forEach(event => window.removeEventListener(event, handleActivity)); };
   }, [logout]);
-  useEffect(() => {
-    if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
-      Notification.requestPermission();
-    }
-  }, []);
 
-// ✨ LEVEL 5 FIX: Auto-Hydrating Lead Fetcher with Strict Gatekeeper & Index Bypass
+  useEffect(() => { if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") { Notification.requestPermission(); } }, []);
+
+  // ✨ LEVEL 5: Fetch TRUE Server Total Count for the Agent
   useEffect(() => {
-    // 1. CRITICAL: Wait until Firebase definitively loads BOTH the clientId AND the uid!
+    if (!user?.clientId || !user?.uid) return;
+    const fetchTrueCount = async () => {
+      try {
+        const q = query(collection(db, 'leads'), where('clientId', '==', user.clientId), where('assignedToId', '==', user.uid));
+        const snapshot = await getCountFromServer(q);
+        setTrueTotalLeads(snapshot.data().count);
+      } catch (e) { console.error("Failed to fetch true total count:", e); }
+    };
+    fetchTrueCount();
+  }, [user?.clientId, user?.uid, leads.length]);
+
+  const [firstName, setFirstName] = useState(''); const [lastName, setLastName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [projectProperty, setProjectProperty] = useState(''); const [status, setStatus] = useState('New'); const [source, setSource] = useState('Manual'); const [subSource, setSubSource] = useState('');
+  const [searchQuery, setSearchQuery] = useState(''); const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All'); const [leadsProjectFilter, setLeadsProjectFilter] = useState('All'); const [leadsStartDate, setLeadsStartDate] = useState(''); const [leadsEndDate, setLeadsEndDate] = useState(''); const [expandedLeads, setExpandedLeads] = useState<string[]>([]); const [selectedLeads, setSelectedLeads] = useState<string[]>([]); const [currentPage, setCurrentPage] = useState(1); const leadsPerPage = 10;
+  const [leadSources, setLeadSources] = useState<{id: string, name: string}[]>([]); const [leadSubSources, setLeadSubSources] = useState<{id: string, name: string}[]>([]);
+
+  // ====================================================================================
+  // ✨ LEVEL 5 FIX: Auto-Hydrating Lead Fetcher with Server-Side Routing
+  // ====================================================================================
+  useEffect(() => {
     if (!user?.clientId || !user?.uid) return; 
+    setLoading(true); setOlderLeads([]); setLastVisibleLead(null); isInitialMount.current = true; setIndexError(false);
 
-    setLoading(true);
-    
-    // 2. Query bypassed index requirement (assignedTo removed, filtered by useMemo above)
-    const q = query(
-      collection(db, 'leads'),
+    const queryConstraints: any[] = [
       where('clientId', '==', user.clientId),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
+      where('assignedToId', '==', user.uid)
+    ];
+
+    if (leadsStartDate) {
+      const start = new Date(leadsStartDate); start.setHours(0, 0, 0, 0);
+      queryConstraints.push(where('createdAt', '>=', Timestamp.fromDate(start)));
+    }
+    if (leadsEndDate) {
+      const end = new Date(leadsEndDate); end.setHours(23, 59, 59, 999);
+      queryConstraints.push(where('createdAt', '<=', Timestamp.fromDate(end)));
+    }
+
+    queryConstraints.push(orderBy('createdAt', 'desc'));
+    queryConstraints.push(limit(50));
+
+    const q = query(collection(db, 'leads'), ...queryConstraints);
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedLeads: Lead[] = [];
@@ -152,9 +158,8 @@ export default function AgentDashboard() {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const newLead = change.doc.data() as Lead;
-            // Level 5 Notification Fix: Only toast if it's assigned to THIS agent!
             if (newLead.assignedTo === user.uid || newLead.assignedToId === user.uid) {
-              const leadName = `${newLead.firstName} ${newLead.lastName === 'Lead' ? '' : newLead.lastName}`.trim() || 'Someone';
+              const leadName = getSafeName(newLead.firstName, newLead.lastName).fullName;
               setToastData({ show: true, title: "New Lead Assigned!", message: `${leadName} was just assigned to you.`, color: "from-[#74ebd5] to-[#9face6]" });
               setNotifications(prev => [{ id: change.doc.id + Date.now(), leadId: change.doc.id, title: "New Lead Assigned", message: `${leadName} - ${newLead.projectProperty || 'General Inquiry'}`, time: new Date(), isRead: false }, ...prev].slice(0, 30));
               setTimeout(() => setToastData(null), 5000);
@@ -165,59 +170,77 @@ export default function AgentDashboard() {
       
       if (isInitialMount.current) {
         isInitialMount.current = false;
-        if (!lastVisibleLead && snapshot.docs.length > 0) {
+        if (snapshot.docs.length > 0) {
           setLastVisibleLead(snapshot.docs[snapshot.docs.length - 1]);
           setHasMoreLeads(snapshot.docs.length === 50);
-        }
+        } else { setHasMoreLeads(false); }
         setLoading(false);
       }
-    }, (error) => {
-      console.error("Error in onSnapshot:", error);
+    }, (error: any) => {
+      console.error("Firebase Snapshot Error (Missing Index likely):", error);
+      if (error.message && error.message.includes('index')) setIndexError(true);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [user?.clientId, user?.uid]);
+  }, [user?.clientId, user?.uid, leadsStartDate, leadsEndDate]);
+
+  // ====================================================================================
+  // ✨ LEVEL 5 FIX: Debounced Server-Side Deep Search
+  // ====================================================================================
+  useEffect(() => {
+    const performDeepServerSearch = async () => {
+      if (searchQuery.trim().length < 3 || !user?.clientId || !user?.uid) return;
+      const qStr = searchQuery.trim(); const qStrLower = qStr.toLowerCase(); const qStrTitle = qStr.charAt(0).toUpperCase() + qStr.slice(1).toLowerCase();
+
+      try {
+        const phoneQ = query(collection(db, 'leads'), where('clientId', '==', user.clientId), where('phone', '==', qStr));
+        const emailQ = query(collection(db, 'leads'), where('clientId', '==', user.clientId), where('email', '==', qStrLower));
+        const nameQ = query(collection(db, 'leads'), where('clientId', '==', user.clientId), where('firstName', '>=', qStrTitle), where('firstName', '<=', qStrTitle + '\uf8ff'));
+
+        const [phoneSnap, emailSnap, nameSnap] = await Promise.all([getDocs(phoneQ), getDocs(emailQ), getDocs(nameQ)]);
+        const newlyFoundLeads: Lead[] = [];
+        
+        const safelyInjectLeads = (snap: any) => {
+          snap.forEach((doc: any) => {
+            const data = doc.data();
+            if (data.assignedTo === user.uid || data.assignedToId === user.uid) {
+              if (!leads.some(l => l.id === doc.id)) { newlyFoundLeads.push({ id: doc.id, ...data } as Lead); }
+            }
+          });
+        };
+
+        safelyInjectLeads(phoneSnap); safelyInjectLeads(emailSnap); safelyInjectLeads(nameSnap);
+        if (newlyFoundLeads.length > 0) setOlderLeads(prev => [...prev, ...newlyFoundLeads]);
+      } catch (e) { console.error("Deep server search failed:", e); }
+    };
+
+    const debounceTimer = setTimeout(performDeepServerSearch, 800); 
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery, user?.clientId, user?.uid]);
 
   useEffect(() => {
     const checkTasks = () => {
       const now = new Date().getTime();
-      
       pendingTasks.forEach(task => {
         const dueTime = new Date(task.dueDate).getTime();
         const timeDiff = dueTime - now;
-        
         if (timeDiff <= 120000 && timeDiff > -86400000 && !alertedTasks.current.has(task.id)) {
           const isOverdue = timeDiff < 0;
           const title = isOverdue ? "Task Overdue!" : "Task Due Soon!";
           const bodyMsg = `${task.type} for ${task.leadName}`;
-
-          setToastData({
-            show: true,
-            title: title,
-            message: bodyMsg,
-            color: isOverdue ? "from-red-500 to-rose-600" : "from-amber-400 to-orange-500"
-          });
-          
+          setToastData({ show: true, title: title, message: bodyMsg, color: isOverdue ? "from-red-500 to-rose-600" : "from-amber-400 to-orange-500" });
           notificationSound.play().catch(e => console.log("Audio auto-play blocked.", e));
-
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification(`Mintage CRM: ${title}`, { body: bodyMsg, icon: '/mintage-logo.png' });
-          }
-          
+          if ("Notification" in window && Notification.permission === "granted") { new Notification(`Mintage CRM: ${title}`, { body: bodyMsg, icon: '/mintage-logo.png' }); }
           setNotifications(prev => {
             if (prev.some(n => n.id.includes(task.id))) return prev;
-            return [{
-              id: `task-${task.id}-${Date.now()}`, leadId: task.leadId, title: isOverdue ? `Overdue: ${task.type}` : `Due Soon: ${task.type}`, message: `Action required for ${task.leadName}.`, time: new Date(), isRead: false
-            }, ...prev].slice(0, 30);
+            return [{ id: `task-${task.id}-${Date.now()}`, leadId: task.leadId, title: isOverdue ? `Overdue: ${task.type}` : `Due Soon: ${task.type}`, message: `Action required for ${task.leadName}.`, time: new Date(), isRead: false }, ...prev].slice(0, 30);
           });
-
           alertedTasks.current.add(task.id);
           setTimeout(() => setToastData(null), 8000); 
         }
       });
     };
-
     checkTasks(); 
     const interval = setInterval(checkTasks, 10000); 
     return () => clearInterval(interval);
@@ -227,24 +250,16 @@ export default function AgentDashboard() {
     e.stopPropagation();
     try {
       await updateDoc(doc(db, 'reminders', taskId), { status: 'Completed' });
-      setToastData({
-        show: true, title: "Task Completed", message: "Great job checking that off!", color: "from-emerald-400 to-teal-500"
-      });
+      setToastData({ show: true, title: "Task Completed", message: "Great job checking that off!", color: "from-emerald-400 to-teal-500" });
       setTimeout(() => setToastData(null), 3000);
-    } catch (err) {
-      console.error('Error completing task:', err);
-    }
+    } catch (err) { console.error('Error completing task:', err); }
   };
 
   const dashboardStats = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(today.getDate() - 6);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = new Date(today); sevenDaysAgo.setDate(today.getDate() - 6);
 
-    let todaysLeadsCount = 0;
-    let activePipelineCount = 0;
-    let closedWonCount = 0;
+    let activePipelineCount = 0; let closedWonCount = 0;
     const trendDataMap = new Map<string, number>();
     for (let i = 6; i >= 0; i--) {
       const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - i);
@@ -252,12 +267,11 @@ export default function AgentDashboard() {
     }
 
     leads.forEach(lead => {
-      const leadDate = lead.createdAt?.toDate();
+      const leadDate = getSafeDate(lead.createdAt);
       if (!leadDate) return;
 
       if (lead.status !== 'Closed Lost' && lead.status !== 'Junk / Invalid') activePipelineCount++;
       if (lead.status === 'Closed Won') closedWonCount++;
-      if (leadDate >= today) todaysLeadsCount++;
       if (leadDate >= sevenDaysAgo) {
         const dayStr = leadDate.toLocaleDateString('en-US', { weekday: 'short' });
         if (trendDataMap.has(dayStr)) trendDataMap.set(dayStr, trendDataMap.get(dayStr)! + 1);
@@ -266,67 +280,49 @@ export default function AgentDashboard() {
 
     const trendChart = Array.from(trendDataMap.entries()).map(([name, count]) => ({ name, count }));
     const conversionRate = leads.length > 0 ? Math.round((closedWonCount / leads.length) * 100) : 0;
-
-    return { todaysLeadsCount, activePipelineCount, conversionRate, trendChart };
+    return { activePipelineCount, conversionRate, trendChart };
   }, [leads]);
 
-  // Lead Form State
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [projectProperty, setProjectProperty] = useState('');
-  const [status, setStatus] = useState('New');
-  const [source, setSource] = useState('Manual');
-  const [subSource, setSubSource] = useState('');
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All');
-  const [leadsProjectFilter, setLeadsProjectFilter] = useState('All');
-  const [leadsStartDate, setLeadsStartDate] = useState('');
-  const [leadsEndDate, setLeadsEndDate] = useState('');
-  const [expandedLeads, setExpandedLeads] = useState<string[]>([]);
-  const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const leadsPerPage = 10;
-
-  const [leadSources, setLeadSources] = useState<{id: string, name: string}[]>([]);
-  const [leadSubSources, setLeadSubSources] = useState<{id: string, name: string}[]>([]);
-// ✨ LEVEL 5 FIX: Smart Project Extractor (Finds all unique projects across your leads)
   const uniqueProjects = useMemo(() => {
     const projSet = new Set<string>(); 
     leads.forEach(lead => { 
       let cleanProjectName = lead.projectProperty;
-      
-      // Look inside form answers just in case Meta buried the project name there
       if (lead.customAnswers) {
         const projectKey = Object.keys(lead.customAnswers).find(k => k.toLowerCase().includes('project'));
-        if (projectKey && lead.customAnswers[projectKey]) {
-          cleanProjectName = lead.customAnswers[projectKey];
-        }
+        if (projectKey && lead.customAnswers[projectKey]) cleanProjectName = lead.customAnswers[projectKey];
       }
-      
-      if (cleanProjectName && cleanProjectName.trim() !== '') {
-        projSet.add(cleanProjectName.trim()); 
-      }
+      if (cleanProjectName && cleanProjectName.trim() !== '') projSet.add(cleanProjectName.trim()); 
     });
     return Array.from(projSet).sort((a, b) => a.localeCompare(b));
   }, [leads]);
+
   const loadMoreLeads = async () => {
     if (!user?.clientId || !lastVisibleLead || loadingMoreLeads || !hasMoreLeads) return;
     setLoadingMoreLeads(true);
     try {
-      // ✨ LEVEL 5 FIX: Match the bypassed index query
-      const q = query(
-        collection(db, 'leads'), 
-        where('clientId', '==', user.clientId), 
-        orderBy('createdAt', 'desc'), 
-        startAfter(lastVisibleLead), 
-        limit(50)
-      );
+      const queryConstraints: any[] = [
+        where('clientId', '==', user.clientId),
+        where('assignedToId', '==', user.uid)
+      ];
+
+      if (leadsStartDate) {
+        const start = new Date(leadsStartDate); start.setHours(0, 0, 0, 0);
+        queryConstraints.push(where('createdAt', '>=', Timestamp.fromDate(start)));
+      }
+      if (leadsEndDate) {
+        const end = new Date(leadsEndDate); end.setHours(23, 59, 59, 999);
+        queryConstraints.push(where('createdAt', '<=', Timestamp.fromDate(end)));
+      }
+
+      queryConstraints.push(orderBy('createdAt', 'desc'));
+      queryConstraints.push(startAfter(lastVisibleLead));
+      queryConstraints.push(limit(50));
+
+      const q = query(collection(db, 'leads'), ...queryConstraints);
       const querySnapshot = await getDocs(q);
       const fetchedLeads: Lead[] = [];
       querySnapshot.forEach((doc) => fetchedLeads.push({ id: doc.id, ...doc.data() } as Lead));
+      
       if (fetchedLeads.length > 0) {
         setOlderLeads(prev => [...prev, ...fetchedLeads]);
         setLastVisibleLead(querySnapshot.docs[querySnapshot.docs.length - 1]);
@@ -347,9 +343,7 @@ export default function AgentDashboard() {
         const globalQ = collection(db, 'global_lead_sources');
         const globalSnapshot = await getDocs(globalQ);
         globalSnapshot.forEach(doc => {
-          if (!fetched.some(s => s.name.toLowerCase() === doc.data().name.toLowerCase())) {
-            fetched.push({ id: doc.id, name: doc.data().name });
-          }
+          if (!fetched.some(s => s.name.toLowerCase() === doc.data().name.toLowerCase())) { fetched.push({ id: doc.id, name: doc.data().name }); }
         });
         fetched.sort((a, b) => a.name.localeCompare(b.name));
         setLeadSources(fetched);
@@ -374,8 +368,7 @@ export default function AgentDashboard() {
       } catch (error) { console.error("Error fetching team members:", error); }
     };
 
-    fetchSources();
-    fetchTeam();
+    fetchSources(); fetchTeam();
   }, [user?.clientId]);
 
   const handleLeadUpdated = (updatedLead: Lead) => {
@@ -384,10 +377,7 @@ export default function AgentDashboard() {
     setSelectedLead(updatedLead);
   };
 
-  const openLeadDetails = (lead: Lead) => {
-    setSelectedLead(lead);
-    setIsLeadModalOpen(true);
-  };
+  const openLeadDetails = (lead: Lead) => { setSelectedLead(lead); setIsLeadModalOpen(true); };
 
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -395,38 +385,19 @@ export default function AgentDashboard() {
     setAddingLead(true);
     try {
       await addDoc(collection(db, 'leads'), {
-        clientId: user.clientId, firstName, lastName, email, phone, projectProperty, status,
-        source: source || 'Manual', subSource: subSource || '',
-        assignedTo: user.uid, assignedToId: user.uid, assignedToName: user.email?.split('@')[0], 
-        createdAt: serverTimestamp()
+        clientId: user.clientId, firstName, lastName, email, phone, projectProperty, status, source: source || 'Manual', subSource: subSource || '', assignedTo: user.uid, assignedToId: user.uid, assignedToName: user.email?.split('@')[0], createdAt: serverTimestamp()
       });
-      
-      setFirstName(''); setLastName(''); setEmail(''); setPhone(''); setProjectProperty(''); setStatus('New'); setSubSource('');
-      setIsModalOpen(false);
+      setFirstName(''); setLastName(''); setEmail(''); setPhone(''); setProjectProperty(''); setStatus('New'); setSubSource(''); setIsModalOpen(false);
       showDialog('success', 'Lead Added', 'Your lead was added successfully.');
-    } catch (error) {
-      console.error("Error adding lead:", error);
-      showDialog('error', 'Error', 'Failed to add lead.');
-    } finally { setAddingLead(false); }
+    } catch (error) { console.error("Error adding lead:", error); showDialog('error', 'Error', 'Failed to add lead.'); } finally { setAddingLead(false); }
   };
 
- // ✨ LEVEL 5 FIX: Auto-Logging Status Changes (Agent)
   const handleStatusChange = async (leadId: string, newStatus: string) => {
     try {
-      const systemNote = {
-        text: `System: Status changed to ${newStatus}`,
-        authorEmail: user?.email || 'System',
-        authorRole: 'System',
-        timestamp: new Date().toISOString()
-      };
-
+      const systemNote = { text: `System: Status changed to ${newStatus}`, authorEmail: user?.email || 'System', authorRole: 'System', timestamp: new Date().toISOString() };
       setRealTimeLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus, notes: [...(lead.notes || []), systemNote] } : lead));
       setOlderLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, status: newStatus, notes: [...(lead.notes || []), systemNote] } : lead));
-      
-      await updateDoc(doc(db, 'leads', leadId), { 
-        status: newStatus,
-        notes: arrayUnion(systemNote)
-      });
+      await updateDoc(doc(db, 'leads', leadId), { status: newStatus, notes: arrayUnion(systemNote) });
     } catch (error) { console.error("Error updating status:", error); }
   };
 
@@ -434,23 +405,22 @@ export default function AgentDashboard() {
     let matches = true;
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      const fullName = `${lead.firstName} ${lead.lastName}`.toLowerCase();
-      if (!fullName.includes(query) && !lead.email?.toLowerCase().includes(query) && !lead.phone?.toLowerCase().includes(query)) matches = false;
+      const { fullName } = getSafeName(lead.firstName, lead.lastName);
+      if (!fullName.toLowerCase().includes(query) && !lead.email?.toLowerCase().includes(query) && !lead.phone?.toLowerCase().includes(query)) matches = false;
     }
     if (leadsViewSourceFilter !== 'All') { if (lead.source !== leadsViewSourceFilter) matches = false; }
-    // ✨ LEVEL 5 FIX: Apply the Project Filter
+    
     if (leadsProjectFilter !== 'All') {
       let leadProject = lead.projectProperty;
       if (lead.customAnswers) {
         const projectKey = Object.keys(lead.customAnswers).find(k => k.toLowerCase().includes('project'));
-        if (projectKey && lead.customAnswers[projectKey]) {
-          leadProject = lead.customAnswers[projectKey];
-        }
+        if (projectKey && lead.customAnswers[projectKey]) leadProject = lead.customAnswers[projectKey];
       }
       if (leadProject?.trim() !== leadsProjectFilter) matches = false;
     }
+
     if (leadsStartDate || leadsEndDate) {
-      const leadDate = lead.createdAt ? lead.createdAt.toDate() : new Date();
+      const leadDate = getSafeDate(lead.createdAt) || new Date();
       leadDate.setHours(0, 0, 0, 0);
       if (leadsStartDate) { const start = new Date(leadsStartDate); start.setHours(0, 0, 0, 0); if (leadDate < start) matches = false; }
       if (leadsEndDate) { const end = new Date(leadsEndDate); end.setHours(23, 59, 59, 999); if (leadDate > end) matches = false; }
@@ -461,35 +431,16 @@ export default function AgentDashboard() {
   const totalPages = Math.ceil(filteredLeadsView.length / leadsPerPage);
   const paginatedLeads = filteredLeadsView.slice((currentPage - 1) * leadsPerPage, currentPage * leadsPerPage);
 
-  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) { setSelectedLeads(paginatedLeads.map(l => l.id)); } 
-    else { setSelectedLeads([]); }
-  };
-
-  const handleSelectLead = (id: string, e: React.ChangeEvent<HTMLInputElement> | React.MouseEvent) => {
-    e.stopPropagation();
-    setSelectedLeads(prev => prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]);
-  };
-
-  const toggleExpandLead = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setExpandedLeads(prev => prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]);
-  };
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.checked) { setSelectedLeads(paginatedLeads.map(l => l.id)); } else { setSelectedLeads([]); } };
+  const handleSelectLead = (id: string, e: React.ChangeEvent<HTMLInputElement> | React.MouseEvent) => { e.stopPropagation(); setSelectedLeads(prev => prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]); };
+  const toggleExpandLead = (id: string, e: React.MouseEvent) => { e.stopPropagation(); setExpandedLeads(prev => prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]); };
 
   const getSourceBadge = (source?: string, subSource?: string) => {
     const s = source?.toLowerCase() || 'manual';
-    let icon = <Globe className="w-3 h-3" />;
-    let colorClass = "bg-slate-100 text-slate-600 border-slate-200";
-    let label = source || 'Manual';
-
+    let icon = <Globe className="w-3 h-3" />; let colorClass = "bg-slate-100 text-slate-600 border-slate-200"; let label = source || 'Manual';
     if (s.includes('facebook')) { icon = <Facebook className="w-3 h-3" />; colorClass = "bg-[#74ebd5]/10 text-[#4cb8a5] border-[#74ebd5]/30"; } 
     else if (s.includes('google')) { icon = <Search className="w-3 h-3" />; colorClass = "bg-amber-50 text-amber-700 border-amber-200"; } 
-
-    return (
-      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${colorClass}`}>
-        {icon} {label} {subSource ? `/ ${subSource}` : ''}
-      </span>
-    );
+    return <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${colorClass}`}>{icon} {label} {subSource ? `/ ${subSource}` : ''}</span>;
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -506,7 +457,7 @@ export default function AgentDashboard() {
       default: return 'bg-slate-50 text-slate-700 border-slate-200';
     }
   };
-// ✨ LEVEL 5 FIX: Enterprise Kanban Color Mapping
+
   const COLUMN_STYLES: Record<string, { bg: string, text: string, border: string, dot: string }> = {
     'New': { bg: 'bg-blue-50/80', text: 'text-blue-700', border: 'border-blue-200/50', dot: 'bg-blue-500' },
     'Attempted Contact': { bg: 'bg-indigo-50/80', text: 'text-indigo-700', border: 'border-indigo-200/50', dot: 'bg-indigo-500' },
@@ -518,7 +469,7 @@ export default function AgentDashboard() {
     'Closed Lost': { bg: 'bg-red-50/80', text: 'text-red-700', border: 'border-red-200/50', dot: 'bg-red-500' },
     'Junk / Invalid': { bg: 'bg-slate-100/80', text: 'text-slate-600', border: 'border-slate-200/50', dot: 'bg-slate-400' },
   };
-  // ✨ LEVEL 5 SECURITY: The Iron Gate UI Lock
+
   if (workspaceStatus === 'SUSPENDED') {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 selection:bg-[#74ebd5] selection:text-slate-900 z-[9999] relative">
@@ -544,6 +495,7 @@ export default function AgentDashboard() {
       </div>
     );
   }
+
   return (
     <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
       
@@ -674,16 +626,12 @@ export default function AgentDashboard() {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0">
-        
         <header className="h-24 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
           <h1 className="text-xl font-bold tracking-tight text-slate-800">
             {activeTab === 'dashboard' ? 'My Dashboard' : 'My Leads Workspace'}
           </h1>
           <div className="flex items-center gap-6">
-            
-            {/* ✨ NOTIFICATION BELL DROPDOWN ✨ */}
             <div className="relative">
               <button 
                 onClick={() => setIsNotificationOpen(!isNotificationOpen)}
@@ -746,6 +694,18 @@ export default function AgentDashboard() {
           </div>
         </header>
 
+        {indexError && (
+          <div className="mx-4 md:mx-8 mt-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl shadow-sm flex items-start gap-4">
+            <AlertCircle className="w-6 h-6 text-amber-500 shrink-0" />
+            <div>
+              <h3 className="text-sm font-bold text-amber-800">Database Index Required</h3>
+              <p className="text-xs text-amber-700 mt-1 mb-2 font-medium">
+                To securely fetch your specific leads, Firebase requires a new index. Please right-click anywhere on this page, click <strong>"Inspect"</strong>, go to the <strong>"Console"</strong> tab, and click the blue Firebase link inside the red error message to build it.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-auto custom-scrollbar">
           <div className="max-w-7xl mx-auto h-full flex flex-col min-w-[800px] md:min-w-0">
             
@@ -767,7 +727,9 @@ export default function AgentDashboard() {
                       </div>
                     </div>
                     <div className="flex items-end gap-3">
-                      <p className="text-4xl font-black text-slate-800">{leads.length}</p>
+                      <p className="text-4xl font-black text-slate-800">
+                        {trueTotalLeads !== null ? trueTotalLeads : leads.length}
+                      </p>
                     </div>
                   </div>
 
@@ -827,29 +789,32 @@ export default function AgentDashboard() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100/60">
-                            {leads.slice(0, 5).map(lead => (
-                              <tr key={lead.id} className="hover:bg-white/60 transition-colors">
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="font-bold text-slate-800 text-sm">
-                                    {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
-                                  </div>
-                                  <div className="text-xs text-slate-500">{lead.phone || lead.email}</div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[9px] font-bold border ${getStatusBadgeClass(lead.status)}`}>
-                                    {lead.status}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-right">
-                                  <button 
-                                    onClick={() => openLeadDetails(lead)}
-                                    className="text-xs font-bold text-slate-600 hover:text-[#50bdaf] bg-white border border-slate-200 hover:border-[#74ebd5] shadow-sm px-3 py-1.5 rounded-lg transition-all"
-                                  >
-                                    View
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
+                            {leads.slice(0, 5).map(lead => {
+                              const { safeFirst, safeLast } = getSafeName(lead.firstName, lead.lastName);
+                              return (
+                                <tr key={lead.id} className="hover:bg-white/60 transition-colors">
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="font-bold text-slate-800 text-sm">
+                                      {safeFirst} {safeLast}
+                                    </div>
+                                    <div className="text-xs text-slate-500">{lead.phone || lead.email}</div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[9px] font-bold border ${getStatusBadgeClass(lead.status)}`}>
+                                      {lead.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                                    <button 
+                                      onClick={() => openLeadDetails(lead)}
+                                      className="text-xs font-bold text-slate-600 hover:text-[#50bdaf] bg-white border border-slate-200 hover:border-[#74ebd5] shadow-sm px-3 py-1.5 rounded-lg transition-all"
+                                    >
+                                      View
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       ) : (
@@ -944,13 +909,37 @@ export default function AgentDashboard() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4 bg-white/60 backdrop-blur-xl p-3 rounded-2xl border border-white shadow-[0_8px_30px_rgba(116,235,213,0.05)] mb-8 shrink-0">
+                  
+                  <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-3 py-1.5 h-10 shadow-sm">
+                    <input 
+                      type="date" 
+                      value={leadsStartDate} 
+                      max={leadsEndDate || undefined} 
+                      onChange={(e) => { setLeadsStartDate(e.target.value); if (leadsEndDate && e.target.value > leadsEndDate) { setLeadsEndDate(e.target.value); } }} 
+                      className="text-sm font-medium border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer" 
+                    />
+                    <span className="text-slate-300 text-sm font-light">|</span>
+                    <input 
+                      type="date" 
+                      value={leadsEndDate} 
+                      min={leadsStartDate || undefined} 
+                      onChange={(e) => { setLeadsEndDate(e.target.value); if (leadsStartDate && e.target.value < leadsStartDate) { setLeadsStartDate(e.target.value); } }} 
+                      className="text-sm font-medium border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer" 
+                    />
+                    {(leadsStartDate || leadsEndDate) && (
+                      <button onClick={() => { setLeadsStartDate(''); setLeadsEndDate(''); }} className="ml-2 text-xs font-bold text-slate-500 hover:text-red-600 bg-slate-100 hover:bg-red-50 px-2.5 py-1 rounded-lg transition-colors">
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
                   <div className="flex items-center gap-2 bg-white/80 border border-slate-100 rounded-xl px-4 py-1.5 h-10 flex-1 min-w-[200px] shadow-sm focus-within:ring-2 focus-within:ring-[#74ebd5]/30 transition-all">
                     <Search className="w-4 h-4 text-slate-400 shrink-0" />
                     <input
                       type="text"
                       placeholder="Search your leads..."
                       value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                       className="text-sm font-medium border-none focus:ring-0 text-slate-700 bg-transparent w-full outline-none placeholder:font-normal"
                     />
                   </div>
@@ -964,7 +953,6 @@ export default function AgentDashboard() {
                       <option key={source.id} value={source.name}>{source.name}</option>
                     ))}
                   </select>
-                  {/* ✨ LEVEL 5 FIX: The Dynamic Project Dropdown */}
                   <select
                     value={leadsProjectFilter}
                     onChange={(e) => { setLeadsProjectFilter(e.target.value); setCurrentPage(1); }}
@@ -1035,8 +1023,8 @@ export default function AgentDashboard() {
                         </thead>
                         <tbody className="divide-y divide-slate-100/60 bg-transparent">
                           {paginatedLeads.map((lead) => {
-                            // ✨ Extract initials and colors
-                            const leadInitials = (lead.firstName.charAt(0) + (lead.lastName === 'Lead' ? '' : lead.lastName.charAt(0) || '')).toUpperCase() || 'L';
+                            const { safeFirst, safeLast, initials } = getSafeName(lead.firstName, lead.lastName);
+                            const leadDate = getSafeDate(lead.createdAt);
                             const colStyle = COLUMN_STYLES[lead.status] || COLUMN_STYLES['New'];
 
                             return (
@@ -1045,7 +1033,6 @@ export default function AgentDashboard() {
                                   onClick={() => openLeadDetails(lead)}
                                   className="hover:bg-white/80 transition-all duration-200 cursor-pointer group relative"
                                 >
-                                  {/* ✨ LEVEL 5 FIX: Moved the hover accent INSIDE the first cell so it doesn't break the table grid! */}
                                   <td className="px-6 py-5 whitespace-nowrap relative" onClick={(e) => e.stopPropagation()}>
                                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-[#74ebd5] to-[#9face6] opacity-0 group-hover:opacity-100 transition-opacity rounded-r-full"></div>
                                     <input 
@@ -1067,18 +1054,17 @@ export default function AgentDashboard() {
                                   </td>
                                   
                                   <td className="px-6 py-5 whitespace-nowrap text-sm font-medium text-slate-500 group-hover:text-slate-700 transition-colors">
-                                    {lead.createdAt ? new Date(lead.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}
+                                    {leadDate ? leadDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}
                                   </td>
                                   
-                                  {/* ✨ LEVEL 5 UI: Table Avatars & Crisp Badges */}
                                   <td className="px-6 py-5 whitespace-nowrap">
                                     <div className="flex items-center gap-3">
                                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 border shadow-sm ${colStyle.bg} ${colStyle.text} ${colStyle.border}`}>
-                                        {leadInitials}
+                                        {initials}
                                       </div>
                                       <div className="flex flex-col">
                                         <span className="font-extrabold text-slate-800 text-sm group-hover:text-[#50bdaf] transition-colors">
-                                          {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
+                                          {safeFirst} {safeLast}
                                         </span>
                                         {lead.isDuplicate && (
                                           <span className="w-fit mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-50 text-rose-600 border border-rose-100 uppercase tracking-widest shadow-sm">
@@ -1089,7 +1075,6 @@ export default function AgentDashboard() {
                                     </div>
                                   </td>
                                   
-                                  {/* ✨ LEVEL 5 UI: Glowing Icons */}
                                   <td className="px-6 py-5 whitespace-nowrap">
                                     <div className="flex flex-col gap-1.5 text-xs text-slate-500 font-medium">
                                       <div className="flex items-center gap-2 group-hover:text-slate-700 transition-colors">
@@ -1133,7 +1118,6 @@ export default function AgentDashboard() {
                                   </td>
                                 </tr>
                                 
-                                {/* Expanded Row Content */}
                                 {expandedLeads.includes(lead.id) && (
                                   <tr className="bg-slate-50/80 backdrop-blur-sm border-b border-slate-200/50 shadow-inner">
                                     <td colSpan={9} className="px-6 py-5">
@@ -1253,100 +1237,121 @@ export default function AgentDashboard() {
                             </span>
                           </div>
                           <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
-                            {filteredLeadsView.filter(l => l.status === status).map(lead => (
-                              <div 
-                                key={lead.id} 
-                                onClick={() => openLeadDetails(lead)}
-                                className="bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-[0_8px_20px_rgba(116,235,213,0.15)] hover:-translate-y-1 transition-all duration-300 cursor-pointer relative group"
-                              >
-                                <div className="flex justify-between items-start mb-4">
-                                  <div className="font-bold text-slate-900 text-base leading-tight pr-2">
-                                    {lead.firstName} {lead.lastName === 'Lead' ? '' : lead.lastName}
-                                  </div>
-                                  {getSourceBadge(lead.source, lead.subSource)}
-                                </div>
-                                
-                                {((lead.designation && lead.designation !== "Unknown") || (lead.location && lead.location !== "Unknown")) && (
-                                  <div className="mb-4 text-xs font-medium text-slate-500 space-y-1.5 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
-                                    {lead.designation && lead.designation !== "Unknown" && (
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-[10px]">💼</span> <span className="truncate">{lead.designation}</span>
-                                      </div>
-                                    )}
-                                    {lead.location && lead.location !== "Unknown" && (
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-[10px]">📍</span> <span className="truncate">{lead.location}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
+                            {filteredLeadsView.filter(l => l.status === status).map(lead => {
+                              const { safeFirst, safeLast } = getSafeName(lead.firstName, lead.lastName);
 
-                                {lead.linkedin && (
-                                  <div className="mb-4">
-                                    <a 
-                                      href={lead.linkedin} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 w-fit"
-                                      onClick={(e) => e.stopPropagation()} 
+                              return (
+                                <div 
+                                  key={lead.id} 
+                                  onClick={() => openLeadDetails(lead)}
+                                  className="bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-[0_8px_20px_rgba(116,235,213,0.15)] hover:-translate-y-1 transition-all duration-300 cursor-pointer relative group"
+                                >
+                                  <div className="flex justify-between items-start mb-4">
+                                    <div className="font-bold text-slate-900 text-base leading-tight pr-2">
+                                      {safeFirst} {safeLast}
+                                    </div>
+                                    {getSourceBadge(lead.source, lead.subSource)}
+                                  </div>
+                                  
+                                  {((lead.designation && lead.designation !== "Unknown") || (lead.location && lead.location !== "Unknown")) && (
+                                    <div className="mb-4 text-xs font-medium text-slate-500 space-y-1.5 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
+                                      {lead.designation && lead.designation !== "Unknown" && (
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px]">💼</span> <span className="truncate">{lead.designation}</span>
+                                        </div>
+                                      )}
+                                      {lead.location && lead.location !== "Unknown" && (
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px]">📍</span> <span className="truncate">{lead.location}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {lead.linkedin && (
+                                    <div className="mb-4">
+                                      <a 
+                                        href={lead.linkedin} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 w-fit"
+                                        onClick={(e) => e.stopPropagation()} 
+                                      >
+                                        🔗 View LinkedIn
+                                      </a>
+                                    </div>
+                                  )}
+                                  
+                                  <div className="space-y-2 mb-5">
+                                    <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
+                                      <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Phone className="w-3.5 h-3.5 shrink-0" /></div>
+                                      <span className="truncate">{lead.phone || 'No phone'}</span>
+                                      
+                                      {lead.truecallerName && lead.truecallerName !== "Unknown" && (
+                                        <span className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 shrink-0">
+                                          <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/>
+                                            <path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/>
+                                          </svg>
+                                          Verified
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
+                                      <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Home className="w-3.5 h-3.5 shrink-0" /></div>
+                                      <span className="truncate">{lead.projectProperty || 'No project'}</span>
+                                    </div>
+                                  </div>
+
+                                  {lead.tags && lead.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mb-5">
+                                      {lead.tags.map(tag => (
+                                        <span key={tag} className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider">
+                                          {tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  
+                                  <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
+                                    <select
+                                      value={lead.status}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        handleStatusChange(lead.id, e.target.value);
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-[#74ebd5]/30 focus:border-[#74ebd5] outline-none cursor-pointer hover:bg-white transition-colors"
                                     >
-                                      🔗 View LinkedIn
-                                    </a>
-                                  </div>
-                                )}
-                                
-                                <div className="space-y-2 mb-5">
-                                  <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
-                                    <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Phone className="w-3.5 h-3.5 shrink-0" /></div>
-                                    <span className="truncate">{lead.phone || 'No phone'}</span>
-                                    
-                                    {lead.truecallerName && lead.truecallerName !== "Unknown" && (
-                                      <span className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 shrink-0">
-                                        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
-                                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" opacity="0.3"/>
-                                          <path d="M10 16l-4-4 1.41-1.41L10 13.17l6.59-6.59L18 8l-8 8z"/>
-                                        </svg>
-                                        Verified
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2.5 text-xs font-medium text-slate-600">
-                                    <div className="p-1.5 bg-slate-100 rounded-md text-slate-400"><Home className="w-3.5 h-3.5 shrink-0" /></div>
-                                    <span className="truncate">{lead.projectProperty || 'No project'}</span>
+                                      {PIPELINE_STATUSES.map(s => (
+                                        <option key={s} value={s}>{s}</option>
+                                      ))}
+                                    </select>
                                   </div>
                                 </div>
-
-                                {lead.tags && lead.tags.length > 0 && (
-                                  <div className="flex flex-wrap gap-1.5 mb-5">
-                                    {lead.tags.map(tag => (
-                                      <span key={tag} className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider">
-                                        {tag}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                                
-                                <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
-                                  <select
-                                    value={lead.status}
-                                    onChange={(e) => {
-                                      e.stopPropagation();
-                                      handleStatusChange(lead.id, e.target.value);
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:ring-2 focus:ring-[#74ebd5]/30 focus:border-[#74ebd5] outline-none cursor-pointer hover:bg-white transition-colors"
-                                  >
-                                    {PIPELINE_STATUSES.map(s => (
-                                      <option key={s} value={s}>{s}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* ✨ Restored the Load More Leads Button for Agents ✨ */}
+                {hasMoreLeads && leads.length > 0 && (
+                  <div className="mt-6 flex justify-center pb-8">
+                    <button 
+                      onClick={loadMoreLeads} 
+                      disabled={loadingMoreLeads} 
+                      className="flex items-center gap-2 px-8 py-3 bg-white/80 backdrop-blur-md border border-white rounded-2xl text-sm font-bold text-slate-700 hover:bg-white hover:-translate-y-0.5 hover:shadow-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                    >
+                      {loadingMoreLeads ? (
+                        <><div className="w-4 h-4 border-2 border-slate-300 border-t-[#74ebd5] rounded-full animate-spin" />Loading...</>
+                      ) : (
+                        <><Search className="w-4 h-4 text-[#74ebd5]" />Load More Leads</>
+                      )}
+                    </button>
                   </div>
                 )}
 
