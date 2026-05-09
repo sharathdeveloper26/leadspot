@@ -21,7 +21,7 @@ const normalizePhone = (phone?: string) => {
 
 export default function ClientDashboard() {
   const { user, logout } = useAuth(); 
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  
   /// ✨ LEVEL 5 SECURITY: Real-Time Workspace Status Monitor
   const [workspaceStatus, setWorkspaceStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'LOADING'>('LOADING');
 
@@ -1336,7 +1336,7 @@ const handleConnectWhatsApp = () => {
     );
   }
   return (
-    <div className={`min-h-screen relative flex flex-col md:flex-row font-sans overflow-hidden transition-colors duration-300 ${isDarkMode ? 'bg-slate-900 text-slate-50 dark-theme' : 'bg-slate-50 text-slate-900 light-theme'}`}>    
+    <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">   
       {dialogState.isOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/50 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300">
@@ -1426,69 +1426,67 @@ const handleConnectWhatsApp = () => {
 
       {isMobileMenuOpen && <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-white/90 via-slate-50/40 to-slate-50/80 backdrop-blur-2xl border-r border-white/80 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-[8px_0_30px_rgba(0,0,0,0.03)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="h-24 flex items-center justify-between px-6 border-b border-slate-100/50 bg-white/40">
-          <div className="flex items-center gap-2 text-emerald-600 font-bold text-lg tracking-tight"><img src="/leadspot.png" alt="Leadspot" className="h-16 w-auto drop-shadow-sm" /></div>
-          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+      {/* ✨ SIDEBAR: Midnight Slate Theme ✨ */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-2xl md:shadow-none ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="h-24 flex items-center justify-between px-6 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+             <img src="/leadspot.png" alt="Leadspot CRM" className="h-12 w-auto brightness-0 invert opacity-90" />
+          </div>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
-        <div className="px-6 py-6 text-[11px] font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-400 to-slate-500 uppercase tracking-[0.2em]">Workspace</div>
-        <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto custom-scrollbar">
-          <button onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'dashboard' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><LayoutDashboard className="w-5 h-5" /> Dashboard</button>
-          <button onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'leads' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><Users className="w-5 h-5" /> Leads</button>
-          <button onClick={() => { setActiveTab('feedback'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'feedback' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><MessageSquare className="w-5 h-5" /> Leads Feedback</button>
-          <button onClick={() => { setActiveTab('inbox'); setIsMobileMenuOpen(false); }} className={`flex items-center justify-between px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'inbox' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}>
-            <div className="flex items-center gap-3"><MessageCircle className="w-5 h-5" /> Inbox</div>
-            {unreadWhatsAppCount > 0 && (<span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'inbox' ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>{unreadWhatsAppCount}</span>)}
+        
+        <div className="px-6 py-6 text-[11px] font-black text-slate-500 uppercase tracking-[0.2em]">Workspace</div>
+        
+        <nav className="flex-1 px-4 space-y-2 overflow-y-auto custom-scrollbar">
+          <button onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'dashboard' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><LayoutDashboard className={`w-5 h-5 ${activeTab === 'dashboard' ? 'text-amber-500' : ''}`} /> Dashboard</button>
+          <button onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'leads' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><Users className={`w-5 h-5 ${activeTab === 'leads' ? 'text-amber-500' : ''}`} /> Leads</button>
+          <button onClick={() => { setActiveTab('feedback'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'feedback' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><MessageSquare className={`w-5 h-5 ${activeTab === 'feedback' ? 'text-amber-500' : ''}`} /> Leads Feedback</button>
+          <button onClick={() => { setActiveTab('inbox'); setIsMobileMenuOpen(false); }} className={`flex items-center justify-between px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'inbox' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}>
+            <div className="flex items-center gap-3"><MessageCircle className={`w-5 h-5 ${activeTab === 'inbox' ? 'text-amber-500' : ''}`} /> Inbox</div>
+            {unreadWhatsAppCount > 0 && (<span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'inbox' ? 'bg-amber-500 text-slate-900' : 'bg-red-500 text-white'}`}>{unreadWhatsAppCount}</span>)}
           </button>
-        <button onClick={() => { setActiveTab('campaigns'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'campaigns' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><Megaphone className="w-5 h-5" /> Campaigns</button>
+          <button onClick={() => { setActiveTab('campaigns'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'campaigns' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><Megaphone className={`w-5 h-5 ${activeTab === 'campaigns' ? 'text-amber-500' : ''}`} /> Campaigns</button>
 
           {user?.role === 'client_admin' && (
             <>
-              <button onClick={() => { setActiveTab('team'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'team' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><UserCog className="w-5 h-5" /> Team</button>
-              <button onClick={() => { setActiveTab('integrations'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'integrations' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><Link2 className="w-5 h-5" /> Integrations</button>
+              <button onClick={() => { setActiveTab('team'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'team' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><UserCog className={`w-5 h-5 ${activeTab === 'team' ? 'text-amber-500' : ''}`} /> Team</button>
+              <button onClick={() => { setActiveTab('integrations'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'integrations' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><Link2 className={`w-5 h-5 ${activeTab === 'integrations' ? 'text-amber-500' : ''}`} /> Integrations</button>
             </>
           )}
-          <button onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${activeTab === 'reports' ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'}`}><BarChart2 className="w-5 h-5" /> Reports</button>
+          <button onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'reports' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><BarChart2 className={`w-5 h-5 ${activeTab === 'reports' ? 'text-amber-500' : ''}`} /> Reports</button>
         </nav>
-        {/* ✨ Theme Toggle & Sign Out (Compact Enterprise Design) ✨ */}
-          <div className="p-5 border-t border-slate-200 dark:border-slate-800 flex gap-2 z-50 relative bg-white dark:bg-slate-900 mt-auto">
-            <button 
-              onClick={() => setIsDarkMode(!isDarkMode)} 
-              className="flex-1 flex justify-center items-center gap-2 px-3 py-2.5 rounded-xl text-slate-500 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 border border-slate-200 dark:border-slate-700 text-xs"
-              title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-            >
-              {isDarkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-slate-500" />}
-              {isDarkMode ? 'Light' : 'Dark'}
-            </button>
-            <button 
-              onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())} 
-              className="flex-1 flex justify-center items-center gap-2 px-3 py-2.5 rounded-xl text-slate-500 font-bold hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-500 transition-all duration-200 border border-slate-200 dark:border-slate-700 text-xs"
-            >
-              <LogOut className="w-4 h-4" /> Exit
-            </button>
-          </div>
+        
+        {/* ✨ Clean Sign Out Action ✨ */}
+        <div className="p-5 border-t border-slate-800">
+          <button 
+            onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())} 
+            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-400 font-medium hover:bg-red-500/10 hover:text-red-400 transition-all duration-200"
+          >
+            <LogOut className="w-5 h-5" /> Sign Out
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}
       <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0">
-        <header className="h-24 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
-          <h1 className="text-xl font-bold tracking-tight text-slate-800">
+        <header className="h-24 bg-white/80 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-sm">
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">
             {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'feedback' ? 'Leads Feedback' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : activeTab === 'inbox' ? 'Omnichannel Inbox' : activeTab === 'campaigns' ? 'Campaigns & Templates' : 'Integrations'}
           </h1>
           <div className="flex items-center gap-6">
             <div className="relative">
-              <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className={`p-2.5 rounded-xl transition-all relative ${isNotificationOpen ? 'bg-white shadow-sm text-[#50bdaf]' : 'bg-white/60 hover:bg-white text-slate-500 hover:text-[#50bdaf]'}`}><Bell className="w-5 h-5" />{unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}</button>
+              <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className={`p-2.5 rounded-xl transition-all relative ${isNotificationOpen ? 'bg-slate-100 shadow-sm text-amber-500' : 'bg-white/60 hover:bg-white text-slate-500 hover:text-amber-500'}`}><Bell className="w-5 h-5" />{unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}</button>
               {isNotificationOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsNotificationOpen(false)}></div>
-                  <div className="absolute right-0 mt-3 w-80 bg-white/90 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white z-50 overflow-hidden animate-in slide-in-from-top-2 fade-in">
-                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50"><h3 className="font-bold text-slate-800 text-sm">Notifications</h3>{unreadCount > 0 && <button onClick={markAllAsRead} className="text-[10px] font-bold text-[#50bdaf] hover:text-[#419c90] uppercase tracking-wider">Mark all read</button>}</div>
+                  <div className="absolute right-0 mt-3 w-80 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden animate-in slide-in-from-top-2 fade-in">
+                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50"><h3 className="font-bold text-slate-800 text-sm">Notifications</h3>{unreadCount > 0 && <button onClick={markAllAsRead} className="text-[10px] font-bold text-amber-500 hover:text-amber-600 uppercase tracking-wider">Mark all read</button>}</div>
                     <div className="max-h-80 overflow-y-auto custom-scrollbar">
                       {notifications.length === 0 ? (
                         <div className="p-8 text-center text-slate-400 text-xs font-medium">No new notifications.</div>
                       ) : (
                         notifications.map(notif => (
-                          <div key={notif.id} onClick={() => { handleOpenTaskLead(notif.leadId); setIsNotificationOpen(false); }} className={`p-4 border-b border-slate-50 hover:bg-slate-50/80 cursor-pointer transition-colors ${!notif.isRead ? 'bg-[#74ebd5]/5' : ''}`}>
+                          <div key={notif.id} onClick={() => { handleOpenTaskLead(notif.leadId); setIsNotificationOpen(false); }} className={`p-4 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors ${!notif.isRead ? 'bg-amber-500/5' : ''}`}>
                             <div className="flex justify-between items-start mb-1"><span className="text-xs font-bold text-slate-800">{notif.title}</span><span className="text-[10px] font-medium text-slate-400">{notif.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>
                             <p className="text-xs font-medium text-slate-500 line-clamp-2">{notif.message}</p>
                           </div>
@@ -1499,7 +1497,21 @@ const handleConnectWhatsApp = () => {
                 </>
               )}
             </div>
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-white px-4 py-2 rounded-full shadow-sm"><UserCircle2 className="w-4 h-4 text-[#74ebd5]" /> {user?.email}</div>
+            
+            {/* Top Right User Menu */}
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-slate-200 px-4 py-2 rounded-full shadow-sm">
+              <UserCircle2 className="w-4 h-4 text-amber-500" /> 
+              {user?.email}
+            </div>
+            
+            {/* Direct Sign Out Button (Desktop Top Right) */}
+            <button 
+              onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())} 
+              className="hidden md:flex items-center gap-2 text-sm font-bold text-slate-500 bg-slate-50 hover:bg-red-50 hover:text-red-600 border border-slate-200 px-4 py-2 rounded-full shadow-sm transition-all"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </header>
 
