@@ -407,7 +407,7 @@ export default function SuperAdminDashboard() {
       </div>
 
       <div className="md:hidden relative z-20 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-white p-4 shrink-0 shadow-sm">
-        <img src="/mintage-logo.png" alt="Mintage" className="h-14 w-auto" />
+        <img src="/leadspot.png" alt="Leadspot CRM" className="h-14 w-auto" />
         <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
           <Menu className="w-6 h-6" />
         </button>
@@ -419,7 +419,7 @@ export default function SuperAdminDashboard() {
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-white/90 via-slate-50/40 to-slate-50/80 backdrop-blur-2xl border-r border-white/80 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-[8px_0_30px_rgba(0,0,0,0.03)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-24 flex items-center justify-between px-6 border-b border-slate-100/50 bg-white/40">
-          <img src="/mintage-logo.png" alt="Mintage" className="h-16 w-auto drop-shadow-sm" />
+          <img src="/leadspot.png" alt="Leadspot CRM" className="h-16 w-auto drop-shadow-sm" />
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
           </button>
@@ -903,7 +903,7 @@ export default function SuperAdminDashboard() {
                           type="email"
                           value={systemSettings.supportEmail}
                           onChange={(e) => setSystemSettings({...systemSettings, supportEmail: e.target.value})}
-                          placeholder="support@mintagemarkcomm.com"
+                          placeholder="support@leadspot.in"
                           className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#74ebd5]/30 outline-none transition-all shadow-sm"
                         />
                       </div>

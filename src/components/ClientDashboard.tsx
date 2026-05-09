@@ -246,7 +246,7 @@ const leads = useMemo(() => {
           const bodyMsg = `${task.type} for ${task.leadName}`;
           setToastData({ show: true, title: title, message: bodyMsg, color: isOverdue ? "from-red-500 to-rose-600" : "from-amber-400 to-orange-500" });
           notificationSound.play().catch(e => console.log("Audio auto-play blocked by browser.", e));
-          if ("Notification" in window && Notification.permission === "granted") { new Notification(`Mintage CRM: ${title}`, { body: bodyMsg, icon: '/mintage-logo.png' }); }
+          if ("Notification" in window && Notification.permission === "granted") { new Notification(`Leadspot CRM: ${title}`, { body: bodyMsg, icon: '/leadspot.png' }); }
           setNotifications(prev => {
             if (prev.some(n => n.id.includes(task.id))) return prev;
             return [{ id: `task-${task.id}-${Date.now()}`, leadId: task.leadId, title: isOverdue ? `Overdue: ${task.type}` : `Due Soon: ${task.type}`, message: `Action required for ${task.leadName}.`, time: new Date(), isRead: false }, ...prev].slice(0, 30);
@@ -357,7 +357,8 @@ const uniqueProjects = useMemo(() => {
     
     return Array.from(projSet).sort((a, b) => a.localeCompare(b));
   }, [leads]);
-  const webhookUrl = `https://us-central1-mintage-crm.cloudfunctions.net/incomingLeadWebhook?clientId=${user?.clientId}`;
+  // ✅ NEW CODE
+const webhookUrl = `https://us-central1-leadspot-crm-52ab4.cloudfunctions.net/incomingLeadWebhook?clientId=${user?.clientId}`;
 
   useEffect(() => {
     if (!user?.clientId) return;
@@ -1416,7 +1417,7 @@ const handleConnectWhatsApp = () => {
       </div>
 
       <div className="md:hidden relative z-20 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-white p-4 shrink-0 shadow-sm">
-        <img src="/mintage-logo.png" alt="Mintage" className="h-14 w-auto" />
+        <img src="/leadspot.png" alt="Mintage" className="h-14 w-auto" />
         <div className="flex items-center gap-4">
           <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className="relative p-2 text-slate-600"><Bell className="w-6 h-6" />{unreadCount > 0 && <span className="absolute top-1 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}</button>
           <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none"><Menu className="w-6 h-6" /></button>
@@ -1427,7 +1428,7 @@ const handleConnectWhatsApp = () => {
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-white/90 via-slate-50/40 to-slate-50/80 backdrop-blur-2xl border-r border-white/80 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-[8px_0_30px_rgba(0,0,0,0.03)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-24 flex items-center justify-between px-6 border-b border-slate-100/50 bg-white/40">
-          <div className="flex items-center gap-2 text-emerald-600 font-bold text-lg tracking-tight"><img src="/mintage-logo.png" alt="Mintage" className="h-16 w-auto drop-shadow-sm" /></div>
+          <div className="flex items-center gap-2 text-emerald-600 font-bold text-lg tracking-tight"><img src="/leadspot.png" alt="Leadspot" className="h-16 w-auto drop-shadow-sm" /></div>
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
         <div className="px-6 py-6 text-[11px] font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-400 to-slate-500 uppercase tracking-[0.2em]">Workspace</div>
@@ -1524,7 +1525,7 @@ const handleConnectWhatsApp = () => {
 
                 <div className={`flex-1 flex flex-col bg-slate-50 relative ${!activeChatLeadId ? 'hidden sm:flex items-center justify-center' : 'flex'}`}>
                   {!activeChatLeadId ? (
-                    <div className="text-center p-8 bg-white rounded-3xl border border-slate-100 shadow-sm max-w-md"><div className="w-16 h-16 bg-[#25D366]/10 rounded-2xl flex items-center justify-center mx-auto mb-4"><MessageCircle className="w-8 h-8 text-[#25D366]" /></div><h3 className="text-xl font-bold text-slate-800 mb-2">Mintage Omnichannel</h3><p className="text-sm text-slate-500 font-medium">Select a conversation from the left to start chatting securely with your leads.</p></div>
+                    <div className="text-center p-8 bg-white rounded-3xl border border-slate-100 shadow-sm max-w-md"><div className="w-16 h-16 bg-[#25D366]/10 rounded-2xl flex items-center justify-center mx-auto mb-4"><MessageCircle className="w-8 h-8 text-[#25D366]" /></div><h3 className="text-xl font-bold text-slate-800 mb-2">LeadSpot Omnichannel</h3><p className="text-sm text-slate-500 font-medium">Select a conversation from the left to start chatting securely with your leads.</p></div>
                   ) : (
                     <>
                       {(() => {

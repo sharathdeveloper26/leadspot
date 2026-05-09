@@ -231,7 +231,7 @@ export default function AgentDashboard() {
           const bodyMsg = `${task.type} for ${task.leadName}`;
           setToastData({ show: true, title: title, message: bodyMsg, color: isOverdue ? "from-red-500 to-rose-600" : "from-amber-400 to-orange-500" });
           notificationSound.play().catch(e => console.log("Audio auto-play blocked.", e));
-          if ("Notification" in window && Notification.permission === "granted") { new Notification(`Mintage CRM: ${title}`, { body: bodyMsg, icon: '/mintage-logo.png' }); }
+          if ("Notification" in window && Notification.permission === "granted") { new Notification(`Mintage CRM: ${title}`, { body: bodyMsg, icon: '/leadspot.png' }); }
           setNotifications(prev => {
             if (prev.some(n => n.id.includes(task.id))) return prev;
             return [{ id: `task-${task.id}-${Date.now()}`, leadId: task.leadId, title: isOverdue ? `Overdue: ${task.type}` : `Due Soon: ${task.type}`, message: `Action required for ${task.leadName}.`, time: new Date(), isRead: false }, ...prev].slice(0, 30);
@@ -558,7 +558,7 @@ export default function AgentDashboard() {
       </div>
 
       <div className="md:hidden relative z-20 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-white p-4 shrink-0 shadow-sm">
-        <img src="/mintage-logo.png" alt="Mintage" className="h-14 w-auto" />
+        <img src="/leadspot.png" alt="Mintage" className="h-14 w-auto" />
         <div className="flex items-center gap-4">
           <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className="relative p-2 text-slate-600">
             <Bell className="w-6 h-6" />
@@ -578,7 +578,7 @@ export default function AgentDashboard() {
         
         <div className="h-24 flex items-center justify-between px-6 border-b border-slate-100/50 bg-white/40">
           <div className="flex items-center gap-2 text-emerald-600 font-bold text-lg tracking-tight">
-            <img src="/mintage-logo.png" alt="Mintage" className="h-16 w-auto drop-shadow-sm" />
+            <img src="/leadspot.png" alt="Mintage" className="h-16 w-auto drop-shadow-sm" />
           </div>
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />

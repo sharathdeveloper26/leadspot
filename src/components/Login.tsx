@@ -53,7 +53,7 @@ export default function Login() {
 
         {/* Logo */}
         <div className="relative z-10">
-          <img src="/mintage-logo.png" alt="Mintage CRM" className="h-14 brightness-0 invert opacity-90" />
+          <img src="/leadspot.png" alt="Leadspot CRM" className="h-14 brightness-0 invert opacity-90" />
         </div>
 
         {/* Real-time Product Copy */}
@@ -85,7 +85,7 @@ export default function Login() {
 
         {/* Footer */}
         <div className="relative z-10 text-slate-500 text-xs font-bold tracking-widest uppercase">
-          © {new Date().getFullYear()} Mintage Marketing Communications
+          © {new Date().getFullYear()} LeadSpot Solutions
         </div>
       </div>
 
@@ -98,7 +98,7 @@ export default function Login() {
         <div className="w-full max-w-md space-y-8 relative z-10">
           
           <div className="text-center lg:text-left">
-            <img src="/mintage-logo.png" alt="Mintage CRM" className="h-16 mx-auto lg:hidden mb-8 drop-shadow-sm" />
+            <img src="/leadspot.png" alt="Leadspot CRM" className="h-16 mx-auto lg:hidden mb-8 drop-shadow-sm" />
             <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Access Workspace</h2>
             <p className="text-slate-500 font-medium mt-2">Sign in to your secure CRM dashboard.</p>
           </div>
