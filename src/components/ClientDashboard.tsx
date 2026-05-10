@@ -1508,7 +1508,7 @@ const handleConnectWhatsApp = () => {
 
       {/* Main Content */}
       <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0 bg-slate-50/50">
-       <header className="h-24 bg-white/80 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-sm">
+      <header className="relative z-40 h-24 bg-white/80 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-sm">
           <h1 className="text-xl font-bold tracking-tight text-slate-900">
             {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'feedback' ? 'Leads Feedback' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : activeTab === 'inbox' ? 'Omnichannel Inbox' : activeTab === 'campaigns' ? 'Campaigns & Templates' : 'Integrations'}
           </h1>
