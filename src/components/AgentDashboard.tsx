@@ -549,22 +549,22 @@ export default function AgentDashboard() {
           <button onClick={() => setToastData(null)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-1.5 rounded-lg transition-colors"><X className="w-4 h-4"/></button>
         </div>
       )}
-
-      {/* Enterprise Background Mesh */}
+{/* Enterprise Background Mesh */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-[#74ebd5]/40 to-teal-50/40 blur-3xl opacity-70 mix-blend-multiply" />
-        <div className="absolute top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-gradient-to-br from-[#9face6]/40 to-indigo-50/40 blur-3xl opacity-70 mix-blend-multiply" />
-        <div className="absolute -bottom-[20%] left-[20%] w-[60%] h-[60%] rounded-full bg-gradient-to-tr from-purple-100/30 to-pink-50/30 blur-3xl opacity-70 mix-blend-multiply" />
+        <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-slate-200/40 blur-3xl opacity-50 mix-blend-multiply" />
+        <div className="absolute top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-amber-100/30 blur-3xl opacity-50 mix-blend-multiply" />
+        <div className="absolute -bottom-[20%] left-[20%] w-[60%] h-[60%] rounded-full bg-slate-200/40 blur-3xl opacity-50 mix-blend-multiply" />
       </div>
 
-      <div className="md:hidden relative z-20 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-white p-4 shrink-0 shadow-sm">
-        <img src="/leadspot.png" alt="Mintage" className="h-14 w-auto" />
+      {/* Mobile Menu Header (Midnight Theme) */}
+      <div className="md:hidden relative z-20 flex items-center justify-between bg-slate-900 border-b border-slate-800 p-4 shrink-0 shadow-sm">
+        <img src="/leadspot.png" alt="Leadspot CRM" className="h-10 w-auto brightness-0 invert opacity-90" />
         <div className="flex items-center gap-4">
-          <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className="relative p-2 text-slate-600">
+          <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className="relative p-2 text-slate-300 hover:text-white">
             <Bell className="w-6 h-6" />
-            {unreadCount > 0 && <span className="absolute top-1 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}
+            {unreadCount > 0 && <span className="absolute top-1 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-slate-900"></span>}
           </button>
-          <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none">
+          <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-300 hover:text-white focus:outline-none">
             <Menu className="w-6 h-6" />
           </button>
         </div>
@@ -574,68 +574,42 @@ export default function AgentDashboard() {
         <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-white/90 via-slate-50/40 to-slate-50/80 backdrop-blur-2xl border-r border-white/80 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-[8px_0_30px_rgba(0,0,0,0.03)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        
-        <div className="h-24 flex items-center justify-between px-6 border-b border-slate-100/50 bg-white/40">
-          <div className="flex items-center gap-2 text-emerald-600 font-bold text-lg tracking-tight">
-            <img src="/leadspot.png" alt="Mintage" className="h-16 w-auto drop-shadow-sm" />
+      {/* ✨ SIDEBAR: Midnight Slate Theme ✨ */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-2xl md:shadow-none ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="h-24 flex items-center justify-between px-6 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+             <img src="/leadspot.png" alt="Leadspot CRM" className="h-12 w-auto brightness-0 invert opacity-90" />
           </div>
-          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
-            <X className="w-5 h-5" />
-          </button>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
         
-        <div className="px-6 py-6 text-[11px] font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-400 to-slate-500 uppercase tracking-[0.2em]">
-          Agent Portal
-        </div>
+        <div className="px-6 py-6 text-[11px] font-black text-slate-500 uppercase tracking-[0.2em]">Agent Portal</div>
         
-        <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto custom-scrollbar">
-          <button 
-            onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
-              activeTab === 'dashboard' 
-                ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
-                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
-            }`}
-          >
-            <LayoutDashboard className="w-5 h-5" />
-            My Dashboard
-          </button>
-
-          <button 
-            onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-300 ${
-              activeTab === 'leads' 
-                ? 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] text-white font-bold shadow-lg shadow-[#74ebd5]/30' 
-                : 'text-slate-600 font-medium hover:bg-white/60 hover:text-[#50bdaf] hover:shadow-sm'
-            }`}
-          >
-            <Users className="w-5 h-5" />
-            My Leads
-          </button>
+        <nav className="flex-1 px-4 space-y-2 overflow-y-auto custom-scrollbar">
+          <button onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'dashboard' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><LayoutDashboard className={`w-5 h-5 ${activeTab === 'dashboard' ? 'text-amber-500' : ''}`} /> My Dashboard</button>
+          <button onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'leads' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><Users className={`w-5 h-5 ${activeTab === 'leads' ? 'text-amber-500' : ''}`} /> My Leads</button>
         </nav>
-
-        <div className="p-5 border-t border-slate-100/50 bg-white/20">
+        
+        <div className="p-5 border-t border-slate-800">
           <button 
-            onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())}
-            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-600 font-medium hover:bg-red-50/80 hover:text-red-600 hover:shadow-sm transition-all duration-200"
+            onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())} 
+            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-400 font-medium hover:bg-red-500/10 hover:text-red-400 transition-all duration-200"
           >
-            <LogOut className="w-5 h-5" />
-            Sign Out
+            <LogOut className="w-5 h-5" /> Sign Out
           </button>
         </div>
       </aside>
 
       <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0">
-        <header className="h-24 bg-white/60 backdrop-blur-xl border-b border-white flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
-          <h1 className="text-xl font-bold tracking-tight text-slate-800">
+        <header className="h-24 bg-white/80 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-sm">
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">
             {activeTab === 'dashboard' ? 'My Dashboard' : 'My Leads Workspace'}
           </h1>
           <div className="flex items-center gap-6">
             <div className="relative">
               <button 
                 onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                className={`p-2.5 rounded-xl transition-all relative ${isNotificationOpen ? 'bg-white shadow-sm text-[#50bdaf]' : 'bg-white/60 hover:bg-white text-slate-500 hover:text-[#50bdaf]'}`}
+                className={`p-2.5 rounded-xl transition-all relative ${isNotificationOpen ? 'bg-slate-100 shadow-sm text-amber-500' : 'bg-white/60 hover:bg-white text-slate-500 hover:text-amber-500'}`}
               >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
@@ -646,11 +620,11 @@ export default function AgentDashboard() {
               {isNotificationOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsNotificationOpen(false)}></div>
-                  <div className="absolute right-0 mt-3 w-80 bg-white/90 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white z-50 overflow-hidden animate-in slide-in-from-top-2 fade-in">
+                  <div className="absolute right-0 mt-3 w-80 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden animate-in slide-in-from-top-2 fade-in">
                     <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                       <h3 className="font-bold text-slate-800 text-sm">Notifications</h3>
                       {unreadCount > 0 && (
-                        <button onClick={markAllAsRead} className="text-[10px] font-bold text-[#50bdaf] hover:text-[#419c90] uppercase tracking-wider">
+                        <button onClick={markAllAsRead} className="text-[10px] font-bold text-amber-500 hover:text-amber-600 uppercase tracking-wider">
                           Mark all read
                         </button>
                       )}
@@ -669,7 +643,7 @@ export default function AgentDashboard() {
                                 setIsNotificationOpen(false);
                               }
                             }}
-                            className={`p-4 border-b border-slate-50 hover:bg-slate-50/80 cursor-pointer transition-colors ${!notif.isRead ? 'bg-[#74ebd5]/5' : ''}`}
+                            className={`p-4 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors ${!notif.isRead ? 'bg-amber-50' : ''}`}
                           >
                             <div className="flex justify-between items-start mb-1">
                               <span className="text-xs font-bold text-slate-800">{notif.title}</span>
@@ -687,8 +661,8 @@ export default function AgentDashboard() {
               )}
             </div>
 
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-white px-4 py-2 rounded-full shadow-sm">
-              <UserCircle2 className="w-4 h-4 text-[#74ebd5]" />
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-slate-200 px-4 py-2 rounded-full shadow-sm">
+              <UserCircle2 className="w-4 h-4 text-amber-500" />
               {user?.email}
             </div>
           </div>
@@ -1448,14 +1422,29 @@ export default function AgentDashboard() {
           </div>
         </div>
       )}
-
-      {/* Custom Scrollbars */}
+{/* Custom Scrollbars & Enterprise Theme Engine */}
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
-      `}</style>
-    </div>
+
+        /* MAGIC OVERRIDES: Translates Pastel Teals into Midnight/Copper */
+        .from-\\[\\#74ebd5\\] { --tw-gradient-from: #0f172a !important; --tw-gradient-stops: var(--tw-gradient-from), #1e293b !important; color: #ffffff !important; }
+        .to-\\[\\#9face6\\] { --tw-gradient-to: #1e293b !important; }
+        .bg-\\[\\#74ebd5\\]\\/10, .bg-\\[\\#74ebd5\\]\\/15 { background-color: rgba(245, 158, 11, 0.1) !important; color: #d97706 !important; }
+        .hover\\:bg-\\[\\#74ebd5\\]\\/20:hover { background-color: rgba(245, 158, 11, 0.2) !important; }
+        .text-\\[\\#50bdaf\\], .text-\\[\\#74ebd5\\] { color: #d97706 !important; }
+        .hover\\:text-\\[\\#50bdaf\\]:hover { color: #d97706 !important; }
+        .shadow-\\[\\#74ebd5\\]\\/30 { box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.1) !important; }
+        .border-\\[\\#74ebd5\\] { border-color: #0f172a !important; }
+        .border-t-\\[\\#74ebd5\\] { border-top-color: #f59e0b !important; }
+        .focus\\:ring-\\[\\#74ebd5\\]\\/30:focus, .focus\\:ring-\\[\\#74ebd5\\]:focus { --tw-ring-color: rgba(245, 158, 11, 0.3) !important; }
+
+        /* Mute the loud purple/blue stat cards */
+        .bg-\\[\\#9face6\\]\\/15 { background-color: #f8fafc !important; border: 1px solid #e2e8f0; color: #64748b !important; }
+        .bg-purple-50 { background-color: #f8fafc !important; border: 1px solid #e2e8f0; color: #64748b !important; }
+        .text-\\[\\#7b8ed3\\], .text-purple-600 { color: #64748b !important; }
+      `}</style>    </div>
   );
 }
