@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon, Megaphone, RefreshCw, FileText, Sun, Moon } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon, Megaphone, RefreshCw, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 
@@ -22,6 +22,21 @@ const normalizePhone = (phone?: string) => {
 export default function ClientDashboard() {
   const { user, logout } = useAuth(); 
   
+  // ✨ NEW: User Dropdown Menu State
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close user dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [userMenuRef]);
+
   /// ✨ LEVEL 5 SECURITY: Real-Time Workspace Status Monitor
   const [workspaceStatus, setWorkspaceStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'LOADING'>('LOADING');
 
@@ -52,6 +67,7 @@ export default function ClientDashboard() {
       const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
       const istDate = new Date(utc + (3600000 * 5.5)); 
       const hour = istDate.getHours();
+      // ✨ Fixed Emojis ✨
       if (hour >= 4 && hour < 12) return { text: 'Good morning', emoji: '🌅' };
       if (hour >= 12 && hour < 17) return { text: 'Good afternoon', emoji: '☀️' };
       if (hour >= 17 && hour < 22) return { text: 'Good evening', emoji: '🌙' };
@@ -1336,20 +1352,21 @@ const handleConnectWhatsApp = () => {
     );
   }
   return (
-    <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">   
+    <div className="min-h-screen relative bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 overflow-hidden">
+      
       {dialogState.isOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/50 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="p-6 text-center">
-              <div className={`mx-auto flex items-center justify-center h-14 w-14 rounded-full mb-5 shadow-inner ${dialogState.type === 'confirm' ? 'bg-amber-100 text-amber-600' : dialogState.type === 'error' ? 'bg-red-100 text-red-600' : dialogState.type === 'success' ? 'bg-[#74ebd5]/20 text-[#50bdaf]' : 'bg-blue-100 text-blue-600'}`}>
+              <div className={`mx-auto flex items-center justify-center h-14 w-14 rounded-full mb-5 shadow-inner ${dialogState.type === 'confirm' ? 'bg-amber-100 text-amber-600' : dialogState.type === 'error' ? 'bg-red-100 text-red-600' : dialogState.type === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
                  {dialogState.type === 'confirm' ? <AlertCircle className="h-7 w-7" /> : dialogState.type === 'error' ? <XCircle className="h-7 w-7" /> : dialogState.type === 'success' ? <CheckCircle2 className="h-7 w-7" /> : <Info className="h-7 w-7" />}
               </div>
-              <h3 className="text-xl font-bold text-slate-800 mb-2">{dialogState.title}</h3>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">{dialogState.title}</h3>
               <p className="text-sm font-medium text-slate-500 leading-relaxed">{dialogState.message}</p>
             </div>
-            <div className="p-4 bg-slate-50/50 border-t border-slate-100/80 flex gap-3">
-              {dialogState.type === 'confirm' && (<button onClick={closeDialog} className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold text-sm shadow-sm">Cancel</button>)}
-              <button onClick={() => { if (dialogState.type === 'confirm' && dialogState.onConfirm) dialogState.onConfirm(); else if (dialogState.onCloseAction) dialogState.onCloseAction(); closeDialog(); }} className={`flex-1 px-4 py-2.5 text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg ${dialogState.type === 'confirm' ? 'bg-slate-900 shadow-slate-900/20' : dialogState.type === 'error' ? 'bg-red-600 shadow-red-500/30' : 'bg-gradient-to-r from-[#74ebd5] to-[#9face6] shadow-[#74ebd5]/30'}`}>{dialogState.type === 'confirm' ? 'Confirm' : 'OK'}</button>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+              {dialogState.type === 'confirm' && (<button onClick={closeDialog} className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-100 transition-all font-bold text-sm shadow-sm">Cancel</button>)}
+              <button onClick={() => { if (dialogState.type === 'confirm' && dialogState.onConfirm) dialogState.onConfirm(); else if (dialogState.onCloseAction) dialogState.onCloseAction(); closeDialog(); }} className={`flex-1 px-4 py-2.5 text-white rounded-xl hover:opacity-90 transition-all font-bold text-sm shadow-lg ${dialogState.type === 'confirm' ? 'bg-slate-900 shadow-slate-900/20' : dialogState.type === 'error' ? 'bg-red-600 shadow-red-500/30' : 'bg-slate-900 shadow-slate-900/20'}`}>{dialogState.type === 'confirm' ? 'Confirm' : 'OK'}</button>
             </div>
           </div>
         </div>
@@ -1410,21 +1427,27 @@ const handleConnectWhatsApp = () => {
         </div>
       )}
 
+      {/* Background Mesh */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-[#74ebd5]/40 to-teal-50/40 blur-3xl opacity-70 mix-blend-multiply" />
-        <div className="absolute top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-gradient-to-br from-[#9face6]/40 to-indigo-50/40 blur-3xl opacity-70 mix-blend-multiply" />
-        <div className="absolute -bottom-[20%] left-[20%] w-[60%] h-[60%] rounded-full bg-gradient-to-tr from-purple-100/30 to-pink-50/30 blur-3xl opacity-70 mix-blend-multiply" />
+        <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-slate-200/40 blur-3xl opacity-50 mix-blend-multiply" />
+        <div className="absolute top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-amber-100/30 blur-3xl opacity-50 mix-blend-multiply" />
+        <div className="absolute -bottom-[20%] left-[20%] w-[60%] h-[60%] rounded-full bg-slate-200/40 blur-3xl opacity-50 mix-blend-multiply" />
       </div>
 
-      <div className="md:hidden relative z-20 flex items-center justify-between bg-white/80 backdrop-blur-xl border-b border-white p-4 shrink-0 shadow-sm">
-        <img src="/leadspot.png" alt="Mintage" className="h-14 w-auto" />
+      <div className="md:hidden relative z-20 flex items-center justify-between bg-slate-900 border-b border-slate-800 p-4 shrink-0 shadow-sm">
+        <img src="/leadspot.png" alt="Leadspot CRM" className="h-10 w-auto brightness-0 invert opacity-90" />
         <div className="flex items-center gap-4">
-          <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className="relative p-2 text-slate-600"><Bell className="w-6 h-6" />{unreadCount > 0 && <span className="absolute top-1 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}</button>
-          <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-600 hover:text-slate-900 focus:outline-none"><Menu className="w-6 h-6" /></button>
+          <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className="relative p-2 text-slate-300 hover:text-white">
+            <Bell className="w-6 h-6" />
+            {unreadCount > 0 && <span className="absolute top-1 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-slate-900"></span>}
+          </button>
+          <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-300 hover:text-white focus:outline-none">
+            <Menu className="w-6 h-6" />
+          </button>
         </div>
       </div>
 
-      {isMobileMenuOpen && <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />}
+      {isMobileMenuOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />}
 
       {/* ✨ SIDEBAR: Midnight Slate Theme ✨ */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-2xl md:shadow-none ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -1455,20 +1478,10 @@ const handleConnectWhatsApp = () => {
           )}
           <button onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'reports' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><BarChart2 className={`w-5 h-5 ${activeTab === 'reports' ? 'text-amber-500' : ''}`} /> Reports</button>
         </nav>
-        
-        {/* ✨ Clean Sign Out Action ✨ */}
-        <div className="p-5 border-t border-slate-800">
-          <button 
-            onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())} 
-            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-slate-400 font-medium hover:bg-red-500/10 hover:text-red-400 transition-all duration-200"
-          >
-            <LogOut className="w-5 h-5" /> Sign Out
-          </button>
-        </div>
       </aside>
 
       {/* Main Content */}
-      <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0">
+      <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0 bg-slate-50/50">
         <header className="h-24 bg-white/80 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-sm">
           <h1 className="text-xl font-bold tracking-tight text-slate-900">
             {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'feedback' ? 'Leads Feedback' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : activeTab === 'inbox' ? 'Omnichannel Inbox' : activeTab === 'campaigns' ? 'Campaigns & Templates' : 'Integrations'}
@@ -1486,7 +1499,7 @@ const handleConnectWhatsApp = () => {
                         <div className="p-8 text-center text-slate-400 text-xs font-medium">No new notifications.</div>
                       ) : (
                         notifications.map(notif => (
-                          <div key={notif.id} onClick={() => { handleOpenTaskLead(notif.leadId); setIsNotificationOpen(false); }} className={`p-4 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors ${!notif.isRead ? 'bg-amber-500/5' : ''}`}>
+                          <div key={notif.id} onClick={() => { handleOpenTaskLead(notif.leadId); setIsNotificationOpen(false); }} className={`p-4 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors ${!notif.isRead ? 'bg-amber-50' : ''}`}>
                             <div className="flex justify-between items-start mb-1"><span className="text-xs font-bold text-slate-800">{notif.title}</span><span className="text-[10px] font-medium text-slate-400">{notif.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>
                             <p className="text-xs font-medium text-slate-500 line-clamp-2">{notif.message}</p>
                           </div>
@@ -1498,20 +1511,36 @@ const handleConnectWhatsApp = () => {
               )}
             </div>
             
-            {/* Top Right User Menu */}
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 border border-slate-200 px-4 py-2 rounded-full shadow-sm">
-              <UserCircle2 className="w-4 h-4 text-amber-500" /> 
-              {user?.email}
+            {/* ✨ NEW Dropdown User Menu ✨ */}
+            <div className="relative" ref={userMenuRef}>
+              <button 
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-white/80 hover:bg-white border border-slate-200 px-4 py-2.5 rounded-full shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-slate-200"
+              >
+                <UserCircle2 className="w-5 h-5 text-amber-500" /> 
+                {user?.email}
+                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isUserMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="px-4 py-2 border-b border-slate-50 mb-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Signed in as</p>
+                    <p className="text-xs font-medium text-slate-900 truncate">{user?.email}</p>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout());
+                    }} 
+                    className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                  >
+                    <LogOut className="w-4 h-4" /> Sign Out
+                  </button>
+                </div>
+              )}
             </div>
-            
-            {/* Direct Sign Out Button (Desktop Top Right) */}
-            <button 
-              onClick={() => showDialog('confirm', 'Sign Out', 'Are you sure you want to sign out?', () => logout())} 
-              className="hidden md:flex items-center gap-2 text-sm font-bold text-slate-500 bg-slate-50 hover:bg-red-50 hover:text-red-600 border border-slate-200 px-4 py-2 rounded-full shadow-sm transition-all"
-              title="Sign Out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+
           </div>
         </header>
 
@@ -2873,31 +2902,29 @@ const handleConnectWhatsApp = () => {
         </div>
       )}
 
-      {/* Internal CSS & Enterprise Theme Engine */}
+      {/* Custom Scrollbars & Enterprise Theme Engine */}
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
 
-        /* ENTERPRISE THEME ENGINE (DARK MODE OVERRIDES) */
-        .dark aside { background-color: #0f172a !important; border-color: #1e293b !important; }
-        .dark aside img { filter: brightness(0) invert(1) !important; opacity: 0.9; }
-        .dark header { background-color: rgba(15, 23, 42, 0.8) !important; border-color: #1e293b !important; }
-        .dark main { background-color: #020617 !important; }
-        .dark .bg-slate-50, .dark .bg-slate-100 { background-color: #0f172a !important; }
-        .dark .bg-white { background-color: #1e293b !important; border-color: #334155 !important; color: #f8fafc !important; }
-        .dark .text-slate-900, .dark .text-slate-800 { color: #f8fafc !important; }
-        .dark .text-slate-600, .dark .text-slate-500 { color: #94a3b8 !important; }
-        .dark .border-slate-100, .dark .border-slate-200 { border-color: #334155 !important; }
-        .dark input, .dark select, .dark textarea { background-color: #0f172a !important; color: #f8fafc !important; border-color: #334155 !important; }
-        .dark table th { background-color: #0f172a !important; border-bottom-color: #334155 !important; color: #94a3b8 !important; }
-        .dark table td, .dark tr { border-color: #334155 !important; }
-        .dark .shadow-sm { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important; }
-        
-        /* DARK MODE COPPER ACCENTS */
-        .dark .text-amber-500 { color: #f59e0b !important; }
-        .dark .bg-amber-500 { background-color: #f59e0b !important; color: #0f172a !important;}
+        /* MAGIC OVERRIDES: Translates Pastel Teals into Midnight/Copper */
+        .from-\\[\\#74ebd5\\] { --tw-gradient-from: #0f172a !important; --tw-gradient-stops: var(--tw-gradient-from), #1e293b !important; color: #ffffff !important; }
+        .to-\\[\\#9face6\\] { --tw-gradient-to: #1e293b !important; }
+        .bg-\\[\\#74ebd5\\]\\/10, .bg-\\[\\#74ebd5\\]\\/15 { background-color: rgba(245, 158, 11, 0.1) !important; color: #d97706 !important; }
+        .hover\\:bg-\\[\\#74ebd5\\]\\/20:hover { background-color: rgba(245, 158, 11, 0.2) !important; }
+        .text-\\[\\#50bdaf\\], .text-\\[\\#74ebd5\\] { color: #d97706 !important; }
+        .hover\\:text-\\[\\#50bdaf\\]:hover { color: #d97706 !important; }
+        .shadow-\\[\\#74ebd5\\]\\/30 { box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.1) !important; }
+        .border-\\[\\#74ebd5\\] { border-color: #0f172a !important; }
+        .border-t-\\[\\#74ebd5\\] { border-top-color: #f59e0b !important; }
+        .focus\\:ring-\\[\\#74ebd5\\]\\/30:focus, .focus\\:ring-\\[\\#74ebd5\\]:focus { --tw-ring-color: rgba(245, 158, 11, 0.3) !important; }
+
+        /* Mute the loud purple/blue stat cards */
+        .bg-\\[\\#9face6\\]\\/15 { background-color: #f8fafc !important; border: 1px solid #e2e8f0; color: #64748b !important; }
+        .bg-purple-50 { background-color: #f8fafc !important; border: 1px solid #e2e8f0; color: #64748b !important; }
+        .text-\\[\\#7b8ed3\\], .text-purple-600 { color: #64748b !important; }
       `}</style>
     </div>
   );
