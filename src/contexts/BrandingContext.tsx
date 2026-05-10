@@ -6,14 +6,12 @@ interface BrandingContextType {
   logoUrl: string;
   companyName: string;
   isLoadingBranding: boolean;
-  customDomain: string | null;
 }
 
 const defaultBranding: BrandingContextType = {
   logoUrl: '/leadspot.png', 
   companyName: 'Leadspot CRM',
   isLoadingBranding: true,
-  customDomain: null,
 };
 
 const BrandingContext = createContext<BrandingContextType>(defaultBranding);
@@ -23,62 +21,67 @@ export const useBranding = () => useContext(BrandingContext);
 export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [branding, setBranding] = useState<BrandingContextType>(defaultBranding);
 
-  // ✨ ENGINE 1: Fetch Branding Data from Firestore based on Domain
   useEffect(() => {
     const fetchBranding = async () => {
       const hostname = window.location.hostname;
 
-      // Optimization: Skip DB query for local development or default Firebase domains
-      // Unless you are explicitly testing crm.exam-results.in via hosts file
       if (
         (hostname === 'localhost' || hostname.includes('127.0.0.1') || 
          hostname.includes('firebaseapp.com') || hostname.includes('web.app')) &&
          hostname !== 'crm.exam-results.in' 
       ) {
-        setBranding(prev => ({ ...prev, isLoadingBranding: false }));
+        setBranding({ ...defaultBranding, isLoadingBranding: false });
         return;
       }
 
       try {
-        const q = query(
-          collection(db, 'clients'),
-          where('customDomain', '==', hostname),
-          limit(1)
-        );
-
+        const q = query(collection(db, 'clients'), where('customDomain', '==', hostname), limit(1));
         const querySnapshot = await getDocs(q);
 
         if (!querySnapshot.empty) {
           const clientData = querySnapshot.docs[0].data();
           setBranding({
             logoUrl: clientData.logoUrl || '/leadspot.png',
-            companyName: clientData.name || 'CRM Workspace',
-            customDomain: hostname,
+            companyName: clientData.name || 'Workspace',
             isLoadingBranding: false,
           });
         } else {
-          setBranding(prev => ({ ...prev, isLoadingBranding: false }));
+          setBranding({ ...defaultBranding, isLoadingBranding: false });
         }
       } catch (error) {
-        console.error("🔥 Error fetching white-label branding:", error);
-        setBranding(prev => ({ ...prev, isLoadingBranding: false }));
+        console.error("🔥 Branding Error:", error);
+        setBranding({ ...defaultBranding, isLoadingBranding: false });
       }
     };
 
     fetchBranding();
   }, []);
 
-  // ✨ ENGINE 2: Dynamic Browser Tab Title
   useEffect(() => {
     if (!branding.isLoadingBranding) {
-      // Sets the tab title to "Client Name | Enterprise Revenue Platform"
-      document.title = `${branding.companyName} | Enterprise Revenue Platform`;
+      // 1. Dynamic Title
+      document.title = branding.companyName === 'Leadspot CRM' 
+        ? 'Leadspot CRM | Enterprise Revenue Platform' 
+        : `${branding.companyName} | Intelligent Workspace`;
+
+      // 2. Dynamic Favicon - FIX: Using HTMLLinkElement
+      const favicon = document.getElementById('dynamic-favicon') as HTMLLinkElement | null;
+      const appleIcon = document.getElementById('dynamic-apple-icon') as HTMLLinkElement | null;
+      
+      if (favicon) favicon.href = branding.logoUrl;
+      if (appleIcon) appleIcon.href = branding.logoUrl;
     }
-  }, [branding.companyName, branding.isLoadingBranding]);
+  }, [branding]);
 
   return (
     <BrandingContext.Provider value={branding}>
-      {children}
+      {branding.isLoadingBranding ? (
+        <div className="min-h-screen flex items-center justify-center bg-slate-900">
+           <div className="w-10 h-10 border-4 border-slate-700 border-t-amber-500 rounded-full animate-spin" />
+        </div>
+      ) : (
+        children
+      )}
     </BrandingContext.Provider>
   );
 };
