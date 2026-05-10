@@ -85,7 +85,7 @@ const { logoUrl, companyName } = useBranding();
 
         {/* Footer */}
         <div className="relative z-10 text-slate-500 text-xs font-bold tracking-widest uppercase">
-          © {new Date().getFullYear()} LeadSpot Solutions
+          © {new Date().getFullYear()} {companyName.toUpperCase()} SOLUTIONS
         </div>
       </div>
 

@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon, Megaphone, RefreshCw, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
-
+import { useBranding } from '../contexts/BrandingContext';
 interface Agent { id: string; name: string; email: string; role: string; createdAt: any; designation?: string; location?: string; linkedin?: string; formId?: string; adId?: string; adName?: string; campaignId?: string; campaignName?: string; }
 const PIPELINE_STATUSES = ['New', 'Attempted Contact', 'Connected / Warm', 'Site Visit Scheduled', 'Site Visit Completed', 'Negotiation', 'Closed Won', 'Closed Lost', 'Junk / Invalid'];
 declare global { interface Window { FB: any; fbAsyncInit: any; } }
@@ -21,7 +21,7 @@ const normalizePhone = (phone?: string) => {
 
 export default function ClientDashboard() {
   const { user, logout } = useAuth(); 
-  
+  const { logoUrl, companyName } = useBranding();
   // ✨ NEW: User Dropdown Menu State
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -1437,7 +1437,7 @@ const handleConnectWhatsApp = () => {
       </div>
 
       <div className="md:hidden relative z-20 flex items-center justify-between bg-slate-900 border-b border-slate-800 p-4 shrink-0 shadow-sm">
-        <img src="/leadspot.png" alt="Leadspot CRM" className="h-10 w-auto brightness-0 invert opacity-90" />
+        <img src={logoUrl} alt={companyName} className="h-10 w-auto brightness-0 invert opacity-90 object-contain" />
         <div className="flex items-center gap-4">
           <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className="relative p-2 text-slate-300 hover:text-white">
             <Bell className="w-6 h-6" />
@@ -1461,7 +1461,7 @@ const handleConnectWhatsApp = () => {
               <Menu className="w-5 h-5" />
             </button>
             {isSidebarExpanded && (
-              <img src="/leadspot.png" alt="Leadspot CRM" className="h-9 w-auto brightness-0 invert opacity-90 animate-in fade-in" />
+              <img src={logoUrl} alt={companyName} className="h-8 w-auto brightness-0 invert opacity-90 object-contain animate-in fade-in" />
             )}
           </div>
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden p-2 text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>

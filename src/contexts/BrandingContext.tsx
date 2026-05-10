@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { db } from '../firebase'; // Adjust path if your firebase.ts is elsewhere
+import { db } from '../firebase'; 
 
 interface BrandingContextType {
   logoUrl: string;
@@ -10,7 +10,7 @@ interface BrandingContextType {
 }
 
 const defaultBranding: BrandingContextType = {
-  logoUrl: '/leadspot.png', // The default system logo
+  logoUrl: '/leadspot.png', 
   companyName: 'Leadspot CRM',
   isLoadingBranding: true,
   customDomain: null,
@@ -23,50 +23,44 @@ export const useBranding = () => useContext(BrandingContext);
 export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [branding, setBranding] = useState<BrandingContextType>(defaultBranding);
 
+  // ✨ ENGINE 1: Fetch Branding Data from Firestore based on Domain
   useEffect(() => {
     const fetchBranding = async () => {
-      // 1. Grab the exact domain the user typed into their browser
       const hostname = window.location.hostname;
 
-      // 2. Enterprise Optimization: Skip the DB query if they are on localhost or the base Firebase domain.
-      // This saves you massive amounts of Firestore read costs.
+      // Optimization: Skip DB query for local development or default Firebase domains
+      // Unless you are explicitly testing crm.exam-results.in via hosts file
       if (
-        hostname === 'localhost' || 
-        hostname.includes('127.0.0.1') || 
-        hostname.includes('firebaseapp.com') || 
-        hostname.includes('web.app')
+        (hostname === 'localhost' || hostname.includes('127.0.0.1') || 
+         hostname.includes('firebaseapp.com') || hostname.includes('web.app')) &&
+         hostname !== 'crm.exam-results.in' 
       ) {
         setBranding(prev => ({ ...prev, isLoadingBranding: false }));
         return;
       }
 
       try {
-        // 3. Query the clients collection to find who owns this domain
         const q = query(
           collection(db, 'clients'),
           where('customDomain', '==', hostname),
-          limit(1) // We only ever need 1 match
+          limit(1)
         );
 
         const querySnapshot = await getDocs(q);
 
         if (!querySnapshot.empty) {
           const clientData = querySnapshot.docs[0].data();
-          
-          // 4. Inject the White-Label data into the global state
           setBranding({
-            logoUrl: clientData.logoUrl || '/leadspot.png', // Fallback to Leadspot if they didn't upload a logo
+            logoUrl: clientData.logoUrl || '/leadspot.png',
             companyName: clientData.name || 'CRM Workspace',
             customDomain: hostname,
             isLoadingBranding: false,
           });
         } else {
-          // Domain isn't registered in our DB, fallback to default
           setBranding(prev => ({ ...prev, isLoadingBranding: false }));
         }
       } catch (error) {
         console.error("🔥 Error fetching white-label branding:", error);
-        // Fail safely to default branding so the app doesn't crash
         setBranding(prev => ({ ...prev, isLoadingBranding: false }));
       }
     };
@@ -74,9 +68,16 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fetchBranding();
   }, []);
 
+  // ✨ ENGINE 2: Dynamic Browser Tab Title
+  useEffect(() => {
+    if (!branding.isLoadingBranding) {
+      // Sets the tab title to "Client Name | Enterprise Revenue Platform"
+      document.title = `${branding.companyName} | Enterprise Revenue Platform`;
+    }
+  }, [branding.companyName, branding.isLoadingBranding]);
+
   return (
     <BrandingContext.Provider value={branding}>
-      {/* Optional: Add a brief loading screen here if you want to completely hide the UI until the logo loads */}
       {children}
     </BrandingContext.Provider>
   );
