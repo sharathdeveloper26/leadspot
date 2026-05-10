@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Users, Plus, LogOut, LayoutDashboard, UserCircle2, Mail, Calendar, Phone, Home, X, Search, Zap, List, KanbanSquare, ChevronDown, ChevronUp, Menu, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, AlertCircle, CheckCircle2, Info, XCircle, BellRing, CheckSquare, Check, Globe, Facebook } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
-
+import { useBranding } from '../contexts/BrandingContext';
 const PIPELINE_STATUSES = [
   'New', 
   'Attempted Contact', 
@@ -39,6 +39,7 @@ const getSafeDate = (dateField: any): Date | null => {
 
 export default function AgentDashboard() {
   const { user, logout } = useAuth();
+   const { logoUrl, companyName } = useBranding();
   const [workspaceStatus, setWorkspaceStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'LOADING'>('LOADING');
   const [indexError, setIndexError] = useState(false); // Detects if Firebase needs an index built
 
@@ -558,7 +559,7 @@ export default function AgentDashboard() {
 
       {/* Mobile Menu Header (Midnight Theme) */}
       <div className="md:hidden relative z-20 flex items-center justify-between bg-slate-900 border-b border-slate-800 p-4 shrink-0 shadow-sm">
-        <img src="/leadspot.png" alt="Leadspot CRM" className="h-10 w-auto brightness-0 invert opacity-90" />
+        <img src={logoUrl} alt={companyName} className="h-10 w-auto brightness-0 invert opacity-90 object-contain" />
         <div className="flex items-center gap-4">
           <button onClick={() => setIsNotificationOpen(!isNotificationOpen)} className="relative p-2 text-slate-300 hover:text-white">
             <Bell className="w-6 h-6" />
@@ -578,7 +579,7 @@ export default function AgentDashboard() {
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-2xl md:shadow-none ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-24 flex items-center justify-between px-6 border-b border-slate-800">
           <div className="flex items-center gap-2">
-             <img src="/leadspot.png" alt="Leadspot CRM" className="h-12 w-auto brightness-0 invert opacity-90" />
+             <img src={logoUrl} alt={companyName} className="h-8 w-auto brightness-0 invert opacity-90 object-contain animate-in fade-in" />
           </div>
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
