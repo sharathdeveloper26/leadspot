@@ -80,6 +80,8 @@ export default function ClientDashboard() {
   
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'inbox' | 'campaigns' | 'integrations' | 'team' | 'reports'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+
   const [isCopied, setIsCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('pipeline');
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -1449,40 +1451,64 @@ const handleConnectWhatsApp = () => {
 
       {isMobileMenuOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />}
 
-      {/* ✨ SIDEBAR: Midnight Slate Theme ✨ */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 shadow-2xl md:shadow-none ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="h-24 flex items-center justify-between px-6 border-b border-slate-800">
-          <div className="flex items-center gap-2">
-             <img src="/leadspot.png" alt="Leadspot CRM" className="h-12 w-auto brightness-0 invert opacity-90" />
+      {/* ✨ SIDEBAR: Midnight Slate Theme (Collapsible Gmail Style) ✨ */}
+      <aside className={`fixed inset-y-0 left-0 z-50 bg-slate-900 border-r border-slate-800 flex flex-col transform transition-all duration-300 md:static md:translate-x-0 shadow-2xl md:shadow-none ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} ${isSidebarExpanded ? 'w-64' : 'w-20'}`}>
+        
+        {/* Top Branding & Hamburger */}
+        <div className={`h-24 flex items-center border-b border-slate-800 transition-all duration-300 ${isSidebarExpanded ? 'px-5 justify-between' : 'justify-center'}`}>
+          <div className="flex items-center gap-3 overflow-hidden">
+            <button onClick={() => setIsSidebarExpanded(!isSidebarExpanded)} className="hidden md:flex p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-colors flex-shrink-0">
+              <Menu className="w-5 h-5" />
+            </button>
+            {isSidebarExpanded && (
+              <img src="/leadspot.png" alt="Leadspot CRM" className="h-9 w-auto brightness-0 invert opacity-90 animate-in fade-in" />
+            )}
           </div>
-          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden p-2 text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
         
-        <div className="px-6 py-6 text-[11px] font-black text-slate-500 uppercase tracking-[0.2em]">Workspace</div>
+        <div className={`py-6 text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] transition-all duration-300 ${isSidebarExpanded ? 'px-6 text-left' : 'text-center text-[9px] px-1'}`}>
+          {isSidebarExpanded ? 'Workspace' : 'W/S'}
+        </div>
         
-        <nav className="flex-1 px-4 space-y-2 overflow-y-auto custom-scrollbar">
-          <button onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'dashboard' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><LayoutDashboard className={`w-5 h-5 ${activeTab === 'dashboard' ? 'text-amber-500' : ''}`} /> Dashboard</button>
-          <button onClick={() => { setActiveTab('leads'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'leads' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><Users className={`w-5 h-5 ${activeTab === 'leads' ? 'text-amber-500' : ''}`} /> Leads</button>
-          <button onClick={() => { setActiveTab('feedback'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'feedback' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><MessageSquare className={`w-5 h-5 ${activeTab === 'feedback' ? 'text-amber-500' : ''}`} /> Leads Feedback</button>
-          <button onClick={() => { setActiveTab('inbox'); setIsMobileMenuOpen(false); }} className={`flex items-center justify-between px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'inbox' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}>
-            <div className="flex items-center gap-3"><MessageCircle className={`w-5 h-5 ${activeTab === 'inbox' ? 'text-amber-500' : ''}`} /> Inbox</div>
-            {unreadWhatsAppCount > 0 && (<span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'inbox' ? 'bg-amber-500 text-slate-900' : 'bg-red-500 text-white'}`}>{unreadWhatsAppCount}</span>)}
-          </button>
-          <button onClick={() => { setActiveTab('campaigns'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'campaigns' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><Megaphone className={`w-5 h-5 ${activeTab === 'campaigns' ? 'text-amber-500' : ''}`} /> Campaigns</button>
-
-          {user?.role === 'client_admin' && (
-            <>
-              <button onClick={() => { setActiveTab('team'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'team' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><UserCog className={`w-5 h-5 ${activeTab === 'team' ? 'text-amber-500' : ''}`} /> Team</button>
-              <button onClick={() => { setActiveTab('integrations'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'integrations' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><Link2 className={`w-5 h-5 ${activeTab === 'integrations' ? 'text-amber-500' : ''}`} /> Integrations</button>
-            </>
-          )}
-          <button onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all duration-200 ${activeTab === 'reports' ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500 rounded-l-xl' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200 rounded-xl'}`}><BarChart2 className={`w-5 h-5 ${activeTab === 'reports' ? 'text-amber-500' : ''}`} /> Reports</button>
+        <nav className="flex-1 px-3 space-y-2 overflow-y-auto custom-scrollbar">
+          {[
+            { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+            { id: 'leads', icon: Users, label: 'Leads' },
+            { id: 'feedback', icon: MessageSquare, label: 'Feedback' },
+            { id: 'inbox', icon: MessageCircle, label: 'Inbox', badge: unreadWhatsAppCount },
+            { id: 'campaigns', icon: Megaphone, label: 'Campaigns' },
+            ...(user?.role === 'client_admin' ? [
+              { id: 'team', icon: UserCog, label: 'Team' },
+              { id: 'integrations', icon: Link2, label: 'Integrations' }
+            ] : []),
+            { id: 'reports', icon: BarChart2, label: 'Reports' }
+          ].map((item) => (
+            <button 
+              key={item.id}
+              onClick={() => { setActiveTab(item.id as any); setIsMobileMenuOpen(false); }} 
+              title={!isSidebarExpanded ? item.label : undefined}
+              className={`flex items-center w-full transition-all duration-200 group ${isSidebarExpanded ? 'px-4 py-3 justify-start rounded-xl' : 'py-3 justify-center rounded-2xl mx-auto w-12'} ${activeTab === item.id ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200'}`}
+            >
+              <div className="relative flex items-center justify-center">
+                <item.icon className={`w-5 h-5 flex-shrink-0 ${activeTab === item.id ? 'text-amber-500' : 'group-hover:text-amber-400 transition-colors'}`} />
+                {item.badge ? (
+                  <span className={`absolute -top-2 -right-2 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-black border border-slate-900 ${activeTab === item.id ? 'bg-amber-500 text-slate-900' : 'bg-red-500 text-white'}`}>
+                    {item.badge}
+                  </span>
+                ) : null}
+              </div>
+              {isSidebarExpanded && (
+                <span className="ml-3 truncate">{item.label}</span>
+              )}
+            </button>
+          ))}
         </nav>
       </aside>
 
       {/* Main Content */}
       <main className="relative z-10 flex-1 flex flex-col h-screen overflow-hidden min-w-0 bg-slate-50/50">
-        <header className="h-24 bg-white/80 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-sm">
+       <header className="h-24 bg-white/80 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-sm">
           <h1 className="text-xl font-bold tracking-tight text-slate-900">
             {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'feedback' ? 'Leads Feedback' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : activeTab === 'inbox' ? 'Omnichannel Inbox' : activeTab === 'campaigns' ? 'Campaigns & Templates' : 'Integrations'}
           </h1>
@@ -1511,7 +1537,7 @@ const handleConnectWhatsApp = () => {
               )}
             </div>
             
-            {/* ✨ NEW Dropdown User Menu ✨ */}
+            {/* ✨ TOP RIGHT SIGN OUT DROPDOWN ✨ */}
             <div className="relative" ref={userMenuRef}>
               <button 
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -1540,7 +1566,6 @@ const handleConnectWhatsApp = () => {
                 </div>
               )}
             </div>
-
           </div>
         </header>
 
@@ -1648,7 +1673,10 @@ const handleConnectWhatsApp = () => {
             {activeTab === 'dashboard' && (
               <div className="w-full space-y-8 animate-in fade-in duration-500">
                 <div>
-                  <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1 flex items-center gap-3">{greeting.text}, {user?.email?.split('@')[0]} <span className="inline-block animate-bounce origin-bottom text-4xl" style={{ animationDuration: '2s' }}>{greeting.emoji}</span></h2>
+                  <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-1 flex items-center gap-3">
+  {greeting.text}, {user?.email?.split('@')[0]} 
+  <span className="inline-block animate-bounce origin-bottom text-4xl" style={{ animationDuration: '2s', WebkitTextFillColor: 'initial', color: 'initial' }}>{greeting.emoji}</span>
+</h2>
                   <p className="text-slate-500 text-sm font-medium">Here is what is happening with your leads today.</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -2903,13 +2931,13 @@ const handleConnectWhatsApp = () => {
       )}
 
       {/* Custom Scrollbars & Enterprise Theme Engine */}
-      <style>{`
+     <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
 
-        /* MAGIC OVERRIDES: Translates Pastel Teals into Midnight/Copper */
+        /* MAGIC OVERRIDES: Transforms Pastels into Enterprise Midnight/Copper */
         .from-\\[\\#74ebd5\\] { --tw-gradient-from: #0f172a !important; --tw-gradient-stops: var(--tw-gradient-from), #1e293b !important; color: #ffffff !important; }
         .to-\\[\\#9face6\\] { --tw-gradient-to: #1e293b !important; }
         .bg-\\[\\#74ebd5\\]\\/10, .bg-\\[\\#74ebd5\\]\\/15 { background-color: rgba(245, 158, 11, 0.1) !important; color: #d97706 !important; }
@@ -2921,7 +2949,6 @@ const handleConnectWhatsApp = () => {
         .border-t-\\[\\#74ebd5\\] { border-top-color: #f59e0b !important; }
         .focus\\:ring-\\[\\#74ebd5\\]\\/30:focus, .focus\\:ring-\\[\\#74ebd5\\]:focus { --tw-ring-color: rgba(245, 158, 11, 0.3) !important; }
 
-        /* Mute the loud purple/blue stat cards */
         .bg-\\[\\#9face6\\]\\/15 { background-color: #f8fafc !important; border: 1px solid #e2e8f0; color: #64748b !important; }
         .bg-purple-50 { background-color: #f8fafc !important; border: 1px solid #e2e8f0; color: #64748b !important; }
         .text-\\[\\#7b8ed3\\], .text-purple-600 { color: #64748b !important; }
