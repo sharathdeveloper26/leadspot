@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrandingProvider } from './contexts/BrandingContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useIdleTimeout } from './hooks/useIdleTimeout';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
@@ -94,7 +95,10 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      {/* ✨ WRAPPED THE APP WITH YOUR BRANDING PROVIDER ✨ */}
+      <BrandingProvider>
+        <AppContent />
+      </BrandingProvider>
     </AuthProvider>
   );
 }

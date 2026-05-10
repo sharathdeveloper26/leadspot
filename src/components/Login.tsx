@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
+import { useBranding } from '../contexts/BrandingContext';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Mail, Lock, ArrowRight, Zap, TrendingUp, AlertCircle, LogIn } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Zap, TrendingUp, AlertCircle, MessageCircle } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -11,7 +12,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { user, role } = useAuth();
-
+const { logoUrl, companyName } = useBranding();
   // ✨ RESTORED: Core Routing Logic based on User Roles ✨
   if (user) {
     if (role === 'SUPER_ADMIN') return <Navigate to="/super-admin" />;
@@ -46,38 +47,38 @@ export default function Login() {
       
       {/* ✨ LEFT PANE: ENTERPRISE VALUE PROP (Midnight & Copper Theme) ✨ */}
       <div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between p-16 overflow-hidden border-r border-slate-800">
-        {/* Animated Background Glowing Orbs using Brand Colors */}
+        {/* Animated Background Glowing Orbs using Enterprise Brand Colors */}
         <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-slate-700 rounded-full mix-blend-screen filter blur-[120px] opacity-20 animate-pulse" style={{ animationDuration: '4s' }}></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-amber-600 rounded-full mix-blend-screen filter blur-[120px] opacity-15 animate-pulse" style={{ animationDuration: '6s' }}></div>
         <div className="absolute top-[40%] left-[30%] w-64 h-64 bg-amber-500 rounded-full mix-blend-screen filter blur-[100px] opacity-10"></div>
 
         {/* Logo */}
         <div className="relative z-10">
-          <img src="/leadspot.png" alt="Leadspot CRM" className="h-14 brightness-0 invert opacity-90" />
+          <img src={logoUrl} alt={companyName} className="h-14 brightness-0 invert opacity-90 object-contain" />
         </div>
 
         {/* Real-time Product Copy */}
         <div className="relative z-10 space-y-8 -mt-12">
           <h1 className="text-4xl xl:text-5xl font-extrabold text-white tracking-tight leading-[1.1]">
             The Intelligent <br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-600">Real Estate Engine.</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-600">Revenue Platform.</span>
           </h1>
           <p className="text-slate-400 text-lg font-medium max-w-md leading-relaxed">
-            Automate lead capture, receive instant alerts, and close deals faster with Level 4 enterprise architecture.
+            Accelerate your growth with enterprise-grade architecture. Deploy AI chatbots, automate omnichannel campaigns, and unify your data.
           </p>
 
           <div className="space-y-5 pt-8">
             <div className="flex items-center gap-4 text-slate-300 font-bold text-sm tracking-wide">
               <div className="p-2 bg-white/5 rounded-xl shadow-inner border border-white/10"><Zap className="w-5 h-5 text-amber-500" /></div>
-              Omnichannel Lead Capture
+              Smart CRM & Intelligent Lead Routing
             </div>
             <div className="flex items-center gap-4 text-slate-300 font-bold text-sm tracking-wide">
-              <div className="p-2 bg-white/5 rounded-xl shadow-inner border border-white/10"><Mail className="w-5 h-5 text-amber-500" /></div>
-              Instant Lead Email Alerts
+              <div className="p-2 bg-white/5 rounded-xl shadow-inner border border-white/10"><MessageCircle className="w-5 h-5 text-amber-500" /></div>
+              WhatsApp Automation & Bulk Campaigns
             </div>
             <div className="flex items-center gap-4 text-slate-300 font-bold text-sm tracking-wide">
               <div className="p-2 bg-white/5 rounded-xl shadow-inner border border-white/10"><TrendingUp className="w-5 h-5 text-amber-500" /></div>
-              Dual-Pipeline Automated Routing
+              AI Chatbot Builder & Advanced Analytics
             </div>
           </div>
         </div>
@@ -97,9 +98,9 @@ export default function Login() {
         <div className="w-full max-w-md space-y-8 relative z-10">
           
           <div className="text-center lg:text-left">
-            <img src="/leadspot.png" alt="Leadspot CRM" className="h-16 mx-auto lg:hidden mb-8 drop-shadow-sm" />
-            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Access Workspace</h2>
-            <p className="text-slate-500 font-medium mt-2">Sign in to your secure CRM dashboard.</p>
+          <img src={logoUrl} alt={companyName} className="h-16 mx-auto lg:hidden mb-8 drop-shadow-sm object-contain" />
+            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Welcome Back</h2>
+            <p className="text-slate-500 font-medium mt-2">Sign in to manage your operations.</p>
           </div>
 
           {error && (
@@ -122,7 +123,7 @@ export default function Login() {
                   required 
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)} 
-                  className="block w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 outline-none transition-all shadow-sm" 
+                  className="block w-full pl-12 pr-4 py-3.5 bg-white border border-slate-300 rounded-2xl text-sm font-bold text-slate-900 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 outline-none transition-all shadow-sm" 
                   placeholder="admin@example.com" 
                 />
               </div>
@@ -141,7 +142,7 @@ export default function Login() {
                   required 
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)} 
-                  className="block w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 outline-none transition-all shadow-sm" 
+                  className="block w-full pl-12 pr-4 py-3.5 bg-white border border-slate-300 rounded-2xl text-sm font-bold text-slate-900 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 outline-none transition-all shadow-sm" 
                   placeholder="••••••••" 
                 />
               </div>
