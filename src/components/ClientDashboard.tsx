@@ -685,91 +685,84 @@ const webhookUrl = `https://us-central1-leadspot-crm-52ab4.cloudfunctions.net/in
     } catch (error) { showDialog('error', 'CORS Notice', 'Test fired, but browser security blocked response view. Check destination CRM.'); } finally { setIsTestingCRM(false); }
   };
 
-  const initFacebookSdk = (appId: string): Promise<void> => {
-    return new Promise((resolve) => {
-      if (window.FB) { window.FB.init({ appId: appId, cookie: true, xfbml: true, version: 'v19.0' }); resolve(); return; }
-      window.fbAsyncInit = function() { window.FB.init({ appId: appId, cookie: true, xfbml: true, version: 'v19.0' }); resolve(); };
-      const d = document, s = 'script', id = 'facebook-jssdk';
-      let js, fjs = d.getElementsByTagName(s)[0];
-      if (d.getElementById(id)) { resolve(); return; }
-      js = d.createElement(s) as any; js.id = id; (js as any).src = "https://connect.facebook.net/en_US/sdk.js";
-      if (fjs && fjs.parentNode) fjs.parentNode.insertBefore(js, fjs); else d.head.appendChild(js);
-    });
-  };
+ 
 
-  useEffect(() => { initFacebookSdk('1263110839094881'); }, []); // Background load to prevent popup blocker
-
-  const handleConnectFacebook = async () => {
-    // ✨ LEVEL 5 MULTI-TENANT FIX: The Pre-Flight Interceptor
+  const handleConnectFacebook = () => {
     showDialog(
       'confirm', 
       'Adding a New Page?', 
-      'If you have connected to this CRM before, Meta will try to skip the page checklist.\n\n🚨 CRITICAL: When the Facebook popup opens, DO NOT just click "Continue". You MUST click "Edit Settings" (or "Edit previous settings") to check the box for your new page!', 
+      'If you have connected to this CRM before, Meta will try to skip the page checklist.\n\n🚨 CRITICAL: When the Facebook popup opens, DO NOT just click "Continue". You MUST click "Edit Settings" to check the box for your new page!', 
       () => {
         setIsLoadingFb(true);
-        if (window.FB) window.FB.init({ appId: '2060924228162885', cookie: true, xfbml: true, version: 'v20.0' });
         
-        window.FB.login((response: any) => {
-          if (response.authResponse) {
-            setFbUserToken(response.authResponse.accessToken); 
-            window.FB.api('/me/accounts', (apiResponse: any) => {
-              if (apiResponse && !apiResponse.error) { 
-                const fetchedPages = apiResponse.data || [];
-                setFbPages(fetchedPages); 
-                
-                // ✨ ERROR CATCHER: Tell us if Meta returns 0 pages
-                if (fetchedPages.length === 0) {
-                   showDialog('error', 'No Pages Found', 'Meta returned 0 pages. You forgot to click "Edit Settings" in the popup to check the new page.');
-                } else {
-                   showDialog('success', 'Pages Found', 'Please scroll down to the "Available Pages" section and click Link on the one you want.');
+        // ✨ Uses your Environment Variable! Defaults to localhost for testing.
+        const authHubUrl = import.meta.env.VITE_AUTH_HUB_URL || 'http://localhost:3000';
+        
+        // 1. Open the Centralized Auth Hub
+        const popup = window.open(`${authHubUrl}/meta-auth.html`, 'MetaAuth', 'width=600,height=700');
+
+        // 2. Listen for the token to come back from the Hub
+        const messageListener = (event: MessageEvent) => {
+          if (event.data?.type === 'META_AUTH_SUCCESS' && event.data?.token) {
+            window.removeEventListener('message', messageListener);
+            setFbUserToken(event.data.token); 
+
+            // 3. Fetch the Facebook Pages directly using the Graph API
+            fetch(`https://graph.facebook.com/v20.0/me/accounts?access_token=${event.data.token}`)
+              .then(res => res.json())
+              .then(apiResponse => {
+                if (apiResponse.data) { 
+                  const fetchedPages = apiResponse.data || [];
+                  setFbPages(fetchedPages); 
+                  
+                  if (fetchedPages.length === 0) {
+                     showDialog('error', 'No Pages Found', 'Meta returned 0 pages. You forgot to click "Edit Settings" in the popup to check the new page.');
+                  } else {
+                     showDialog('success', 'Pages Found', 'Please scroll down to the "Available Pages" section and click Link on the one you want.');
+                  }
+                } else { 
+                  showDialog('error', 'Facebook API Error', apiResponse?.error?.message || 'Failed to fetch Facebook Pages.'); 
                 }
-              } else { 
-                showDialog('error', 'Facebook API Error', apiResponse?.error?.message || 'Failed to fetch Facebook Pages.'); 
-              }
-              setIsLoadingFb(false);
-            });
-          } else { 
-            setIsLoadingFb(false); 
+                setIsLoadingFb(false);
+              })
+              .catch(err => {
+                console.error("Graph API Error:", err);
+                setIsLoadingFb(false);
+              });
           }
-        }, 
-        { 
-          // ✨ LEVEL 5 FIX: Includes business_management so the API can see BM-owned pages!
-          scope: 'pages_show_list,pages_manage_metadata,leads_retrieval,business_management', 
-          auth_type: 'reauthenticate', 
-          return_scopes: true 
-        });
+        };
+
+        window.addEventListener('message', messageListener);
+
+        // Fail-safe: Detect if the user closes the popup manually
+        const checkPopup = setInterval(() => {
+          if (!popup || popup.closed || popup.closed === undefined) {
+            clearInterval(checkPopup);
+            window.removeEventListener('message', messageListener);
+            setIsLoadingFb(false);
+          }
+        }, 1000);
       }
     );
   };
 const handleConnectWhatsApp = () => {
-    if (!window.FB) { 
-      showDialog('error', 'SDK Blocked', 'Please disable your ad-blocker or refresh the page to load the Meta SDK.'); 
-      return; 
-    }
+    setIsLinkingWhatsApp(true);
+    
+    // Use the Auth Hub, just like Facebook Ads does!
+    const authHubUrl = import.meta.env.VITE_AUTH_HUB_URL || 'http://localhost:3000';
+    
+    // ✨ Notice we pass '?type=whatsapp' so the Hub knows which login config to use
+    const popup = window.open(`${authHubUrl}/meta-auth.html?type=whatsapp`, 'MetaAuth', 'width=600,height=700');
 
-    // ✨ LEVEL 5 FIX #1: Force the WhatsApp App ID safely.
-    window.FB.init({ 
-      appId: '2060924228162885', 
-      cookie: true, 
-      xfbml: true, 
-      version: 'v20.0' 
-    });
-
-    // ✨ LEVEL 5 FIX #2: DO NOT set React state before this call. 
-    // We must call FB.login instantly to bypass the browser's popup blocker.
-    window.FB.login((response: any) => {
-      // Now that the popup is closed, we can safely update the UI state
-      setIsLinkingWhatsApp(true); 
-
-      if (response.authResponse) {
-        // ✨ LEVEL 5 FIX #3: Embedded signup returns a 'code', not an 'accessToken'. 
-        // We must gracefully capture whichever one Meta decides to send.
-        const tokenOrCode = response.authResponse.accessToken || response.authResponse.code;
+    const messageListener = (event: MessageEvent) => {
+      // Check for success from the popup
+      if (event.data?.type === 'META_AUTH_SUCCESS' && event.data?.token) {
+        window.removeEventListener('message', messageListener);
         
-        if (user?.clientId && tokenOrCode) {
+        if (user?.clientId) {
           const linkWaFn = httpsCallable(functions, 'secureLinkWhatsApp');
           
-          linkWaFn({ accessToken: tokenOrCode })
+          linkWaFn({ accessToken: event.data.token })
             .then(() => {
               setWhatsappConnected(true); 
               fetchWhatsAppIntegration(); 
@@ -782,21 +775,21 @@ const handleConnectWhatsApp = () => {
             .finally(() => {
               setIsLinkingWhatsApp(false); 
             });
-        } else {
-          setIsLinkingWhatsApp(false); 
         }
-      } else { 
-        // User clicked the 'X' and closed the popup manually
-        setIsLinkingWhatsApp(false); 
       }
-    }, { 
-      config_id: '1083197781534526', 
-      response_type: 'code', // Strictly enforces Meta's Embedded Signup requirement
-      override_default_response_type: true, 
-      extras: { setup: {}, featureType: '', sessionInfoVersion: '2' } 
-    });
-  };
+    };
 
+    window.addEventListener('message', messageListener);
+
+    // Fail-safe if they close the window early
+    const checkPopup = setInterval(() => {
+      if (!popup || popup.closed || popup.closed === undefined) {
+        clearInterval(checkPopup);
+        window.removeEventListener('message', messageListener);
+        setIsLinkingWhatsApp(false);
+      }
+    }, 1000);
+  };
   const handleLinkPage = async (page: any) => {
     if (!user?.clientId) return;
     if (!fbUserToken) { showDialog('error', 'Token Missing', 'Your Facebook session expired. Please click "Connect Facebook" again.'); return; }

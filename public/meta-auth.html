@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Secure Meta Authentication</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f8fafc; margin: 0; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: #0f172a; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="spinner"></div>
+    <h3 style="color: #0f172a;">Securing Connection to Meta...</h3>
+    <p style="color: #64748b; font-size: 14px;">Please complete the login popup. This window will close automatically.</p>
+
+    <script>
+        // Check if we are doing WhatsApp or Facebook Ads
+        const urlParams = new URLSearchParams(window.location.search);
+        const authType = urlParams.get('type');
+
+        window.fbAsyncInit = function() {
+            // Initialize the SDK once
+            FB.init({ appId: '2060924228162885', cookie: true, xfbml: true, version: 'v20.0' });
+            
+            if (authType === 'whatsapp') {
+                // 📱 RUN WHATSAPP EMBEDDED SIGNUP CONFIG
+                FB.login(function(response) {
+                    if (response.authResponse) {
+                        const tokenOrCode = response.authResponse.accessToken || response.authResponse.code;
+                        window.opener.postMessage({ type: 'META_AUTH_SUCCESS', token: tokenOrCode }, '*');
+                    }
+                    window.close();
+                }, { 
+                    config_id: '1083197781534526', // Your WA Config ID
+                    response_type: 'code',
+                    override_default_response_type: true,
+                    extras: { setup: {}, featureType: '', sessionInfoVersion: '2' }
+                });
+            } else {
+                // 🌐 RUN STANDARD FACEBOOK LEAD ADS CONFIG
+                FB.login(function(response) {
+                    if (response.authResponse) {
+                        window.opener.postMessage({ type: 'META_AUTH_SUCCESS', token: response.authResponse.accessToken }, '*');
+                    }
+                    window.close();
+                }, { 
+                    scope: 'pages_show_list,pages_manage_metadata,leads_retrieval,business_management', 
+                    auth_type: 'reauthenticate',
+                    return_scopes: true 
+                });
+            }
+        };
+
+        (function(d, s, id){
+            var js, fjs = d.getElementsByTagName(s)[0];
+            if (d.getElementById(id)) {return;}
+            js = d.createElement(s); js.id = id;
+            js.src = "https://connect.facebook.net/en_US/sdk.js";
+            fjs.parentNode.insertBefore(js, fjs);
+        }(document, 'script', 'facebook-jssdk'));
+    </script>
+</body>
+</html>
