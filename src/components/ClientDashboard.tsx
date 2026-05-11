@@ -707,7 +707,7 @@ const webhookUrl = `https://us-central1-leadspot-crm-52ab4.cloudfunctions.net/in
       'If you have connected to this CRM before, Meta will try to skip the page checklist.\n\n🚨 CRITICAL: When the Facebook popup opens, DO NOT just click "Continue". You MUST click "Edit Settings" (or "Edit previous settings") to check the box for your new page!', 
       () => {
         setIsLoadingFb(true);
-        if (window.FB) window.FB.init({ appId: '1439047481212574', cookie: true, xfbml: true, version: 'v20.0' });
+        if (window.FB) window.FB.init({ appId: '2060924228162885', cookie: true, xfbml: true, version: 'v20.0' });
         
         window.FB.login((response: any) => {
           if (response.authResponse) {
