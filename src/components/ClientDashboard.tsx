@@ -3,10 +3,11 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon, Megaphone, RefreshCw, FileText } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon, Megaphone, RefreshCw, FileText,Bot } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 import { useBranding } from '../contexts/BrandingContext';
+import BotBuilder from './BotBuilder';
 interface Agent { id: string; name: string; email: string; role: string; createdAt: any; designation?: string; location?: string; linkedin?: string; formId?: string; adId?: string; adName?: string; campaignId?: string; campaignName?: string; }
 const PIPELINE_STATUSES = ['New', 'Attempted Contact', 'Connected / Warm', 'Site Visit Scheduled', 'Site Visit Completed', 'Negotiation', 'Closed Won', 'Closed Lost', 'Junk / Invalid'];
 declare global { interface Window { FB: any; fbAsyncInit: any; } }
@@ -78,7 +79,7 @@ export default function ClientDashboard() {
     return () => clearInterval(interval);
   }, []);
   
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'inbox' | 'campaigns' | 'integrations' | 'team' | 'reports'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'inbox' | 'campaigns' | 'integrations' | 'team' | 'reports' | 'bots'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
 
@@ -1465,12 +1466,14 @@ const handleConnectWhatsApp = () => {
         </div>
         
         <nav className="flex-1 px-3 space-y-2 overflow-y-auto custom-scrollbar">
-          {[
+         {[
             { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
             { id: 'leads', icon: Users, label: 'Leads' },
             { id: 'feedback', icon: MessageSquare, label: 'Feedback' },
             { id: 'inbox', icon: MessageCircle, label: 'Inbox', badge: unreadWhatsAppCount },
             { id: 'campaigns', icon: Megaphone, label: 'Campaigns' },
+            // ✨ UPDATE THIS LINE ✨
+            { id: 'bots', icon: Zap, label: 'Automations' }, 
             ...(user?.role === 'client_admin' ? [
               { id: 'team', icon: UserCog, label: 'Team' },
               { id: 'integrations', icon: Link2, label: 'Integrations' }
@@ -1504,6 +1507,9 @@ const handleConnectWhatsApp = () => {
       <header className="relative z-40 h-24 bg-white/80 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 hidden md:flex shadow-sm">
           <h1 className="text-xl font-bold tracking-tight text-slate-900">
             {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'feedback' ? 'Leads Feedback' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : activeTab === 'inbox' ? 'Omnichannel Inbox' : activeTab === 'campaigns' ? 'Campaigns & Templates' : 'Integrations'}
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">
+  {activeTab === 'dashboard' ? 'Overview Dashboard' : activeTab === 'leads' ? 'Leads Management' : activeTab === 'feedback' ? 'Leads Feedback' : activeTab === 'team' ? 'Team Management' : activeTab === 'reports' ? 'Analytics Reports' : activeTab === 'inbox' ? 'Omnichannel Inbox' : activeTab === 'campaigns' ? 'Campaigns & Templates' : activeTab === 'bots' ? 'Automations' : 'Integrations'}
+</h1>
           </h1>
           <div className="flex items-center gap-6">
             <div className="relative">
@@ -1562,8 +1568,16 @@ const handleConnectWhatsApp = () => {
           </div>
         </header>
 
-        <div className={`flex-1 overflow-y-auto custom-scrollbar ${activeTab === 'inbox' ? 'p-0 sm:p-4 md:p-8' : 'p-4 md:p-8'}`}>
-          <div className={`max-w-7xl mx-auto h-full flex flex-col ${activeTab === 'inbox' ? 'min-w-0' : 'min-w-[800px] md:min-w-0'}`}>
+        <div className={`flex-1 overflow-y-auto custom-scrollbar ${activeTab === 'inbox' || activeTab === 'bots' ? 'p-0 sm:p-4 md:p-8' : 'p-4 md:p-8'}`}>
+          <div className={`max-w-7xl mx-auto h-full flex flex-col ${activeTab === 'inbox' || activeTab === 'bots' ? 'min-w-0' : 'min-w-[800px] md:min-w-0'}`}>
+            
+            {/* ✨ AUTOMATIONS / BOT BUILDER TAB ✨ */}
+            {activeTab === 'bots' && (
+              <div className="flex-1 h-full w-full bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in duration-300">
+                <BotBuilder />
+              </div>
+            )}
+
             {/* ✨ INBOX TAB ✨ */}
             {activeTab === 'inbox' && (
               <div className="flex h-[calc(100vh-140px)] bg-white/80 backdrop-blur-2xl sm:rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden animate-in fade-in duration-300">

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { Network, List as ListIcon, Save, Play, MessageSquare, HelpCircle, MessageCircle, Globe, Plus } from 'lucide-react';
+import { Network, List as ListIcon, Save, Play, MessageSquare, HelpCircle, MessageCircle, Globe, Plus, X, Settings2, Trash2 } from 'lucide-react';
 import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, addEdge, Connection, Edge, NodeChange, EdgeChange } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -54,10 +54,13 @@ const INITIAL_EDGES: Edge[] = [
 
 export default function BotBuilder() {
   const [viewMode, setViewMode] = useState<'canvas' | 'list'>('canvas');
-  const [botChannel, setBotChannel] = useState<'whatsapp' | 'widget'>('whatsapp'); // ✨ OMNICHANNEL TOGGLE
+  const [botChannel, setBotChannel] = useState<'whatsapp' | 'widget'>('whatsapp'); 
   
   const [nodes, setNodes] = useState<BotNode[]>(INITIAL_NODES);
   const [edges, setEdges] = useState<Edge[]>(INITIAL_EDGES);
+
+  // ✨ NEW: State to track which node is being edited in the sidebar
+  const [selectedNode, setSelectedNode] = useState<BotNode | null>(null);
 
   // ✨ REGISTER THE CUSTOM NODES ✨
   const nodeTypes = useMemo(() => ({ 
@@ -70,6 +73,59 @@ export default function BotBuilder() {
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);
   const onConnect = useCallback((params: Connection | Edge) => setEdges((eds) => addEdge(params, eds)), []);
 
+  // ✨ THE NODE INJECTOR ✨
+  const handleAddNode = useCallback((type: BotNodeType) => {
+    const newId = `${type}-${Date.now()}`;
+    const newNode: BotNode = {
+      id: newId,
+      type,
+      position: { x: 250 + Math.random() * 50, y: 250 + Math.random() * 50 },
+      data: {
+        label: type === 'message' ? 'New Message' : type === 'question' ? 'New Question' : 'Action',
+        text: '',
+        ...(type === 'question' ? { options: ['Yes', 'No'] } : {})
+      },
+    };
+    setNodes((nds) => [...nds, newNode]);
+    setSelectedNode(newNode); // Automatically open the editor for the new node!
+  }, []);
+
+  // ✨ REAL-TIME NODE UPDATER ✨
+  // Syncs changes from the sidebar editor back into the main nodes array
+  const updateSelectedNodeData = (field: string, value: any) => {
+    if (!selectedNode) return;
+    
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === selectedNode.id) {
+          const updatedNode = { ...node, data: { ...node.data, [field]: value } };
+          setSelectedNode(updatedNode); // Keep sidebar in sync
+          return updatedNode;
+        }
+        return node;
+      })
+    );
+  };
+
+  const handleUpdateOption = (index: number, value: string) => {
+    if (!selectedNode?.data.options) return;
+    const newOptions = [...selectedNode.data.options];
+    newOptions[index] = value;
+    updateSelectedNodeData('options', newOptions);
+  };
+
+  const handleAddOption = () => {
+    if (!selectedNode?.data.options) return;
+    const newOptions = [...selectedNode.data.options, 'New Option'];
+    updateSelectedNodeData('options', newOptions);
+  };
+
+  const handleRemoveOption = (index: number) => {
+    if (!selectedNode?.data.options) return;
+    const newOptions = selectedNode.data.options.filter((_, i) => i !== index);
+    updateSelectedNodeData('options', newOptions);
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-50 relative w-full overflow-hidden">
       {/* ✨ HEADER & TOGGLE ✨ */}
@@ -77,7 +133,6 @@ export default function BotBuilder() {
         <div>
           <div className="flex items-center gap-3 mb-1">
             <h2 className="text-2xl font-extrabold text-slate-800">Flow Builder</h2>
-            {/* Channel Indicator Badge */}
             <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${botChannel === 'whatsapp' ? 'bg-[#25D366]/10 text-[#1a9347] border-[#25D366]/30' : 'bg-indigo-50 text-indigo-600 border-indigo-200'}`}>
               {botChannel === 'whatsapp' ? <MessageCircle className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
               {botChannel === 'whatsapp' ? 'WhatsApp Bot' : 'Website Widget'}
@@ -87,7 +142,6 @@ export default function BotBuilder() {
         </div>
         
         <div className="flex items-center gap-4">
-          {/* ✨ Omnichannel Switcher ✨ */}
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner mr-2">
             <button onClick={() => setBotChannel('whatsapp')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${botChannel === 'whatsapp' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>WhatsApp</button>
             <button onClick={() => setBotChannel('widget')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${botChannel === 'widget' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Website</button>
@@ -110,68 +164,172 @@ export default function BotBuilder() {
       </div>
 
       {/* ✨ DUAL WORKSPACE ✨ */}
-      <div className="flex-1 relative w-full h-full">
-        {viewMode === 'canvas' ? (
-          <div className="absolute inset-0 w-full h-full">
-            <ReactFlow 
-              nodes={nodes} 
-              edges={edges} 
-              nodeTypes={nodeTypes}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              fitView
-              className="bg-slate-50"
-            >
-              <Background color="#cbd5e1" gap={16} />
-              <Controls />
-            </ReactFlow>
-            
-            {/* Floating Tool Palette */}
-            <div className="absolute top-6 left-6 bg-white p-2 rounded-2xl shadow-xl border border-slate-200 flex flex-col gap-2 z-10">
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl hover:bg-[#25D366]/10 hover:text-[#25D366] hover:border-[#25D366]/30 cursor-pointer transition-all flex flex-col items-center gap-1 text-slate-500" title="Send Message">
-                <MessageSquare className="w-5 h-5" />
-                <span className="text-[9px] font-black uppercase tracking-widest">Msg</span>
-              </div>
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl hover:bg-amber-500/10 hover:text-amber-600 hover:border-amber-500/30 cursor-pointer transition-all flex flex-col items-center gap-1 text-slate-500" title="Ask Question">
-                <HelpCircle className="w-5 h-5" />
-                <span className="text-[9px] font-black uppercase tracking-widest">Ask</span>
+      <div className="flex-1 relative w-full h-full flex overflow-hidden">
+        
+        {/* MAIN CANVAS / LIST AREA */}
+        <div className="flex-1 relative h-full">
+          {viewMode === 'canvas' ? (
+            <div className="absolute inset-0 w-full h-full">
+              <ReactFlow 
+                nodes={nodes} 
+                edges={edges} 
+                nodeTypes={nodeTypes}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onNodeClick={(_, node) => setSelectedNode(node as BotNode)} // ✨ SELECT NODE ON CLICK
+                onPaneClick={() => setSelectedNode(null)} // Deselect when clicking background
+                fitView
+                className="bg-slate-50"
+              >
+                <Background color="#cbd5e1" gap={16} />
+                <Controls />
+              </ReactFlow>
+              
+              {/* Floating Tool Palette */}
+              <div className="absolute top-6 left-6 bg-white p-2 rounded-2xl shadow-xl border border-slate-200 flex flex-col gap-2 z-10">
+                <div onClick={() => handleAddNode('message')} className="p-3 bg-slate-50 border border-slate-100 rounded-xl hover:bg-[#25D366]/10 hover:text-[#25D366] hover:border-[#25D366]/30 cursor-pointer transition-all flex flex-col items-center gap-1 text-slate-500" title="Send Message">
+                  <MessageSquare className="w-5 h-5" />
+                  <span className="text-[9px] font-black uppercase tracking-widest">Msg</span>
+                </div>
+                <div onClick={() => handleAddNode('question')} className="p-3 bg-slate-50 border border-slate-100 rounded-xl hover:bg-amber-500/10 hover:text-amber-600 hover:border-amber-500/30 cursor-pointer transition-all flex flex-col items-center gap-1 text-slate-500" title="Ask Question">
+                  <HelpCircle className="w-5 h-5" />
+                  <span className="text-[9px] font-black uppercase tracking-widest">Ask</span>
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-8">
-            <div className="max-w-3xl mx-auto space-y-4 pb-20">
-              {nodes.map((node, index) => (
-                <div key={node.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-start gap-4 hover:shadow-md transition-shadow relative group">
-                  <div className="absolute -left-3 top-8 w-6 h-6 bg-slate-900 text-white rounded-full flex items-center justify-center text-xs font-bold border-4 border-slate-50 shadow-sm">{index + 1}</div>
-                  <div className={`p-3 rounded-xl shrink-0 ${node.type === 'trigger' ? 'bg-purple-100 text-purple-600' : node.type === 'question' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
-                    {node.type === 'trigger' ? <Play className="w-5 h-5" /> : node.type === 'question' ? <HelpCircle className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="text-sm font-bold text-slate-800 mb-1">{node.data.label}</h4>
-                    <input 
-                      type="text" 
-                      defaultValue={node.data.text} 
-                      placeholder="Type your message here..."
-                      className="w-full mt-2 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[#25D366]/30 outline-none"
-                    />
-                    {node.data.options && (
-                      <div className="flex gap-2 mt-3">
-                        {node.data.options.map((opt, i) => (
-                          <span key={i} className="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-lg">{opt}</span>
-                        ))}
+          ) : (
+            <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-8">
+              <div className="max-w-3xl mx-auto space-y-4 pb-20">
+                {nodes.map((node, index) => (
+                  <div key={node.id} onClick={() => setSelectedNode(node)} className={`bg-white p-6 rounded-2xl shadow-sm border flex items-start gap-4 transition-all relative group cursor-pointer ${selectedNode?.id === node.id ? 'border-indigo-400 shadow-md ring-4 ring-indigo-50' : 'border-slate-200 hover:shadow-md hover:border-slate-300'}`}>
+                    <div className="absolute -left-3 top-8 w-6 h-6 bg-slate-900 text-white rounded-full flex items-center justify-center text-xs font-bold border-4 border-slate-50 shadow-sm">{index + 1}</div>
+                    <div className={`p-3 rounded-xl shrink-0 ${node.type === 'trigger' ? 'bg-purple-100 text-purple-600' : node.type === 'question' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'}`}>
+                      {node.type === 'trigger' ? <Play className="w-5 h-5" /> : node.type === 'question' ? <HelpCircle className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center mb-1">
+                        <h4 className="text-sm font-bold text-slate-800">{node.data.label}</h4>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{node.type}</span>
                       </div>
-                    )}
+                      {/* Read-only preview in list view. Actual editing happens in sidebar for consistency */}
+                      <div className="w-full mt-2 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 whitespace-pre-wrap">
+                        {node.data.text || <span className="text-slate-400 italic">No message configured...</span>}
+                      </div>
+                      {node.data.options && node.data.options.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {node.data.options.map((opt, i) => (
+                            <span key={i} className="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-lg">{opt}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                
+                {/* List View Quick Add Actions */}
+                <div className="flex gap-4 pt-4">
+                  <button onClick={() => handleAddNode('message')} className="flex-1 py-4 border-2 border-dashed border-slate-300 rounded-2xl text-slate-500 font-bold text-sm hover:bg-slate-50 hover:border-[#25D366] hover:text-[#25D366] transition-all flex items-center justify-center gap-2">
+                    <MessageSquare className="w-4 h-4" /> Add Message
+                  </button>
+                  <button onClick={() => handleAddNode('question')} className="flex-1 py-4 border-2 border-dashed border-slate-300 rounded-2xl text-slate-500 font-bold text-sm hover:bg-slate-50 hover:border-amber-500 hover:text-amber-600 transition-all flex items-center justify-center gap-2">
+                    <HelpCircle className="w-4 h-4" /> Add Question
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ✨ THE PROPERTY INSPECTOR (SIDEBAR) ✨ */}
+        {selectedNode && (
+          <div className="w-[380px] bg-white/90 backdrop-blur-2xl border-l border-slate-200 shadow-2xl flex flex-col shrink-0 animate-in slide-in-from-right-4 duration-300 z-20">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg"><Settings2 className="w-4 h-4" /></div>
+                <h3 className="font-bold text-slate-800">Edit Node</h3>
+              </div>
+              <button onClick={() => setSelectedNode(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"><X className="w-4 h-4"/></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+              {/* Internal Node ID (Read Only) */}
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Node ID</label>
+                <code className="text-xs font-mono text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-100">{selectedNode.id}</code>
+              </div>
+
+              {/* Block Label */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-widest">Step Name (Internal)</label>
+                <input 
+                  type="text" 
+                  value={selectedNode.data.label}
+                  onChange={(e) => updateSelectedNodeData('label', e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/30 outline-none text-sm font-medium shadow-sm transition-all"
+                />
+              </div>
+
+              {/* Main Message Text */}
+              <div>
+                <div className="flex justify-between items-end mb-2">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest">Message Content</label>
+                  <span className="text-[9px] text-slate-400 font-bold">Use {'{{name}}'}</span>
+                </div>
+                <textarea 
+                  rows={5}
+                  value={selectedNode.data.text}
+                  onChange={(e) => updateSelectedNodeData('text', e.target.value)}
+                  placeholder="Enter the message text the bot will send..."
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/30 outline-none text-sm font-medium shadow-sm transition-all resize-y"
+                />
+              </div>
+
+              {/* Dynamic Quick Replies (Only for Question Nodes) */}
+              {selectedNode.type === 'question' && (
+                <div className="pt-4 border-t border-slate-100">
+                  <label className="block text-[11px] font-bold text-slate-500 mb-3 uppercase tracking-widest">Quick Reply Buttons</label>
+                  <div className="space-y-3">
+                    {selectedNode.data.options?.map((opt, index) => (
+                      <div key={index} className="flex items-center gap-2 group animate-in slide-in-from-left-2 duration-200">
+                        <div className="flex-1 relative">
+                          <input 
+                            type="text" 
+                            value={opt}
+                            onChange={(e) => handleUpdateOption(index, e.target.value)}
+                            className="w-full pl-4 pr-10 py-2.5 bg-amber-50/50 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500/30 outline-none text-sm font-bold text-amber-900 transition-all"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-amber-300 pointer-events-none">{index + 1}</span>
+                        </div>
+                        <button onClick={() => handleRemoveOption(index)} className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl border border-transparent hover:border-red-100 transition-colors shadow-sm shrink-0">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button onClick={handleAddOption} disabled={(selectedNode.data.options?.length || 0) >= 3} className="w-full py-2.5 border border-dashed border-amber-300 rounded-xl text-amber-600 font-bold text-xs hover:bg-amber-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:bg-transparent">
+                      <Plus className="w-3.5 h-3.5" /> Add Button (Max 3)
+                    </button>
+                    <p className="text-[10px] font-medium text-slate-400 leading-relaxed mt-2">
+                      WhatsApp limits quick replies to 3 buttons per message. For Website Widgets, up to 5 are supported.
+                    </p>
                   </div>
                 </div>
-              ))}
-              <button className="w-full py-4 border-2 border-dashed border-slate-300 rounded-2xl text-slate-500 font-bold text-sm hover:bg-slate-50 hover:border-[#25D366] hover:text-[#25D366] transition-all flex items-center justify-center gap-2">
-                <Plus className="w-4 h-4" /> Add Next Step
+              )}
+            </div>
+            
+            {/* Delete Node Action */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 shrink-0">
+              <button onClick={() => {
+                setNodes(nds => nds.filter(n => n.id !== selectedNode.id));
+                setEdges(eds => eds.filter(e => e.source !== selectedNode.id && e.target !== selectedNode.id));
+                setSelectedNode(null);
+              }} className="w-full py-2.5 text-red-600 hover:bg-red-50 rounded-xl font-bold text-sm transition-colors border border-transparent hover:border-red-100 flex items-center justify-center gap-2">
+                <Trash2 className="w-4 h-4" /> Delete this step
               </button>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
