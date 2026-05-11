@@ -59,7 +59,7 @@ export default function BotBuilder() {
   const [nodes, setNodes] = useState<BotNode[]>(INITIAL_NODES);
   const [edges, setEdges] = useState<Edge[]>(INITIAL_EDGES);
 
-  // ✨ NEW: State to track which node is being edited in the sidebar
+  // ✨ State to track which node is being edited in the sidebar
   const [selectedNode, setSelectedNode] = useState<BotNode | null>(null);
 
   // ✨ REGISTER THE CUSTOM NODES ✨
@@ -91,7 +91,6 @@ export default function BotBuilder() {
   }, []);
 
   // ✨ REAL-TIME NODE UPDATER ✨
-  // Syncs changes from the sidebar editor back into the main nodes array
   const updateSelectedNodeData = (field: string, value: any) => {
     if (!selectedNode) return;
     
@@ -128,8 +127,9 @@ export default function BotBuilder() {
 
   return (
     <div className="flex flex-col h-full bg-slate-50 relative w-full overflow-hidden">
-      {/* ✨ HEADER & TOGGLE ✨ */}
-      <div className="flex items-center justify-between p-6 bg-white border-b border-slate-200 shrink-0">
+      
+      {/* ✨ 1. HEADER & TOGGLE ✨ */}
+      <div className="flex items-center justify-between p-6 bg-white border-b border-slate-200 shrink-0 z-20 shadow-sm relative">
         <div>
           <div className="flex items-center gap-3 mb-1">
             <h2 className="text-2xl font-extrabold text-slate-800">Flow Builder</h2>
@@ -163,11 +163,55 @@ export default function BotBuilder() {
         </div>
       </div>
 
-      {/* ✨ DUAL WORKSPACE ✨ */}
+      {/* ✨ 2. TRIPLE WORKSPACE LAYOUT ✨ */}
       <div className="flex-1 relative w-full h-full flex overflow-hidden">
         
-        {/* MAIN CANVAS / LIST AREA */}
-        <div className="flex-1 relative h-full">
+        {/* LEFT PANEL: Node Library (Only visible in Canvas Mode) */}
+        {viewMode === 'canvas' && (
+          <div className="w-[280px] bg-white border-r border-slate-200 flex flex-col shrink-0 z-10 shadow-sm relative">
+            <div className="p-4 border-b border-slate-100">
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Node Library</h3>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+              {/* Category: Communication */}
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">Communication</h4>
+                
+                <button onClick={() => handleAddNode('message')} className="w-full flex items-start gap-3 p-3 bg-white border border-slate-200 hover:border-[#25D366] hover:shadow-md hover:shadow-[#25D366]/10 rounded-xl transition-all group text-left">
+                  <div className="p-2 bg-slate-50 rounded-lg text-slate-500 group-hover:bg-[#25D366]/10 group-hover:text-[#25D366] transition-colors"><MessageSquare className="w-5 h-5" /></div>
+                  <div>
+                    <h5 className="text-sm font-bold text-slate-800">Send Message</h5>
+                    <p className="text-[10px] text-slate-500 font-medium leading-tight mt-0.5">Standard text, image, or document block.</p>
+                  </div>
+                </button>
+
+                <button onClick={() => handleAddNode('question')} className="w-full flex items-start gap-3 p-3 bg-white border border-slate-200 hover:border-amber-500 hover:shadow-md hover:shadow-amber-500/10 rounded-xl transition-all group text-left">
+                  <div className="p-2 bg-slate-50 rounded-lg text-slate-500 group-hover:bg-amber-500/10 group-hover:text-amber-600 transition-colors"><HelpCircle className="w-5 h-5" /></div>
+                  <div>
+                    <h5 className="text-sm font-bold text-slate-800">Ask a Question</h5>
+                    <p className="text-[10px] text-slate-500 font-medium leading-tight mt-0.5">Wait for text input or quick-reply buttons.</p>
+                  </div>
+                </button>
+              </div>
+
+              {/* Category: Logic (Preview) */}
+              <div className="space-y-3 opacity-60 pointer-events-none" title="Coming in Phase 2">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">Logic (Pro)</h4>
+                <div className="w-full flex items-start gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <div className="p-2 bg-slate-100 rounded-lg text-slate-400"><Network className="w-5 h-5" /></div>
+                  <div>
+                    <h5 className="text-sm font-bold text-slate-700">Condition Split</h5>
+                    <p className="text-[10px] text-slate-500 font-medium leading-tight mt-0.5">Branch flow based on variables (If/Else).</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CENTER PANEL: Main Workspace (React Flow or List) */}
+        <div className="flex-1 relative h-full bg-slate-50/50">
           {viewMode === 'canvas' ? (
             <div className="absolute inset-0 w-full h-full">
               <ReactFlow 
@@ -177,26 +221,14 @@ export default function BotBuilder() {
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
-                onNodeClick={(_, node) => setSelectedNode(node as BotNode)} // ✨ SELECT NODE ON CLICK
-                onPaneClick={() => setSelectedNode(null)} // Deselect when clicking background
+                onNodeClick={(_, node) => setSelectedNode(node as BotNode)}
+                onPaneClick={() => setSelectedNode(null)}
                 fitView
-                className="bg-slate-50"
+                className="bg-transparent"
               >
                 <Background color="#cbd5e1" gap={16} />
                 <Controls />
               </ReactFlow>
-              
-              {/* Floating Tool Palette */}
-              <div className="absolute top-6 left-6 bg-white p-2 rounded-2xl shadow-xl border border-slate-200 flex flex-col gap-2 z-10">
-                <div onClick={() => handleAddNode('message')} className="p-3 bg-slate-50 border border-slate-100 rounded-xl hover:bg-[#25D366]/10 hover:text-[#25D366] hover:border-[#25D366]/30 cursor-pointer transition-all flex flex-col items-center gap-1 text-slate-500" title="Send Message">
-                  <MessageSquare className="w-5 h-5" />
-                  <span className="text-[9px] font-black uppercase tracking-widest">Msg</span>
-                </div>
-                <div onClick={() => handleAddNode('question')} className="p-3 bg-slate-50 border border-slate-100 rounded-xl hover:bg-amber-500/10 hover:text-amber-600 hover:border-amber-500/30 cursor-pointer transition-all flex flex-col items-center gap-1 text-slate-500" title="Ask Question">
-                  <HelpCircle className="w-5 h-5" />
-                  <span className="text-[9px] font-black uppercase tracking-widest">Ask</span>
-                </div>
-              </div>
             </div>
           ) : (
             <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-8">
@@ -212,7 +244,6 @@ export default function BotBuilder() {
                         <h4 className="text-sm font-bold text-slate-800">{node.data.label}</h4>
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{node.type}</span>
                       </div>
-                      {/* Read-only preview in list view. Actual editing happens in sidebar for consistency */}
                       <div className="w-full mt-2 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 whitespace-pre-wrap">
                         {node.data.text || <span className="text-slate-400 italic">No message configured...</span>}
                       </div>
@@ -241,10 +272,10 @@ export default function BotBuilder() {
           )}
         </div>
 
-        {/* ✨ THE PROPERTY INSPECTOR (SIDEBAR) ✨ */}
+        {/* RIGHT PANEL: Property Inspector */}
         {selectedNode && (
-          <div className="w-[380px] bg-white/90 backdrop-blur-2xl border-l border-slate-200 shadow-2xl flex flex-col shrink-0 animate-in slide-in-from-right-4 duration-300 z-20">
-            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
+          <div className="w-[380px] bg-white/90 backdrop-blur-2xl border-l border-slate-200 shadow-2xl flex flex-col shrink-0 animate-in slide-in-from-right-4 duration-300 z-20 relative">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg"><Settings2 className="w-4 h-4" /></div>
                 <h3 className="font-bold text-slate-800">Edit Node</h3>
@@ -253,7 +284,7 @@ export default function BotBuilder() {
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
-              {/* Internal Node ID (Read Only) */}
+              {/* Internal Node ID */}
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Node ID</label>
                 <code className="text-xs font-mono text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-100">{selectedNode.id}</code>
@@ -285,7 +316,7 @@ export default function BotBuilder() {
                 />
               </div>
 
-              {/* Dynamic Quick Replies (Only for Question Nodes) */}
+              {/* Dynamic Quick Replies (Question Nodes Only) */}
               {selectedNode.type === 'question' && (
                 <div className="pt-4 border-t border-slate-100">
                   <label className="block text-[11px] font-bold text-slate-500 mb-3 uppercase tracking-widest">Quick Reply Buttons</label>
