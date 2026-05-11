@@ -749,7 +749,7 @@ const handleConnectWhatsApp = () => {
 
     // ✨ LEVEL 5 FIX #1: Force the WhatsApp App ID safely.
     window.FB.init({ 
-      appId: '1263110839094881', 
+      appId: '2060924228162885', 
       cookie: true, 
       xfbml: true, 
       version: 'v20.0' 
