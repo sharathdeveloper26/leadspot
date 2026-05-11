@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onSuperAdminRemoved = exports.onSuperAdminAdded = exports.autoPushToGoogleSheets = exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
+exports.enforceLeadLimits = exports.onSuperAdminRemoved = exports.onSuperAdminAdded = exports.autoPushToGoogleSheets = exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
@@ -926,6 +926,49 @@ exports.onSuperAdminRemoved = (0, firestore_2.onDocumentDeleted)({
     }
     catch (error) {
         console.error("Error removing custom claims:", error);
+    }
+});
+// ============================================================================
+// 🚀 LEVEL 5 SECURITY: SAAS BILLING GUARDRAILS (THE TRACKER) 🚀
+// ============================================================================
+exports.enforceLeadLimits = (0, firestore_2.onDocumentCreated)({
+    document: "leads/{leadId}",
+    database: "crmdb",
+    memory: "256MiB"
+}, async (event) => {
+    var _a;
+    const newLead = (_a = event.data) === null || _a === void 0 ? void 0 : _a.data();
+    if (!newLead || !newLead.clientId)
+        return;
+    const clientId = newLead.clientId;
+    const clientRef = db.collection("clients").doc(clientId);
+    try {
+        // Run a secure transaction to ensure perfect counting even if 100 leads arrive instantly
+        await db.runTransaction(async (transaction) => {
+            const clientDoc = await transaction.get(clientRef);
+            if (!clientDoc.exists) {
+                throw new Error("Client document does not exist!");
+            }
+            const clientData = clientDoc.data();
+            // Default to Starter Plan limit (2000) if they don't have a custom limit set
+            const planLimit = (clientData === null || clientData === void 0 ? void 0 : clientData.planLimit) || 2000;
+            const currentCount = ((clientData === null || clientData === void 0 ? void 0 : clientData.totalLeads) || 0) + 1;
+            // Update the running total
+            transaction.update(clientRef, { totalLeads: currentCount });
+            // ✨ THE KILL SWITCH ✨
+            // If they hit or exceed their limit, immediately suspend the workspace
+            if (currentCount >= planLimit && (clientData === null || clientData === void 0 ? void 0 : clientData.status) !== 'SUSPENDED') {
+                transaction.update(clientRef, {
+                    status: 'SUSPENDED',
+                    suspensionReason: 'PLAN_LIMIT_REACHED',
+                    suspendedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                console.log(`[KILL SWITCH] Client ${clientId} suspended. Hit limit of ${planLimit}.`);
+            }
+        });
+    }
+    catch (error) {
+        console.error("Error enforcing lead limits:", error);
     }
 });
 //# sourceMappingURL=index.js.map

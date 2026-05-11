@@ -1046,3 +1046,50 @@ export const onSuperAdminRemoved = onDocumentDeleted({
     console.error("Error removing custom claims:", error);
   }
 });
+// ============================================================================
+// 🚀 LEVEL 5 SECURITY: SAAS BILLING GUARDRAILS (THE TRACKER) 🚀
+// ============================================================================
+export const enforceLeadLimits = onDocumentCreated({
+  document: "leads/{leadId}",
+  database: "crmdb", 
+  memory: "256MiB"
+}, async (event) => {
+  const newLead = event.data?.data();
+  if (!newLead || !newLead.clientId) return;
+
+  const clientId = newLead.clientId;
+  const clientRef = db.collection("clients").doc(clientId);
+
+  try {
+    // Run a secure transaction to ensure perfect counting even if 100 leads arrive instantly
+    await db.runTransaction(async (transaction) => {
+      const clientDoc = await transaction.get(clientRef);
+      
+      if (!clientDoc.exists) {
+        throw new Error("Client document does not exist!");
+      }
+
+      const clientData = clientDoc.data();
+      
+      // Default to Starter Plan limit (2000) if they don't have a custom limit set
+      const planLimit = clientData?.planLimit || 2000; 
+      const currentCount = (clientData?.totalLeads || 0) + 1;
+
+      // Update the running total
+      transaction.update(clientRef, { totalLeads: currentCount });
+
+      // ✨ THE KILL SWITCH ✨
+      // If they hit or exceed their limit, immediately suspend the workspace
+      if (currentCount >= planLimit && clientData?.status !== 'SUSPENDED') {
+        transaction.update(clientRef, { 
+          status: 'SUSPENDED',
+          suspensionReason: 'PLAN_LIMIT_REACHED',
+          suspendedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`[KILL SWITCH] Client ${clientId} suspended. Hit limit of ${planLimit}.`);
+      }
+    });
+  } catch (error) {
+    console.error("Error enforcing lead limits:", error);
+  }
+});
