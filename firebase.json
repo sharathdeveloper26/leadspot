@@ -8,6 +8,10 @@
     ],
     "rewrites": [
       {
+        "source": "/meta-auth.html",
+        "destination": "/meta-auth.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
