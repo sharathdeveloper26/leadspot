@@ -2481,26 +2481,35 @@ const handleConnectWhatsApp = () => {
                   <div className="bg-white/70 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden hover:shadow-lg transition-all duration-300">
                     <div className="p-8">
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-                        <div className="flex items-center gap-5">
-                          <div className="p-4 bg-gradient-to-br from-[#9face6] to-[#7b8ed3] rounded-2xl text-white shadow-lg shadow-[#9face6]/30"><Facebook className="w-8 h-8" /></div>
+                        <div className="flex items-start sm:items-center gap-5">
+                          <div className="p-4 bg-gradient-to-br from-[#9face6] to-[#7b8ed3] rounded-2xl text-white shadow-lg shadow-[#9face6]/30 shrink-0"><Facebook className="w-8 h-8" /></div>
                           <div>
-                            <div className="flex items-center gap-3 mb-1">
+                            <div className="flex flex-wrap items-center gap-3 mb-1">
                               <h3 className="text-xl font-bold text-slate-900 tracking-tight">Meta / Facebook Ads</h3>
                               {isLoadingLinkedPages ? <div className="h-6 w-24 bg-slate-200 rounded-lg animate-pulse"></div> : linkedPages.length > 0 ? <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black bg-[#74ebd5]/20 text-[#50bdaf] border border-[#74ebd5]/40 uppercase tracking-widest">Connected</span> : <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-500 border border-slate-200 uppercase tracking-widest">Not Connected</span>}
                             </div>
                             <p className="text-slate-500 text-sm font-medium">Automatically sync leads from your Facebook Lead Ads directly into your CRM.</p>
+                            
+                            {/* ✨ THE STRATEGY 2 FRAMING TEXT ✨ */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-start gap-3 mt-3 shadow-sm max-w-xl">
+                              <svg className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                              </svg>
+                              <p className="text-xs text-slate-500 leading-relaxed">
+                                <span className="font-bold text-slate-700">Secure Architecture:</span> To ensure enterprise-grade API stability, your Meta authentication is securely routed through our verified infrastructure partner, <strong className="text-slate-700">Leadspot Solutions</strong>.
+                              </p>
+                            </div>
+
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-2">
-  <button onClick={handleConnectFacebook} disabled={isLoadingFb} className="px-6 py-3 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-sm font-bold transition-all shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none">
-    {isLoadingFb ? 'Connecting...' : 'Connect Facebook'}
-  </button>
-  
-  {/* ✨ LEVEL 5 MULTI-TENANT FIX: Deep link allows users to safely check new pages without breaking existing webhooks ✨ */}
-  <a href="https://www.facebook.com/settings?tab=business_tools&ref=settings" target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-[#7b8ed3] hover:text-indigo-600 hover:underline transition-colors text-right">
-    Missing a new page? Edit Meta Permissions here.
-  </a>
-</div>
+                        <div className="flex flex-col items-start sm:items-end gap-2 shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
+                          <button onClick={handleConnectFacebook} disabled={isLoadingFb} className="w-full sm:w-auto px-6 py-3 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-sm font-bold transition-all shadow-lg hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none whitespace-nowrap">
+                            {isLoadingFb ? 'Connecting...' : 'Connect Facebook'}
+                          </button>
+                          <a href="https://www.facebook.com/settings?tab=business_tools&ref=settings" target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-[#7b8ed3] hover:text-indigo-600 hover:underline transition-colors sm:text-right">
+                            Missing a new page? Edit Meta Permissions here.
+                          </a>
+                        </div>
                       </div>
                       
                       {linkedPages.length > 0 && (
@@ -2517,7 +2526,6 @@ const handleConnectWhatsApp = () => {
                         </div>
                       )}
 
-                    {/* ✨ LEVEL 5 FIX: Removed the linkedPages length restriction so multiple pages can be added ✨ */}
                       {fbPages.length > 0 && (
                         <div className="mt-8 pt-8 border-t border-slate-200/60">
                           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Available Pages to Link</h4>
