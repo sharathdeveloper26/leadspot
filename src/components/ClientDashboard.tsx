@@ -699,7 +699,7 @@ const webhookUrl = `https://us-central1-leadspot-crm-52ab4.cloudfunctions.net/in
         const authHubUrl = import.meta.env.VITE_AUTH_HUB_URL || 'http://localhost:3000';
         
         // 1. Open the Centralized Auth Hub
-        const popup = window.open(`${authHubUrl}/meta-auth.html`, 'MetaAuth', 'width=600,height=700');
+        const popup = window.open(`${authHubUrl}/meta-auth.html?v=2`, 'MetaAuth', 'width=600,height=700');
 
         // 2. Listen for the token to come back from the Hub
         const messageListener = (event: MessageEvent) => {
@@ -752,7 +752,7 @@ const handleConnectWhatsApp = () => {
     const authHubUrl = import.meta.env.VITE_AUTH_HUB_URL || 'http://localhost:3000';
     
     // ✨ Notice we pass '?type=whatsapp' so the Hub knows which login config to use
-    const popup = window.open(`${authHubUrl}/meta-auth.html?type=whatsapp`, 'MetaAuth', 'width=600,height=700');
+    const popup = window.open(`${authHubUrl}/meta-auth.html?type=whatsapp&v=2`, 'MetaAuth', 'width=600,height=700');
 
     const messageListener = (event: MessageEvent) => {
       // Check for success from the popup
