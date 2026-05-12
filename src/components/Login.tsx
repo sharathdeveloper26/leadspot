@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useBranding } from '../contexts/BrandingContext';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase';
-import { Navigate } from 'react-router-dom';
+import { auth, db } from '../firebase'; // ✨ Ensure db is imported
+import { doc, getDoc } from 'firebase/firestore'; // ✨ Added Firestore imports
+import { useNavigate } from 'react-router-dom'; // ✨ Switched to useNavigate
 import { useAuth } from '../contexts/AuthContext';
 import { Mail, Lock, ArrowRight, Zap, TrendingUp, AlertCircle, MessageCircle } from 'lucide-react';
 
@@ -11,16 +12,46 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  
   const { user, role } = useAuth();
-const { logoUrl, companyName } = useBranding();
-// ✨ RESTORED: Core Routing Logic based on User Roles ✨
-  if (user) {
-    if (role === 'SUPER_ADMIN') return <Navigate to="/super-admin" />;
-    if (role === 'agency_admin') return <Navigate to="/agency-admin" />; // ✨ ADDED TIER 2 ROUTING ✨
-    if (role === 'CLIENT_ADMIN' || role === 'client_admin') return <Navigate to="/client-admin" />;
-    if (role === 'client_agent') return <Navigate to="/agent-dashboard" />;
-  }
-  // ✨ RESTORED: Original Firebase Auth Logic ✨
+  const { logoUrl, companyName } = useBranding();
+  const navigate = useNavigate();
+
+  // ✨ UPGRADED: Bulletproof Routing Logic (Handles Manual Accounts) ✨
+  useEffect(() => {
+    const routeUser = async () => {
+      if (!user) return;
+
+      // 1. Try standard ultra-fast routing (via secure Custom Claims)
+      if (role === 'SUPER_ADMIN') { navigate('/super-admin'); return; }
+      if (role === 'agency_admin') { navigate('/agency-admin'); return; }
+      if (role === 'CLIENT_ADMIN' || role === 'client_admin') { navigate('/client-admin'); return; }
+      if (role === 'client_agent') { navigate('/agent-dashboard'); return; }
+
+      // 2. FALLBACK: If they were created manually in Firebase Console and lack the claim
+      if (!role) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const dbRole = userDoc.data().role;
+            if (dbRole === 'SUPER_ADMIN') navigate('/super-admin');
+            else if (dbRole === 'agency_admin') navigate('/agency-admin');
+            else if (dbRole === 'CLIENT_ADMIN' || dbRole === 'client_admin') navigate('/client-admin');
+            else if (dbRole === 'client_agent') navigate('/agent-dashboard');
+            else setError("Role not recognized in database.");
+          } else {
+            setError("User profile not found in database.");
+          }
+        } catch (err) {
+          console.error("Failed to fetch fallback role:", err);
+          setError("Error verifying account permissions.");
+        }
+      }
+    };
+
+    routeUser();
+  }, [user, role, navigate]);
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -28,8 +59,7 @@ const { logoUrl, companyName } = useBranding();
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // Note: We don't need a navigate() call here because the 'if (user)' block above 
-      // will instantly catch the successful login and route them perfectly!
+      // Note: The useEffect above automatically catches this and fires the routing!
     } catch (err: any) {
       console.error('Auth error:', err);
       if (err.code === 'auth/invalid-credential') {
@@ -37,27 +67,23 @@ const { logoUrl, companyName } = useBranding();
       } else {
         setError(err.message || 'An error occurred. Please try again.');
       }
-    } finally {
-      setLoading(false);
+      setLoading(false); // Only stop loading if there is an error, otherwise let it route
     }
   };
 
   return (
     <div className="min-h-screen w-full flex bg-slate-50 font-sans text-slate-900 overflow-hidden">
       
-      {/* ✨ LEFT PANE: ENTERPRISE VALUE PROP (Midnight & Copper Theme) ✨ */}
+      {/* ✨ LEFT PANE: ENTERPRISE VALUE PROP ✨ */}
       <div className="hidden lg:flex w-1/2 bg-slate-900 relative flex-col justify-between p-16 overflow-hidden border-r border-slate-800">
-        {/* Animated Background Glowing Orbs using Enterprise Brand Colors */}
         <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-slate-700 rounded-full mix-blend-screen filter blur-[120px] opacity-20 animate-pulse" style={{ animationDuration: '4s' }}></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-amber-600 rounded-full mix-blend-screen filter blur-[120px] opacity-15 animate-pulse" style={{ animationDuration: '6s' }}></div>
         <div className="absolute top-[40%] left-[30%] w-64 h-64 bg-amber-500 rounded-full mix-blend-screen filter blur-[100px] opacity-10"></div>
 
-        {/* Logo */}
         <div className="relative z-10">
           <img src={logoUrl} alt={companyName} className="h-14 brightness-0 invert opacity-90 object-contain" />
         </div>
 
-        {/* Real-time Product Copy */}
         <div className="relative z-10 space-y-8 -mt-12">
           <h1 className="text-4xl xl:text-5xl font-extrabold text-white tracking-tight leading-[1.1]">
             The Intelligent <br/>
@@ -83,7 +109,6 @@ const { logoUrl, companyName } = useBranding();
           </div>
         </div>
 
-        {/* Footer */}
         <div className="relative z-10 text-slate-500 text-xs font-bold tracking-widest uppercase">
           © {new Date().getFullYear()} {companyName.toUpperCase()} SOLUTIONS
         </div>
@@ -91,8 +116,6 @@ const { logoUrl, companyName } = useBranding();
 
       {/* ✨ RIGHT PANE: LOGIN FORM ✨ */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12 relative bg-white">
-        
-        {/* Subtle background element for the light side */}
         <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px] opacity-30"></div>
 
         <div className="w-full max-w-md space-y-8 relative z-10">
