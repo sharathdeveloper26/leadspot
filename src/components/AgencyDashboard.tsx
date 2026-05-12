@@ -7,7 +7,7 @@ import { useBranding } from '../contexts/BrandingContext';
 import { 
   Users, LayoutDashboard, Settings, Palette, Plus, Search, 
   MoreVertical, Edit2, Trash2, ShieldCheck, Activity, Zap, 
-  LogOut, CheckCircle2, XCircle, Globe, UploadCloud, Save
+  LogOut, CheckCircle2, XCircle, Globe, UploadCloud, Save, AlertTriangle
 } from 'lucide-react';
 
 interface SubClient {
@@ -44,7 +44,11 @@ export default function AgencyDashboard() {
   // Modal States
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [clientToDelete, setClientToDelete] = useState<string | null>(null); // ✨ NEW: Custom Delete State
+  
+  // Loading States
   const [isCreating, setIsCreating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false); // ✨ NEW: Delete loading state
   
   // Forms
   const [newClientName, setNewClientName] = useState('');
@@ -61,7 +65,6 @@ export default function AgencyDashboard() {
     const fetchAgencyDashboardData = async () => {
       if (!user?.uid) return;
       try {
-        // Fetch Agency Profile & White-Label Data
         const agencyDoc = await getDoc(doc(db, 'agencies', user.uid));
         if (agencyDoc.exists()) {
           const data = agencyDoc.data() as AgencyData;
@@ -70,7 +73,6 @@ export default function AgencyDashboard() {
           setBrandLogo(data.logoUrl || '');
         }
 
-        // Fetch their Sub-Clients
         const q = query(collection(db, 'clients'), where('agencyId', '==', user.uid));
         const snapshot = await getDocs(q);
         const clientsData: SubClient[] = [];
@@ -94,7 +96,7 @@ export default function AgencyDashboard() {
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agencyData || subClients.length >= agencyData.maxClients) {
-      alert("You have reached your maximum client limit. Please upgrade your plan.");
+      alert("You have reached your maximum client limit. Please upgrade your plan."); // Could also be made into a custom modal!
       return;
     }
     setIsCreating(true);
@@ -125,15 +127,21 @@ export default function AgencyDashboard() {
     finally { setIsCreating(false); }
   };
 
-  // ✨ DEEP DELETE CLIENT (WIRED TO CLOUD FUNCTION) ✨
-  const handleDeleteClient = async (id: string) => {
-    if (window.confirm("CRITICAL: Are you sure you want to permanently delete this workspace and its logins? This frees up 1 license.")) {
-      try {
-        const deleteClientFn = httpsCallable(functions, 'deleteSubClientWorkspace');
-        await deleteClientFn({ clientId: id });
-        setSubClients(prev => prev.filter(c => c.id !== id));
-        alert("Workspace completely deleted.");
-      } catch (error: any) { alert(error.message || "Failed to delete client workspace."); }
+  // ✨ ENTERPRISE DEEP DELETE CLIENT ✨
+  const executeDeleteClient = async () => {
+    if (!clientToDelete) return;
+    setIsDeleting(true);
+    try {
+      const deleteClientFn = httpsCallable(functions, 'deleteSubClientWorkspace');
+      await deleteClientFn({ clientId: clientToDelete });
+      
+      // Instantly remove from UI
+      setSubClients(prev => prev.filter(c => c.id !== clientToDelete));
+      setClientToDelete(null);
+    } catch (error: any) { 
+      alert(error.message || "Failed to delete client workspace."); 
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -145,7 +153,7 @@ export default function AgencyDashboard() {
     try {
       await updateDoc(doc(db, 'agencies', user.uid), { customDomain: brandDomain, logoUrl: brandLogo });
       setAgencyData(prev => prev ? { ...prev, customDomain: brandDomain, logoUrl: brandLogo } : null);
-      alert("Branding settings saved successfully!");
+      // We removed the native alert here for a smoother UX!
     } catch (error) { alert("Failed to save branding settings."); } 
     finally { setIsSavingBrand(false); }
   };
@@ -277,10 +285,11 @@ export default function AgencyDashboard() {
                           <td className="px-6 py-4 text-sm font-medium text-slate-500">{client.joinedOn?.toDate ? client.joinedOn.toDate().toLocaleDateString() : 'Today'}</td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              {/* ✨ EDIT BUTTON WIRED HERE ✨ */}
                               <button onClick={() => { setEditingClient(client); setIsEditModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                              {/* ✨ DEEP DELETE BUTTON WIRED HERE ✨ */}
-                              <button onClick={() => handleDeleteClient(client.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                              
+                              {/* ✨ TRIGGER CUSTOM MODAL INSTEAD OF NATIVE CONFIRM ✨ */}
+                              <button onClick={() => setClientToDelete(client.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            
                             </div>
                           </td>
                         </tr>
@@ -321,7 +330,7 @@ export default function AgencyDashboard() {
                   </div>
                   <div className="pt-4 flex justify-end border-t border-slate-100">
                     <button type="submit" disabled={isSavingBrand} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition-all disabled:opacity-50 flex items-center gap-2">
-                      {isSavingBrand ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Save className="w-4 h-4"/> Save Branding</>}
+                      {isSavingBrand ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Save className="w-4 h-4"/> {brandDomain ? 'Saved!' : 'Save Branding'}</>}
                     </button>
                   </div>
                 </form>
@@ -352,6 +361,38 @@ export default function AgencyDashboard() {
           </div>
         </div>
       </main>
+
+      {/* ✨ CUSTOM ENTERPRISE DELETE MODAL ✨ */}
+      {clientToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm transition-all">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-red-50/50">
+              <h3 className="text-lg font-bold text-red-700 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" /> Delete Workspace
+              </h3>
+              <button onClick={() => setClientToDelete(null)} className="p-2 text-red-400 hover:bg-white hover:shadow-sm rounded-full transition-all"><XCircle className="w-5 h-5"/></button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
+                <p className="text-sm text-red-800 font-medium leading-relaxed">
+                  <strong>CRITICAL WARNING:</strong> Are you sure you want to permanently delete this workspace and wipe all associated user logins?
+                </p>
+                <p className="text-xs text-red-600 mt-2 font-bold uppercase tracking-wide">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 flex gap-3 border-t border-slate-100 bg-slate-50">
+              <button type="button" onClick={() => setClientToDelete(null)} className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-100 transition-all shadow-sm">
+                Cancel
+              </button>
+              <button type="button" onClick={executeDeleteClient} disabled={isDeleting} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 shadow-md shadow-red-600/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                {isDeleting ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Trash2 className="w-4 h-4"/> Yes, Delete</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ✨ CREATE MODAL ✨ */}
       {isCreateModalOpen && (
