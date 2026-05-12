@@ -7,7 +7,7 @@ import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Cal
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 import { useBranding } from '../contexts/BrandingContext';
-import BotBuilder from './BotBuilder';
+import WhatsAppBuilder from './WhatsAppBuilder';
 interface Agent { id: string; name: string; email: string; role: string; createdAt: any; designation?: string; location?: string; linkedin?: string; formId?: string; adId?: string; adName?: string; campaignId?: string; campaignName?: string; }
 const PIPELINE_STATUSES = ['New', 'Attempted Contact', 'Connected / Warm', 'Site Visit Scheduled', 'Site Visit Completed', 'Negotiation', 'Closed Won', 'Closed Lost', 'Junk / Invalid'];
 declare global { interface Window { FB: any; fbAsyncInit: any; } }
@@ -79,7 +79,8 @@ export default function ClientDashboard() {
     return () => clearInterval(interval);
   }, []);
   
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'inbox' | 'campaigns' | 'integrations' | 'team' | 'reports' | 'bots'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'leads' | 'feedback' | 'inbox' | 'campaigns' | 'integrations' | 'team' | 'reports' | 'whatsapp_bot' | 'website_bot'>('dashboard');
+const [isAutomationsMenuOpen, setIsAutomationsMenuOpen] = useState(false); // ✨ NEW STATE FOR DROPDOWN
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
 
@@ -1465,40 +1466,89 @@ const handleConnectWhatsApp = () => {
           {isSidebarExpanded ? 'Workspace' : 'W/S'}
         </div>
         
-        <nav className="flex-1 px-3 space-y-2 overflow-y-auto custom-scrollbar">
-         {[
+       <nav className="flex-1 px-3 space-y-2 overflow-y-auto custom-scrollbar pb-6">
+          {[
             { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
             { id: 'leads', icon: Users, label: 'Leads' },
             { id: 'feedback', icon: MessageSquare, label: 'Feedback' },
             { id: 'inbox', icon: MessageCircle, label: 'Inbox', badge: unreadWhatsAppCount },
             { id: 'campaigns', icon: Megaphone, label: 'Campaigns' },
-            // ✨ UPDATE THIS LINE ✨
-            { id: 'bots', icon: Zap, label: 'Automations' }, 
+            // ✨ THE NEW AUTOMATIONS DROPDOWN ✨
+            { id: 'automations', icon: Zap, label: 'Automations', isParent: true, subItems: [
+              { id: 'whatsapp_bot', icon: MessageCircle, label: 'WhatsApp Bot' },
+              { id: 'website_bot', icon: Bot, label: 'Website Chatbot' }
+            ]}, 
             ...(user?.role === 'client_admin' ? [
               { id: 'team', icon: UserCog, label: 'Team' },
               { id: 'integrations', icon: Link2, label: 'Integrations' }
             ] : []),
             { id: 'reports', icon: BarChart2, label: 'Reports' }
-          ].map((item) => (
-            <button 
-              key={item.id}
-              onClick={() => { setActiveTab(item.id as any); setIsMobileMenuOpen(false); }} 
-              title={!isSidebarExpanded ? item.label : undefined}
-              className={`flex items-center w-full transition-all duration-200 group ${isSidebarExpanded ? 'px-4 py-3 justify-start rounded-xl' : 'py-3 justify-center rounded-2xl mx-auto w-12'} ${activeTab === item.id ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200'}`}
-            >
-              <div className="relative flex items-center justify-center">
-                <item.icon className={`w-5 h-5 flex-shrink-0 ${activeTab === item.id ? 'text-amber-500' : 'group-hover:text-amber-400 transition-colors'}`} />
-                {item.badge ? (
-                  <span className={`absolute -top-2 -right-2 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-black border border-slate-900 ${activeTab === item.id ? 'bg-amber-500 text-slate-900' : 'bg-red-500 text-white'}`}>
-                    {item.badge}
-                  </span>
-                ) : null}
-              </div>
-              {isSidebarExpanded && (
-                <span className="ml-3 truncate">{item.label}</span>
-              )}
-            </button>
-          ))}
+          ].map((item) => {
+            
+            // ✨ RENDER EXPANDABLE MENU ✨
+            if (item.isParent) {
+              const isChildActive = item.subItems?.some(sub => activeTab === sub.id);
+              return (
+                <div key={item.id} className="space-y-1">
+                  <button 
+                    onClick={() => {
+                      setIsAutomationsMenuOpen(!isAutomationsMenuOpen);
+                      if (!isSidebarExpanded) setIsSidebarExpanded(true); // Auto-expand if closed
+                    }}
+                    className={`flex items-center w-full transition-all duration-200 group px-4 py-3 justify-start rounded-xl ${isChildActive || isAutomationsMenuOpen ? 'bg-slate-800/50 text-white font-bold' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200'}`}
+                  >
+                    <div className="relative flex items-center justify-center">
+                      <item.icon className={`w-5 h-5 flex-shrink-0 ${isChildActive || isAutomationsMenuOpen ? 'text-amber-500' : 'group-hover:text-amber-400 transition-colors'}`} />
+                    </div>
+                    {isSidebarExpanded && (
+                      <div className="ml-3 flex-1 flex items-center justify-between">
+                        <span>{item.label}</span>
+                        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isAutomationsMenuOpen ? 'rotate-180 text-amber-500' : 'text-slate-500'}`} />
+                      </div>
+                    )}
+                  </button>
+                  
+                  {/* The Dropdown Items */}
+                  {isSidebarExpanded && isAutomationsMenuOpen && (
+                    <div className="pl-11 pr-2 space-y-1 animate-in slide-in-from-top-2 duration-200 overflow-hidden">
+                      {item.subItems?.map(sub => (
+                        <button
+                          key={sub.id}
+                          onClick={() => { setActiveTab(sub.id as any); setIsMobileMenuOpen(false); }} 
+                          className={`flex items-center w-full px-3 py-2.5 rounded-lg text-[13px] transition-all duration-200 ${activeTab === sub.id ? 'bg-slate-800 text-white font-bold border-r-2 border-amber-500' : 'text-slate-400 font-medium hover:text-slate-200 hover:bg-slate-800/30'}`}
+                        >
+                          <sub.icon className={`w-4 h-4 mr-2 ${activeTab === sub.id ? 'text-[#25D366]' : 'text-slate-500'}`} />
+                          {sub.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // ✨ RENDER STANDARD BUTTONS ✨
+            return (
+              <button 
+                key={item.id}
+                onClick={() => { setActiveTab(item.id as any); setIsAutomationsMenuOpen(false); setIsMobileMenuOpen(false); }} 
+                title={!isSidebarExpanded ? item.label : undefined}
+                className={`flex items-center w-full transition-all duration-200 group ${isSidebarExpanded ? 'px-4 py-3 justify-start rounded-xl' : 'py-3 justify-center rounded-2xl mx-auto w-12'} ${activeTab === item.id ? 'bg-slate-800 text-white font-bold border-r-4 border-amber-500' : 'text-slate-400 font-medium hover:bg-slate-800/50 hover:text-slate-200'}`}
+              >
+                <div className="relative flex items-center justify-center">
+                  <item.icon className={`w-5 h-5 flex-shrink-0 ${activeTab === item.id ? 'text-amber-500' : 'group-hover:text-amber-400 transition-colors'}`} />
+                  {item.badge ? (
+                    <span className={`absolute -top-2 -right-2 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-black border border-slate-900 ${activeTab === item.id ? 'bg-amber-500 text-slate-900' : 'bg-red-500 text-white'}`}>
+                      {item.badge}
+                    </span>
+                  ) : null}
+                </div>
+                {isSidebarExpanded && (
+                  <span className="ml-3 truncate">{item.label}</span>
+                )}
+              </button>
+            );
+          })}
         </nav>
       </aside>
 
@@ -1513,7 +1563,8 @@ const handleConnectWhatsApp = () => {
              activeTab === 'reports' ? 'Analytics Reports' : 
              activeTab === 'inbox' ? 'Omnichannel Inbox' : 
              activeTab === 'campaigns' ? 'Campaigns & Templates' : 
-             activeTab === 'bots' ? 'Automations' : 'Integrations'}
+             activeTab === 'whatsapp_bot' ? 'WhatsApp Bot Builder' : 
+             activeTab === 'website_bot' ? 'Website AI Chatbot' : 'Integrations'}
           </h1>
           <div className="flex items-center gap-6">
             <div className="relative">
@@ -1572,13 +1623,27 @@ const handleConnectWhatsApp = () => {
           </div>
         </header>
 
-        <div className={`flex-1 overflow-y-auto custom-scrollbar ${activeTab === 'inbox' || activeTab === 'bots' ? 'p-0 sm:p-4 md:p-8' : 'p-4 md:p-8'}`}>
-          <div className={`max-w-7xl mx-auto h-full flex flex-col ${activeTab === 'inbox' || activeTab === 'bots' ? 'min-w-0' : 'min-w-[800px] md:min-w-0'}`}>
+        <div className={`flex-1 overflow-y-auto custom-scrollbar ${activeTab === 'inbox' || activeTab === 'whatsapp_bot' || activeTab === 'website_bot' ? 'p-0 sm:p-4 md:p-8' : 'p-4 md:p-8'}`}>
+  <div className={`max-w-7xl mx-auto h-full flex flex-col ${activeTab === 'inbox' || activeTab === 'whatsapp_bot' || activeTab === 'website_bot' ? 'min-w-0' : 'min-w-[800px] md:min-w-0'}`}>
             
-            {/* ✨ AUTOMATIONS / BOT BUILDER TAB ✨ */}
-            {activeTab === 'bots' && (
-              <div className="flex-1 h-full w-full bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in duration-300">
-                <BotBuilder />
+         {/* ✨ WHATSAPP BOT BUILDER ✨ */}
+{activeTab === 'whatsapp_bot' && (
+  <div className="flex-1 h-full w-full bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in duration-300">
+    <WhatsAppBuilder />
+  </div>
+)}
+
+            {/* ✨ WEBSITE CHATBOT KNOWLEDGE BASE (COMING SOON) ✨ */}
+            {activeTab === 'website_bot' && (
+              <div className="flex-1 h-full w-full flex items-center justify-center p-8 animate-in fade-in duration-300">
+                <div className="bg-white/80 backdrop-blur-2xl p-12 rounded-3xl shadow-lg border border-slate-200 max-w-lg text-center">
+                  <div className="w-20 h-20 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner border border-indigo-100">
+                    <Bot className="w-10 h-10 text-indigo-500" />
+                  </div>
+                  <h2 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">Website AI Chatbot</h2>
+                  <p className="text-slate-500 font-medium mb-8 leading-relaxed">Train your AI with your property brochures and deploy a custom widget to your website to answer lead queries 24/7.</p>
+                  <span className="px-4 py-2 bg-slate-100 text-slate-500 font-bold uppercase tracking-widest text-xs rounded-xl border border-slate-200">Coming in Phase 2</span>
+                </div>
               </div>
             )}
 
