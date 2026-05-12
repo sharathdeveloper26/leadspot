@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore'; // ✨ LEVEL 5: Added Firestore imports
-import { auth, db } from '../firebase'; // ✨ LEVEL 5: Added db import
+import { doc, getDoc } from 'firebase/firestore'; 
+import { auth, db } from '../firebase'; 
 
 export interface CustomUser extends User {
   clientId?: string | null;
@@ -35,13 +35,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           let extractedClientId = (tokenResult.claims.clientId as string) || null;
 
           // ✨ LEVEL 5 FIX: Dynamic Enterprise Super Admin Bypass ✨
-          // Instead of hardcoding an email, we check the super_admins collection!
           const superAdminDocRef = doc(db, 'super_admins', currentUser.uid);
           const superAdminSnap = await getDoc(superAdminDocRef);
           
           if (superAdminSnap.exists() || extractedRole === 'super_admin') {
             extractedRole = 'SUPER_ADMIN'; // Elevate to master role
             extractedClientId = null; // Super admins don't need a client ID
+          }
+          // ✨ THE MISSING LINK: Fallback for manually created users ✨
+          else if (!extractedRole) {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            const userSnap = await getDoc(userDocRef);
+            
+            if (userSnap.exists()) {
+              const userData = userSnap.data();
+              extractedRole = userData.role || null;
+              // If they are an agency admin, their "ID" is their UID
+              extractedClientId = userData.clientId || currentUser.uid; 
+            }
           }
 
           setRole(extractedRole);
