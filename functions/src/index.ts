@@ -1230,3 +1230,68 @@ export const enforceLeadLimits = onDocumentCreated({
     console.error("Error enforcing lead limits:", error);
   }
 });
+// ✨ TIER 2 TO TIER 3: HARD DELETE SUB-CLIENT WORKSPACE ✨
+export const deleteSubClientWorkspace = onCall(functionOpts, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+
+  const { clientId } = request.data;
+  if (!clientId) throw new HttpsError('invalid-argument', 'Client ID is required.');
+
+  try {
+    const clientRef = db.collection('clients').doc(clientId);
+    const clientSnap = await clientRef.get();
+
+    if (!clientSnap.exists) {
+      throw new HttpsError('not-found', 'Client workspace not found.');
+    }
+
+    // Security Check: Only Super Admins or the owning Agency can delete this workspace
+    const isSuperAdmin = request.auth.token.role === 'super_admin' || request.auth.token.role === 'SUPER_ADMIN';
+    const isOwner = request.auth.uid === clientSnap.data()?.agencyId;
+
+    if (!isSuperAdmin && !isOwner) {
+      throw new HttpsError('permission-denied', 'You do not have permission to delete this workspace.');
+    }
+
+    // 1. Delete from Firebase Authentication
+    await admin.auth().deleteUser(clientId).catch(e => console.log("Auth user already deleted or missing."));
+    
+    // 2. Delete the User routing document
+    await db.collection('users').doc(clientId).delete();
+    
+    // 3. Delete the Client workspace document
+    await clientRef.delete();
+
+    return { success: true, message: 'Client workspace and authentication fully deleted.' };
+  } catch (error: any) {
+    console.error("Error deleting workspace:", error);
+    throw new HttpsError('internal', error.message || 'Failed to delete workspace.');
+  }
+});
+
+// ✨ TIER 1 TO TIER 2: HARD DELETE AGENCY ACCOUNT ✨
+export const deleteAgencyAccount = onCall(functionOpts, async (request) => {
+  // Security Check: Only Super Admins can delete Agencies
+  if (!request.auth || (request.auth.token.role !== 'super_admin' && request.auth.token.role !== 'SUPER_ADMIN')) {
+    throw new HttpsError('permission-denied', 'Only Super Admins can delete Agency accounts.');
+  }
+
+  const { agencyId } = request.data;
+  if (!agencyId) throw new HttpsError('invalid-argument', 'Agency ID is required.');
+
+  try {
+    // 1. Delete from Firebase Authentication
+    await admin.auth().deleteUser(agencyId).catch(e => console.log("Auth user already deleted."));
+    
+    // 2. Delete the User routing document
+    await db.collection('users').doc(agencyId).delete();
+    
+    // 3. Delete the Agency profile document
+    await db.collection('agencies').doc(agencyId).delete();
+
+    return { success: true, message: 'Agency partner and authentication fully deleted.' };
+  } catch (error: any) {
+    console.error("Error deleting agency:", error);
+    throw new HttpsError('internal', error.message || 'Failed to delete agency.');
+  }
+});

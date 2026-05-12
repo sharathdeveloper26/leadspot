@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.enforceLeadLimits = exports.onSuperAdminRemoved = exports.onSuperAdminAdded = exports.autoPushToGoogleSheets = exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.createAgencyAccount = exports.createSubClientWorkspace = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
+exports.deleteAgencyAccount = exports.deleteSubClientWorkspace = exports.enforceLeadLimits = exports.onSuperAdminRemoved = exports.onSuperAdminAdded = exports.autoPushToGoogleSheets = exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.createAgencyAccount = exports.createSubClientWorkspace = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
@@ -1085,6 +1085,62 @@ exports.enforceLeadLimits = (0, firestore_2.onDocumentCreated)({
     }
     catch (error) {
         console.error("Error enforcing lead limits:", error);
+    }
+});
+// ✨ TIER 2 TO TIER 3: HARD DELETE SUB-CLIENT WORKSPACE ✨
+exports.deleteSubClientWorkspace = (0, https_1.onCall)(functionOpts, async (request) => {
+    var _a;
+    if (!request.auth)
+        throw new https_1.HttpsError('unauthenticated', 'Must be logged in.');
+    const { clientId } = request.data;
+    if (!clientId)
+        throw new https_1.HttpsError('invalid-argument', 'Client ID is required.');
+    try {
+        const clientRef = db.collection('clients').doc(clientId);
+        const clientSnap = await clientRef.get();
+        if (!clientSnap.exists) {
+            throw new https_1.HttpsError('not-found', 'Client workspace not found.');
+        }
+        // Security Check: Only Super Admins or the owning Agency can delete this workspace
+        const isSuperAdmin = request.auth.token.role === 'super_admin' || request.auth.token.role === 'SUPER_ADMIN';
+        const isOwner = request.auth.uid === ((_a = clientSnap.data()) === null || _a === void 0 ? void 0 : _a.agencyId);
+        if (!isSuperAdmin && !isOwner) {
+            throw new https_1.HttpsError('permission-denied', 'You do not have permission to delete this workspace.');
+        }
+        // 1. Delete from Firebase Authentication
+        await admin.auth().deleteUser(clientId).catch(e => console.log("Auth user already deleted or missing."));
+        // 2. Delete the User routing document
+        await db.collection('users').doc(clientId).delete();
+        // 3. Delete the Client workspace document
+        await clientRef.delete();
+        return { success: true, message: 'Client workspace and authentication fully deleted.' };
+    }
+    catch (error) {
+        console.error("Error deleting workspace:", error);
+        throw new https_1.HttpsError('internal', error.message || 'Failed to delete workspace.');
+    }
+});
+// ✨ TIER 1 TO TIER 2: HARD DELETE AGENCY ACCOUNT ✨
+exports.deleteAgencyAccount = (0, https_1.onCall)(functionOpts, async (request) => {
+    // Security Check: Only Super Admins can delete Agencies
+    if (!request.auth || (request.auth.token.role !== 'super_admin' && request.auth.token.role !== 'SUPER_ADMIN')) {
+        throw new https_1.HttpsError('permission-denied', 'Only Super Admins can delete Agency accounts.');
+    }
+    const { agencyId } = request.data;
+    if (!agencyId)
+        throw new https_1.HttpsError('invalid-argument', 'Agency ID is required.');
+    try {
+        // 1. Delete from Firebase Authentication
+        await admin.auth().deleteUser(agencyId).catch(e => console.log("Auth user already deleted."));
+        // 2. Delete the User routing document
+        await db.collection('users').doc(agencyId).delete();
+        // 3. Delete the Agency profile document
+        await db.collection('agencies').doc(agencyId).delete();
+        return { success: true, message: 'Agency partner and authentication fully deleted.' };
+    }
+    catch (error) {
+        console.error("Error deleting agency:", error);
+        throw new https_1.HttpsError('internal', error.message || 'Failed to delete agency.');
     }
 });
 //# sourceMappingURL=index.js.map

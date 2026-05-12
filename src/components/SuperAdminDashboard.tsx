@@ -126,7 +126,33 @@ export default function SuperAdminDashboard() {
 
   const filteredAgencies = agencies.filter(a => a.agencyName.toLowerCase().includes(searchQuery.toLowerCase()) || a.adminEmail.toLowerCase().includes(searchQuery.toLowerCase()));
   const filteredClients = directClients.filter(c => c.companyName.toLowerCase().includes(searchQuery.toLowerCase()) || c.adminEmail.toLowerCase().includes(searchQuery.toLowerCase()));
+// ✨ DEEP DELETE AGENCY ✨
+  const handleDeleteAgency = async (id: string) => {
+    if (window.confirm("CRITICAL WARNING: Are you sure you want to permanently delete this Agency and their login?")) {
+      try {
+        const deleteAgencyFn = httpsCallable(functions, 'deleteAgencyAccount');
+        await deleteAgencyFn({ agencyId: id });
+        setAgencies(prev => prev.filter(a => a.id !== id));
+        alert("Agency completely deleted.");
+      } catch (error: any) {
+        alert(error.message || "Failed to delete agency.");
+      }
+    }
+  };
 
+  // ✨ DEEP DELETE DIRECT CLIENT ✨
+  const handleDeleteDirectClient = async (id: string) => {
+    if (window.confirm("Are you sure you want to permanently delete this direct workspace?")) {
+      try {
+        const deleteClientFn = httpsCallable(functions, 'deleteSubClientWorkspace');
+        await deleteClientFn({ clientId: id });
+        setDirectClients(prev => prev.filter(c => c.id !== id));
+        alert("Direct Client completely deleted.");
+      } catch (error: any) {
+        alert(error.message || "Failed to delete direct client.");
+      }
+    }
+  };
   return (
     <div className="min-h-screen flex bg-slate-50 text-slate-900 font-sans">
       
@@ -225,7 +251,9 @@ export default function SuperAdminDashboard() {
                           <td className="px-6 py-4 text-center"><span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-200">{agency.package}</span></td>
                           <td className="px-6 py-4 text-center text-sm font-black text-slate-700">{agency.maxClients} Clients</td>
                           <td className="px-6 py-4">{agency.customDomain ? <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100 w-fit"><Globe className="w-3 h-3" /> {agency.customDomain}</div> : <span className="text-xs text-slate-400 font-medium italic">Standard</span>}</td>
-                          <td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-2"><button className="p-2 text-slate-400 hover:text-slate-800 transition-colors"><Settings className="w-4 h-4" /></button><button className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 className="w-4 h-4" /></button></div></td>
+                          <td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-2"><button className="p-2 text-slate-400 hover:text-slate-800 transition-colors"><Settings className="w-4 h-4" /></button><button onClick={() => handleDeleteAgency(agency.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Agency">
+  <Trash2 className="w-4 h-4" />
+</button></div></td>
                         </tr>
                       ))}
                       {filteredAgencies.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-medium text-sm">No partner agencies found.</td></tr>}
@@ -251,7 +279,9 @@ export default function SuperAdminDashboard() {
                           <td className="px-6 py-4 text-sm font-medium text-slate-600">{client.adminEmail}</td>
                           <td className="px-6 py-4 text-center"><span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-indigo-100">{client.plan}</span></td>
                           <td className="px-6 py-4 text-sm font-medium text-slate-500">{client.joinedOn?.toDate ? client.joinedOn.toDate().toLocaleDateString() : 'Today'}</td>
-                          <td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-2"><button className="p-2 text-slate-400 hover:text-slate-800 transition-colors"><Settings className="w-4 h-4" /></button><button className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 className="w-4 h-4" /></button></div></td>
+                          <td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-2"><button className="p-2 text-slate-400 hover:text-slate-800 transition-colors"><Settings className="w-4 h-4" /></button><button onClick={() => handleDeleteDirectClient(client.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Client">
+  <Trash2 className="w-4 h-4" />
+</button></div></td>
                         </tr>
                       ))}
                       {filteredClients.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-medium text-sm">No direct clients found.</td></tr>}
