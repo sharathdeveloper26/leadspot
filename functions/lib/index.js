@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.enforceLeadLimits = exports.onSuperAdminRemoved = exports.onSuperAdminAdded = exports.autoPushToGoogleSheets = exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.createSubClientWorkspace = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
+exports.enforceLeadLimits = exports.onSuperAdminRemoved = exports.onSuperAdminAdded = exports.autoPushToGoogleSheets = exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.createAgencyAccount = exports.createSubClientWorkspace = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
@@ -571,31 +571,25 @@ exports.createSubClientWorkspace = (0, https_1.onCall)(functionOpts, async (requ
         throw new https_1.HttpsError('invalid-argument', 'Missing required fields.');
     }
     try {
-        // 2. The Quota Check (The Iron Gate)
         const agencyRef = db.collection('agencies').doc(agencyId);
         const agencyDoc = await agencyRef.get();
-        if (!agencyDoc.exists) {
-            // Fallback for development if the agency doc doesn't exist yet
-            console.warn(`Agency doc not found for ${agencyId}. Bypassing strict quota for dev.`);
+        if (!agencyDoc.exists && agencyId !== 'leadspot_direct') {
+            console.warn(`Agency doc not found for ${agencyId}. Bypassing strict quota for dev/direct.`);
         }
-        else {
+        else if (agencyDoc.exists) {
             const agencyData = agencyDoc.data();
             const maxClients = (agencyData === null || agencyData === void 0 ? void 0 : agencyData.maxClients) || 0;
-            // Count how many clients this agency already has
             const clientsSnapshot = await db.collection('clients').where('agencyId', '==', agencyId).count().get();
             const currentClientCount = clientsSnapshot.data().count;
             if (currentClientCount >= maxClients) {
                 throw new https_1.HttpsError('resource-exhausted', `Quota exceeded. This agency is limited to ${maxClients} workspaces.`);
             }
         }
-        // 3. Create the Sub-Client Admin in Firebase Auth
         const userRecord = await admin.auth().createUser({
             email: adminEmail,
             password: password,
             displayName: `${companyName} Admin`,
         });
-        // 4. Create the Isolated Client Workspace Document
-        // We use the Auth UID as the Client ID for perfect 1:1 mapping
         const newClientId = userRecord.uid;
         const clientRef = db.collection('clients').doc(newClientId);
         await clientRef.set({
@@ -603,36 +597,80 @@ exports.createSubClientWorkspace = (0, https_1.onCall)(functionOpts, async (requ
             agencyId: agencyId,
             companyName: companyName,
             adminEmail: adminEmail,
-            plan: plan || 'Starter',
+            plan: plan || 'Starter Plan',
             status: 'active',
             joinedOn: admin.firestore.FieldValue.serverTimestamp()
         });
-        // 5. Create the User Document (so the CRM knows who they are when they log in)
         const userRef = db.collection('users').doc(newClientId);
         await userRef.set({
             uid: newClientId,
             email: adminEmail,
             name: `${companyName} Admin`,
             role: 'client_admin',
-            clientId: newClientId, // They are the owner of this specific workspace
-            agencyId: agencyId, // Tagged to the reseller agency
+            clientId: newClientId,
+            agencyId: agencyId,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        // 6. Set Custom Claims (Enterprise RBAC security)
         await admin.auth().setCustomUserClaims(newClientId, {
             role: 'client_admin',
             clientId: newClientId,
             agencyId: agencyId
         });
-        return {
-            success: true,
-            clientId: newClientId,
-            message: 'Workspace created successfully.'
-        };
+        return { success: true, clientId: newClientId, message: 'Workspace created successfully.' };
     }
     catch (error) {
         console.error("Error creating sub-client workspace:", error);
-        // Catch Firebase Auth duplicate email errors nicely
+        if (error.code === 'auth/email-already-exists') {
+            throw new https_1.HttpsError('already-exists', 'A user with this email already exists.');
+        }
+        throw new https_1.HttpsError('internal', error.message || 'An internal error occurred.');
+    }
+});
+// ✨ TIER 1 TO TIER 2: MASTER AGENCY CREATOR ✨
+exports.createAgencyAccount = (0, https_1.onCall)(functionOpts, async (request) => {
+    if (!request.auth || request.auth.token.role !== 'super_admin') {
+        throw new https_1.HttpsError('permission-denied', 'Only Super Admins can create Agency accounts.');
+    }
+    const { agencyName, email, password, plan, maxClients, domain, logoUrl } = request.data;
+    if (!agencyName || !email || !password) {
+        throw new https_1.HttpsError('invalid-argument', 'Missing required fields.');
+    }
+    try {
+        const userRecord = await admin.auth().createUser({
+            email: email,
+            password: password,
+            displayName: `${agencyName} Admin`,
+        });
+        const newAgencyId = userRecord.uid;
+        const agencyRef = db.collection('agencies').doc(newAgencyId);
+        await agencyRef.set({
+            agencyId: newAgencyId,
+            agencyName: agencyName,
+            adminEmail: email,
+            package: plan || 'Growth Plan',
+            maxClients: maxClients || 10,
+            customDomain: domain || '',
+            logoUrl: logoUrl || '',
+            status: 'ACTIVE',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        const userRef = db.collection('users').doc(newAgencyId);
+        await userRef.set({
+            uid: newAgencyId,
+            email: email,
+            name: `${agencyName} Admin`,
+            role: 'agency_admin',
+            clientId: newAgencyId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        await admin.auth().setCustomUserClaims(newAgencyId, {
+            role: 'agency_admin',
+            clientId: newAgencyId
+        });
+        return { success: true, agencyId: newAgencyId, message: 'Agency partner created successfully.' };
+    }
+    catch (error) {
+        console.error("Error creating agency:", error);
         if (error.code === 'auth/email-already-exists') {
             throw new https_1.HttpsError('already-exists', 'A user with this email already exists.');
         }
