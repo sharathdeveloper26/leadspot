@@ -13,13 +13,13 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { user, role } = useAuth();
 const { logoUrl, companyName } = useBranding();
-  // ✨ RESTORED: Core Routing Logic based on User Roles ✨
+// ✨ RESTORED: Core Routing Logic based on User Roles ✨
   if (user) {
     if (role === 'SUPER_ADMIN') return <Navigate to="/super-admin" />;
+    if (role === 'agency_admin') return <Navigate to="/agency-admin" />; // ✨ ADDED TIER 2 ROUTING ✨
     if (role === 'CLIENT_ADMIN' || role === 'client_admin') return <Navigate to="/client-admin" />;
     if (role === 'client_agent') return <Navigate to="/agent-dashboard" />;
   }
-
   // ✨ RESTORED: Original Firebase Auth Logic ✨
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
