@@ -8,7 +8,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { BrandingProvider } from './contexts/BrandingContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useIdleTimeout } from './hooks/useIdleTimeout';
+
+// ✨ ALL 4 TIERS IMPORTED ✨
 import SuperAdminDashboard from './components/SuperAdminDashboard';
+import AgencyDashboard from './components/AgencyDashboard'; // <- Added Tier 2
 import ClientDashboard from './components/ClientDashboard';
 import AgentDashboard from './components/AgentDashboard';
 import Login from './components/Login';
@@ -27,8 +30,9 @@ function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode, 
   if (!user) return <Navigate to="/login" />;
   
   if (role !== allowedRole && role?.toUpperCase() !== allowedRole?.toUpperCase()) {
-    // Redirect to appropriate dashboard if wrong role
+    // ✨ THE INTELLIGENT TRAFFIC CONTROLLER ✨
     if (role === 'SUPER_ADMIN') return <Navigate to="/super-admin" />;
+    if (role === 'agency_admin') return <Navigate to="/agency-admin" />; // <- Added Tier 2 Routing
     if (role === 'CLIENT_ADMIN' || role === 'client_admin') return <Navigate to="/client-admin" />;
     if (role === 'client_agent') return <Navigate to="/agent-dashboard" />;
     return <div className="p-8 text-center text-red-600">Unauthorized access.</div>;
@@ -49,7 +53,10 @@ function RootRedirect() {
   }
   
   if (!user) return <Navigate to="/login" />;
+  
+  // ✨ LOGIN REDIRECTION LOGIC ✨
   if (role === 'SUPER_ADMIN') return <Navigate to="/super-admin" />;
+  if (role === 'agency_admin') return <Navigate to="/agency-admin" />; // <- Added Tier 2 Login Handoff
   if (role === 'CLIENT_ADMIN' || role === 'client_admin') return <Navigate to="/client-admin" />;
   if (role === 'client_agent') return <Navigate to="/agent-dashboard" />;
   
@@ -62,6 +69,8 @@ function AppContent() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        
+        {/* TIER 1: SUPER ADMIN */}
         <Route 
           path="/super-admin" 
           element={
@@ -70,6 +79,18 @@ function AppContent() {
             </ProtectedRoute>
           } 
         />
+
+        {/* ✨ TIER 2: AGENCY / PARTNER DASHBOARD ✨ */}
+        <Route 
+          path="/agency-admin" 
+          element={
+            <ProtectedRoute allowedRole="agency_admin">
+              <AgencyDashboard />
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* TIER 3: CLIENT ADMIN (The Broker) */}
         <Route 
           path="/client-admin" 
           element={
@@ -78,6 +99,8 @@ function AppContent() {
             </ProtectedRoute>
           } 
         />
+        
+        {/* TIER 4: CLIENT AGENT (The Sales Rep) */}
         <Route 
           path="/agent-dashboard" 
           element={
@@ -86,6 +109,7 @@ function AppContent() {
             </ProtectedRoute>
           } 
         />
+        
         <Route path="/" element={<RootRedirect />} />
       </Routes>
     </BrowserRouter>

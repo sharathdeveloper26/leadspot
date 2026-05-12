@@ -624,6 +624,101 @@ export const registerNewClient = onCall(functionOpts, async (request) => {
   }
 });
 
+// ✨ TIER 2 TO TIER 3: SUB-CLIENT WORKSPACE CREATOR ✨
+export const createSubClientWorkspace = onCall(functionOpts, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'You must be logged in to create a workspace.');
+  }
+
+  const { agencyId, companyName, adminEmail, password, plan } = request.data;
+
+  if (!agencyId || !companyName || !adminEmail || !password) {
+    throw new HttpsError('invalid-argument', 'Missing required fields.');
+  }
+
+  try {
+    // 2. The Quota Check (The Iron Gate)
+    const agencyRef = db.collection('agencies').doc(agencyId);
+    const agencyDoc = await agencyRef.get();
+    
+    if (!agencyDoc.exists) {
+      // Fallback for development if the agency doc doesn't exist yet
+      console.warn(`Agency doc not found for ${agencyId}. Bypassing strict quota for dev.`);
+    } else {
+      const agencyData = agencyDoc.data();
+      const maxClients = agencyData?.maxClients || 0;
+
+      // Count how many clients this agency already has
+      const clientsSnapshot = await db.collection('clients').where('agencyId', '==', agencyId).count().get();
+      const currentClientCount = clientsSnapshot.data().count;
+
+      if (currentClientCount >= maxClients) {
+        throw new HttpsError(
+          'resource-exhausted', 
+          `Quota exceeded. This agency is limited to ${maxClients} workspaces.`
+        );
+      }
+    }
+
+    // 3. Create the Sub-Client Admin in Firebase Auth
+    const userRecord = await admin.auth().createUser({
+      email: adminEmail,
+      password: password,
+      displayName: `${companyName} Admin`,
+    });
+
+    // 4. Create the Isolated Client Workspace Document
+    // We use the Auth UID as the Client ID for perfect 1:1 mapping
+    const newClientId = userRecord.uid; 
+    
+    const clientRef = db.collection('clients').doc(newClientId);
+    await clientRef.set({
+      clientId: newClientId,
+      agencyId: agencyId,
+      companyName: companyName,
+      adminEmail: adminEmail,
+      plan: plan || 'Starter',
+      status: 'active',
+      joinedOn: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // 5. Create the User Document (so the CRM knows who they are when they log in)
+    const userRef = db.collection('users').doc(newClientId);
+    await userRef.set({
+      uid: newClientId,
+      email: adminEmail,
+      name: `${companyName} Admin`,
+      role: 'client_admin',
+      clientId: newClientId, // They are the owner of this specific workspace
+      agencyId: agencyId,    // Tagged to the reseller agency
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // 6. Set Custom Claims (Enterprise RBAC security)
+    await admin.auth().setCustomUserClaims(newClientId, {
+      role: 'client_admin',
+      clientId: newClientId,
+      agencyId: agencyId
+    });
+
+    return { 
+      success: true, 
+      clientId: newClientId, 
+      message: 'Workspace created successfully.' 
+    };
+
+  } catch (error: any) {
+    console.error("Error creating sub-client workspace:", error);
+    
+    // Catch Firebase Auth duplicate email errors nicely
+    if (error.code === 'auth/email-already-exists') {
+      throw new HttpsError('already-exists', 'A user with this email already exists.');
+    }
+    
+    throw new HttpsError('internal', error.message || 'An internal error occurred.');
+  }
+});
+
 export const secureLinkFacebookPage = onCall(functionOpts, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be logged in.");
   
