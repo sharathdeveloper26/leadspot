@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, getDocs, orderBy, where } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // ✨ NEW: Storage Imports
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../firebase';
+import { db, functions, storage } from '../firebase'; // ✨ Ensure storage is imported
 import { useAuth } from '../contexts/AuthContext';
 import { 
   Building2, LayoutDashboard, Globe, Shield, Search, 
-  Plus, LogOut, Settings, Trash2, CheckCircle2, Users, XCircle
+  Plus, LogOut, Settings, Trash2, CheckCircle2, Users, XCircle, UploadCloud
 } from 'lucide-react';
 
 interface Agency {
@@ -32,7 +33,6 @@ interface DirectClient {
 export default function SuperAdminDashboard() {
   const { logout } = useAuth();
   
-  // ✨ NEW: Added 'direct_clients' tab ✨
   const [activeTab, setActiveTab] = useState<'agencies' | 'direct_clients' | 'settings'>('agencies');
   
   const [agencies, setAgencies] = useState<Agency[]>([]);
@@ -52,7 +52,10 @@ export default function SuperAdminDashboard() {
   const [formPlan, setFormPlan] = useState('Growth Plan');
   const [formMaxClients, setFormMaxClients] = useState(10);
   const [customDomain, setCustomDomain] = useState('');
-  const [logoUrl, setLogoUrl] = useState('');
+  
+  // ✨ NEW: File Upload States ✨
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string>('');
 
   const handlePlanChange = (selectedPlan: string) => {
     setFormPlan(selectedPlan);
@@ -61,22 +64,28 @@ export default function SuperAdminDashboard() {
     else setFormMaxClients(999);
   };
 
+  // ✨ NEW: Handle File Selection ✨
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setLogoFile(file);
+      setLogoPreview(URL.createObjectURL(file)); // Generate instant UI preview
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch Agencies
         const agencyQ = query(collection(db, 'agencies'), orderBy('createdAt', 'desc'));
         const agencySnap = await getDocs(agencyQ);
         const agenciesData: Agency[] = [];
         agencySnap.forEach(doc => agenciesData.push({ id: doc.id, ...doc.data() } as Agency));
         setAgencies(agenciesData);
 
-        // Fetch Direct Clients (Tagged to 'leadspot_direct')
         const clientQ = query(collection(db, 'clients'), where('agencyId', '==', 'leadspot_direct'));
         const clientSnap = await getDocs(clientQ);
         const clientsData: DirectClient[] = [];
         clientSnap.forEach(doc => clientsData.push({ id: doc.id, ...doc.data() } as DirectClient));
-        // Sort manually since we used a 'where' clause
         clientsData.sort((a, b) => (b.joinedOn?.toMillis?.() || 0) - (a.joinedOn?.toMillis?.() || 0));
         setDirectClients(clientsData);
 
@@ -89,30 +98,62 @@ export default function SuperAdminDashboard() {
     fetchData();
   }, []);
 
-  // ✨ CREATE RESELLER AGENCY ✨
+  // ✨ UPGRADED: CREATE RESELLER AGENCY (With Storage Upload) ✨
   const handleCreateAgency = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCreating(true);
     try {
+      let uploadedLogoUrl = '';
+
+      // 1. If a file was selected, upload it to Storage first
+      if (logoFile) {
+        // Create a unique file path
+        const fileRef = ref(storage, `agency_logos/${Date.now()}_${logoFile.name}`);
+        await uploadBytes(fileRef, logoFile);
+        uploadedLogoUrl = await getDownloadURL(fileRef);
+      }
+
+      // 2. Call the Cloud Function with the new URL
       const createAgencyFn = httpsCallable(functions, 'createAgencyAccount');
       const result = await createAgencyFn({
-        agencyName: formName, email: formEmail, password: formPassword, plan: formPlan, maxClients: formMaxClients, domain: customDomain, logoUrl: logoUrl
+        agencyName: formName, 
+        email: formEmail, 
+        password: formPassword, 
+        plan: formPlan, 
+        maxClients: formMaxClients, 
+        domain: customDomain, 
+        logoUrl: uploadedLogoUrl // Pass the generated storage URL
       });
-      setAgencies([{ id: (result.data as any).agencyId, agencyName: formName, adminEmail: formEmail, package: formPlan, maxClients: formMaxClients, customDomain, logoUrl, status: 'ACTIVE', createdAt: { toDate: () => new Date() } }, ...agencies]);
+
+      // Optimistic UI Update
+      setAgencies([{ 
+        id: (result.data as any).agencyId, 
+        agencyName: formName, 
+        adminEmail: formEmail, 
+        package: formPlan, 
+        maxClients: formMaxClients, 
+        customDomain, 
+        logoUrl: uploadedLogoUrl, 
+        status: 'ACTIVE', 
+        createdAt: { toDate: () => new Date() } 
+      }, ...agencies]);
+      
       setIsAgencyModalOpen(false);
       resetForms();
-    } catch (error: any) { alert(error.message || "Failed to create agency."); } 
-    finally { setIsCreating(false); }
+    } catch (error: any) { 
+      alert(error.message || "Failed to create agency."); 
+    } finally { 
+      setIsCreating(false); 
+    }
   };
 
-  // ✨ CREATE DIRECT CLIENT ✨
   const handleCreateDirectClient = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCreating(true);
     try {
       const createClientFn = httpsCallable(functions, 'createSubClientWorkspace');
       const result = await createClientFn({
-        agencyId: 'leadspot_direct', // Master tag for direct clients!
+        agencyId: 'leadspot_direct',
         companyName: formName, adminEmail: formEmail, password: formPassword, plan: formPlan
       });
       setDirectClients([{ id: (result.data as any).clientId, companyName: formName, adminEmail: formEmail, plan: formPlan, status: 'active', joinedOn: { toDate: () => new Date() } }, ...directClients]);
@@ -122,37 +163,34 @@ export default function SuperAdminDashboard() {
     finally { setIsCreating(false); }
   };
 
-  const resetForms = () => { setFormName(''); setFormEmail(''); setFormPassword(''); setCustomDomain(''); setLogoUrl(''); };
-
-  const filteredAgencies = agencies.filter(a => a.agencyName.toLowerCase().includes(searchQuery.toLowerCase()) || a.adminEmail.toLowerCase().includes(searchQuery.toLowerCase()));
-  const filteredClients = directClients.filter(c => c.companyName.toLowerCase().includes(searchQuery.toLowerCase()) || c.adminEmail.toLowerCase().includes(searchQuery.toLowerCase()));
-// ✨ DEEP DELETE AGENCY ✨
   const handleDeleteAgency = async (id: string) => {
     if (window.confirm("CRITICAL WARNING: Are you sure you want to permanently delete this Agency and their login?")) {
       try {
         const deleteAgencyFn = httpsCallable(functions, 'deleteAgencyAccount');
         await deleteAgencyFn({ agencyId: id });
         setAgencies(prev => prev.filter(a => a.id !== id));
-        alert("Agency completely deleted.");
-      } catch (error: any) {
-        alert(error.message || "Failed to delete agency.");
-      }
+      } catch (error: any) { alert(error.message || "Failed to delete agency."); }
     }
   };
 
-  // ✨ DEEP DELETE DIRECT CLIENT ✨
   const handleDeleteDirectClient = async (id: string) => {
     if (window.confirm("Are you sure you want to permanently delete this direct workspace?")) {
       try {
         const deleteClientFn = httpsCallable(functions, 'deleteSubClientWorkspace');
         await deleteClientFn({ clientId: id });
         setDirectClients(prev => prev.filter(c => c.id !== id));
-        alert("Direct Client completely deleted.");
-      } catch (error: any) {
-        alert(error.message || "Failed to delete direct client.");
-      }
+      } catch (error: any) { alert(error.message || "Failed to delete direct client."); }
     }
   };
+
+  const resetForms = () => { 
+    setFormName(''); setFormEmail(''); setFormPassword(''); setCustomDomain(''); 
+    setLogoFile(null); setLogoPreview(''); 
+  };
+
+  const filteredAgencies = agencies.filter(a => a.agencyName.toLowerCase().includes(searchQuery.toLowerCase()) || a.adminEmail.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredClients = directClients.filter(c => c.companyName.toLowerCase().includes(searchQuery.toLowerCase()) || c.adminEmail.toLowerCase().includes(searchQuery.toLowerCase()));
+
   return (
     <div className="min-h-screen flex bg-slate-50 text-slate-900 font-sans">
       
@@ -251,9 +289,7 @@ export default function SuperAdminDashboard() {
                           <td className="px-6 py-4 text-center"><span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-200">{agency.package}</span></td>
                           <td className="px-6 py-4 text-center text-sm font-black text-slate-700">{agency.maxClients} Clients</td>
                           <td className="px-6 py-4">{agency.customDomain ? <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100 w-fit"><Globe className="w-3 h-3" /> {agency.customDomain}</div> : <span className="text-xs text-slate-400 font-medium italic">Standard</span>}</td>
-                          <td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-2"><button className="p-2 text-slate-400 hover:text-slate-800 transition-colors"><Settings className="w-4 h-4" /></button><button onClick={() => handleDeleteAgency(agency.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Agency">
-  <Trash2 className="w-4 h-4" />
-</button></div></td>
+                          <td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-2"><button className="p-2 text-slate-400 hover:text-slate-800 transition-colors"><Settings className="w-4 h-4" /></button><button onClick={() => handleDeleteAgency(agency.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button></div></td>
                         </tr>
                       ))}
                       {filteredAgencies.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-medium text-sm">No partner agencies found.</td></tr>}
@@ -279,9 +315,7 @@ export default function SuperAdminDashboard() {
                           <td className="px-6 py-4 text-sm font-medium text-slate-600">{client.adminEmail}</td>
                           <td className="px-6 py-4 text-center"><span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-indigo-100">{client.plan}</span></td>
                           <td className="px-6 py-4 text-sm font-medium text-slate-500">{client.joinedOn?.toDate ? client.joinedOn.toDate().toLocaleDateString() : 'Today'}</td>
-                          <td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-2"><button className="p-2 text-slate-400 hover:text-slate-800 transition-colors"><Settings className="w-4 h-4" /></button><button onClick={() => handleDeleteDirectClient(client.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Client">
-  <Trash2 className="w-4 h-4" />
-</button></div></td>
+                          <td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-2"><button className="p-2 text-slate-400 hover:text-slate-800 transition-colors"><Settings className="w-4 h-4" /></button><button onClick={() => handleDeleteDirectClient(client.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button></div></td>
                         </tr>
                       ))}
                       {filteredClients.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-medium text-sm">No direct clients found.</td></tr>}
@@ -294,7 +328,7 @@ export default function SuperAdminDashboard() {
         </div>
       </main>
 
-      {/* ✨ MODAL: CREATE AGENCY ✨ */}
+      {/* ✨ MODAL: CREATE AGENCY (WITH LOGO UPLOAD) ✨ */}
       {isAgencyModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm transition-all">
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
@@ -322,14 +356,39 @@ export default function SuperAdminDashboard() {
               <div>
                 <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2 flex items-center gap-2"><Globe className="w-4 h-4 text-indigo-500"/> White-Label Configuration</h4>
                 <div className="space-y-4">
-                  <div><label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Custom Domain (Optional)</label><div className="flex items-center gap-2"><span className="text-sm font-bold text-slate-400 bg-slate-100 border border-slate-200 px-3 py-2.5 rounded-xl">https://</span><input type="text" value={customDomain} onChange={(e) => setCustomDomain(e.target.value)} placeholder="crm.theiragency.com" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 outline-none text-sm font-medium" /></div></div>
-                  <div><label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Logo URL (Optional)</label><div className="flex items-center gap-3"><input type="url" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://example.com/logo.png" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 outline-none text-sm font-medium" />{logoUrl && <img src={logoUrl} alt="Preview" className="w-10 h-10 object-contain border border-slate-200 rounded-lg p-1 bg-white shrink-0" />}</div></div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Custom Domain (Optional)</label>
+                    <div className="flex items-center gap-2"><span className="text-sm font-bold text-slate-400 bg-slate-100 border border-slate-200 px-3 py-2.5 rounded-xl">https://</span><input type="text" value={customDomain} onChange={(e) => setCustomDomain(e.target.value)} placeholder="crm.theiragency.com" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 outline-none text-sm font-medium" /></div>
+                  </div>
+                  
+                  {/* ✨ UPGRADED: DRAG & DROP LOGO UPLOAD ✨ */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Agency Logo</label>
+                    <div className="flex items-center gap-4">
+                      <label className="flex-1 flex items-center justify-center px-4 py-3 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100 hover:border-amber-500 transition-all cursor-pointer group">
+                        <UploadCloud className="w-5 h-5 text-slate-400 mr-2 group-hover:text-amber-500 transition-colors" />
+                        <span className="text-sm font-bold text-slate-600 group-hover:text-slate-800">Select Image File</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                      </label>
+                      {logoPreview && (
+                        <div className="w-16 h-16 rounded-xl border border-slate-200 bg-white p-2 shrink-0 flex items-center justify-center shadow-sm relative group">
+                          <img src={logoPreview} alt="Preview" className="max-w-full max-h-full object-contain" />
+                          <button type="button" onClick={() => { setLogoFile(null); setLogoPreview(''); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                 </div>
               </div>
             </form>
             <div className="px-6 py-4 flex gap-3 border-t border-slate-100 bg-slate-50 shrink-0">
               <button type="button" onClick={() => setIsAgencyModalOpen(false)} className="flex-1 py-3 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-100 transition-all">Cancel</button>
-              <button type="submit" onClick={handleCreateAgency} disabled={isCreating} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-slate-800 shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">{isCreating ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Plus className="w-4 h-4"/> Create Agency</>}</button>
+              <button type="submit" onClick={handleCreateAgency} disabled={isCreating} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-slate-800 shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                {isCreating ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Plus className="w-4 h-4"/> Create Agency</>}
+              </button>
             </div>
           </div>
         </div>
