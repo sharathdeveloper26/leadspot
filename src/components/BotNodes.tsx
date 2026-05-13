@@ -4,7 +4,7 @@ import {
   MessageSquare, User, Mail, Phone, Building, 
   List, MousePointerClick, FileText, 
   GitBranch, Webhook, HeadphonesIcon, Play,
-  Image as ImageIcon, Video, Paperclip, LayoutGrid
+  Image as ImageIcon, Video, Paperclip, LayoutGrid,MapPin, Clock, Tag
 } from 'lucide-react';
 
 // ==========================================
@@ -241,6 +241,61 @@ export const WaFormNode = memo(({ data, selected }: { data: any, selected: boole
           {data.buttonText || 'Open Form'}
         </div>
       </div>
+    </div>
+    <Handle type="source" position={Position.Bottom} className="w-2 h-2 bg-slate-300 border-none" />
+  </div>
+));
+// ==========================================
+// 8. ASK LOCATION NODE (Native WA Feature)
+// ==========================================
+export const LocationNode = memo(({ data, selected }: { data: any, selected: boolean }) => (
+  <div className={`w-64 bg-white rounded-xl shadow-sm border-2 transition-all ${selected ? 'border-teal-500 shadow-md' : 'border-slate-200 hover:border-teal-300'}`}>
+    <Handle type="target" position={Position.Top} className="w-2 h-2 bg-teal-500 border-none" />
+    <div className="bg-teal-50/50 px-4 py-2.5 flex items-center gap-2 rounded-t-xl border-b border-teal-100">
+      <MapPin className="w-4 h-4 text-teal-600" />
+      <span className="text-[10px] font-black text-teal-800 uppercase tracking-widest">Ask Location</span>
+    </div>
+    <div className="p-4 bg-slate-50/30">
+      <div className="text-sm text-slate-700 font-medium mb-3">{data.message || 'Please share your location:'}</div>
+      <div className="w-full text-center py-2 bg-white border border-teal-200 rounded-lg text-xs font-bold text-teal-700 shadow-sm flex items-center justify-center gap-2">
+        <MapPin className="w-3.5 h-3.5" /> Send Location
+      </div>
+    </div>
+    <Handle type="source" position={Position.Bottom} className="w-2 h-2 bg-slate-300 border-none" />
+  </div>
+));
+
+// ==========================================
+// 9. TIME DELAY NODE (Drip Campaigns)
+// ==========================================
+export const DelayNode = memo(({ data, selected }: { data: any, selected: boolean }) => (
+  <div className={`w-48 bg-slate-800 rounded-xl shadow-lg border-2 transition-all ${selected ? 'border-amber-400' : 'border-slate-700'}`}>
+    <Handle type="target" position={Position.Top} className="w-2 h-2 bg-amber-400 border-none" />
+    <div className="px-4 py-3 flex items-center gap-3">
+      <div className="p-2 bg-slate-700 rounded-lg text-amber-400"><Clock className="w-4 h-4"/></div>
+      <div>
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Wait / Delay</div>
+        <div className="text-sm font-bold text-white">{data.delayValue || '1'} {data.delayUnit || 'Hours'}</div>
+      </div>
+    </div>
+    <Handle type="source" position={Position.Bottom} className="w-2 h-2 bg-amber-400 border-none" />
+  </div>
+));
+
+// ==========================================
+// 10. ADD CRM TAG NODE (Silent Action)
+// ==========================================
+export const TagNode = memo(({ data, selected }: { data: any, selected: boolean }) => (
+  <div className={`w-56 bg-white rounded-xl shadow-sm border-2 transition-all ${selected ? 'border-orange-500 shadow-md' : 'border-slate-200 hover:border-orange-300'}`}>
+    <Handle type="target" position={Position.Top} className="w-2 h-2 bg-orange-500 border-none" />
+    <div className="bg-orange-50/50 px-4 py-2 flex items-center gap-2 rounded-t-xl border-b border-orange-100">
+      <Tag className="w-4 h-4 text-orange-500" />
+      <span className="text-[10px] font-black text-orange-700 uppercase tracking-widest">Add CRM Tag</span>
+    </div>
+    <div className="p-3 text-center">
+      <span className="inline-block px-3 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-md border border-slate-200">
+        {data.tag || 'Hot Lead'}
+      </span>
     </div>
     <Handle type="source" position={Position.Bottom} className="w-2 h-2 bg-slate-300 border-none" />
   </div>

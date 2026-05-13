@@ -897,9 +897,9 @@ exports.whatsappWebhook = (0, https_1.onRequest)({
                                                     }
                                                 }
                                                 // 2. Pace the loop so messages queue in correct order and don't race the typing indicator
-                                                const textLength = botResponseText.length;
-                                                const simulatedDelay = Math.min(3000, Math.max(1000, textLength * 20));
-                                                await new Promise(resolve => setTimeout(resolve, simulatedDelay + 500));
+                                                //const textLength = botResponseText.length;
+                                                // const simulatedDelay = Math.min(3000, Math.max(1000, textLength * 20));
+                                                await new Promise(resolve => setTimeout(resolve, 300)); // Lightning fast 300ms sequence pacing
                                                 // 3. Should we auto-forward? (Only if it's a generic message node)
                                                 if (currentNode.type === 'message') {
                                                     const nextEdge = (_l = flow.edges) === null || _l === void 0 ? void 0 : _l.find((e) => e.source === currentNode.id);
@@ -1039,9 +1039,7 @@ exports.sendOutboundWhatsApp = (0, firestore_2.onDocumentCreated)({
                     typing_indicator: { type: "text" }
                 }, { headers: { "Authorization": `Bearer ${WA_ACCESS_TOKEN}`, "Content-Type": "application/json" } });
                 // Dynamic human delay: 20ms per character, minimum 1 second, maximum 3 seconds
-                const textLength = messageData.text ? messageData.text.length : 50;
-                const humanDelay = Math.min(3000, Math.max(1000, textLength * 20));
-                await new Promise(resolve => setTimeout(resolve, humanDelay));
+                await new Promise(resolve => setTimeout(resolve, 300)); // Fast 300ms typing indicator flash
             }
             catch (typingErr) {
                 console.warn("Typing indicator skipped, proceeding with message:", typingErr.message);

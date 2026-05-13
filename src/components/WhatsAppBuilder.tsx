@@ -8,7 +8,7 @@ import {
   PlusCircle, Zap, User, Phone, Mail, Settings2, X, Trash2, 
   CheckCheck, Send, MessageCircle, Smartphone, GripVertical,
   AlertCircle, CheckCircle2, LayoutGrid, Paperclip, 
-  Image as ImageIcon, Video, Link2, FileText
+  Image as ImageIcon, Video, Link2, FileText, MapPin, Clock, Tag
 } from 'lucide-react';
 import ReactFlow, { 
   ReactFlowProvider, Background, Controls, applyNodeChanges, 
@@ -20,15 +20,16 @@ import 'reactflow/dist/style.css';
 import { 
   TriggerNode, MessageNode, ButtonNode, ListNode, CarouselNode, WaFormNode,
   CaptureNameNode, CapturePhoneNode, CaptureEmailNode, ConditionNode, 
-  ApiRequestNode, HandoverNode 
+  ApiRequestNode, HandoverNode, LocationNode, DelayNode, TagNode
 } from './BotNodes';
 
 const nodeTypes = {
   trigger: TriggerNode, message: MessageNode, button: ButtonNode, 
-  list: ListNode, carousel: CarouselNode, waForm: WaFormNode, // ✨ NEW FORM NODE
+  list: ListNode, carousel: CarouselNode, waForm: WaFormNode, 
   captureName: CaptureNameNode, capturePhone: CapturePhoneNode, 
   captureEmail: CaptureEmailNode, condition: ConditionNode, 
-  apiRequest: ApiRequestNode, handover: HandoverNode,
+  apiRequest: ApiRequestNode, handover: HandoverNode, 
+  location: LocationNode, delay: DelayNode, tag: TagNode, // ✨ ENTERPRISE NODES
 };
 
 const INITIAL_NODES: Node[] = [
@@ -50,7 +51,7 @@ interface ChatMessage {
   buttons?: string[];
   listMenu?: { title: string, items: string[] };
   carousel?: { title: string, subtitle: string, button: string, image?: string }[];
-  waForm?: { title: string, button: string, fields: any[] }; // ✨ NEW SIMULATOR RENDER TYPE
+  waForm?: { title: string, button: string, fields: any[] }; 
   media?: 'image' | 'video' | 'document';
   sourceNodeId?: string;
 }
@@ -97,7 +98,6 @@ function WhatsAppBuilderFlow() {
     loadSavedFlow();
   }, [user?.clientId, fitView]);
 
-
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), []);
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);
   const onConnect = useCallback((params: Connection | Edge) => { setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: '#94a3b8', strokeWidth: 2 } }, eds)); }, []);
@@ -118,9 +118,12 @@ function WhatsAppBuilderFlow() {
     if (type === 'button') defaultData = { ...defaultData, label: 'Ask Question', buttons: ['Option 1'] };
     if (type === 'list') defaultData = { ...defaultData, label: 'Selection List', message: 'Please select an option:', menuTitle: 'View Options', listItems: ['Item 1', 'Item 2'] };
     if (type === 'carousel') defaultData = { ...defaultData, label: 'Product Carousel', cards: [{ title: 'Product 1', subtitle: 'Desc 1', button: 'View' }] };
-    
-    // ✨ WA FORM DEFAULT DATA
     if (type === 'waForm') defaultData = { ...defaultData, label: 'Native Form', formTitle: 'Client Registration', message: 'Please fill out your details:', buttonText: 'Open Form', fields: [{ name: 'Full Name', type: 'text', required: true }] };
+    
+    // ✨ ENTERPRISE NODES DEFAULT DATA
+    if (type === 'location') defaultData = { ...defaultData, label: 'Ask Location', message: 'Please share your location using the button below:' };
+    if (type === 'delay') defaultData = { ...defaultData, label: 'Wait', delayValue: '1', delayUnit: 'Hours' };
+    if (type === 'tag') defaultData = { ...defaultData, label: 'Tag Lead', tag: 'Interested' };
 
     if (type === 'condition') defaultData = { ...defaultData, label: 'Split Logic', variable: 'Lead.Source', operator: '==', value: 'Facebook' };
     if (type === 'apiRequest') defaultData = { ...defaultData, label: 'Fetch Data', method: 'GET', url: 'https://api.example.com', waitForResponse: true };
@@ -181,16 +184,23 @@ function WhatsAppBuilderFlow() {
         botResponse.carousel = targetNode.data.cards || [];
         botResponse.text = ''; 
       } else if (targetNode.type === 'waForm') {
-        // ✨ SIMULATOR: BIND WA FORM DATA
         botResponse.waForm = { title: targetNode.data.formTitle || 'Form', button: targetNode.data.buttonText || 'Open Form', fields: targetNode.data.fields || [] };
         botResponse.text = targetNode.data.message || 'Please fill out the form below:';
+      } else if (targetNode.type === 'location') {
+        botResponse.text = targetNode.data.message || 'Please share your location using the button below:';
+        botResponse.buttons = ['📍 Send Location']; // Mock button for simulator
+      } else if (targetNode.type === 'delay') {
+        botResponse.text = `[System: Waiting for ${targetNode.data.delayValue || '1'} ${targetNode.data.delayUnit || 'Hours'}]`;
+      } else if (targetNode.type === 'tag') {
+        botResponse.text = `[System: Tagged Lead as '${targetNode.data.tag || 'Interested'}']`;
       } else if (targetNode.type === 'captureName') { botResponse.text = targetNode.data.message || 'Please enter your name:';
       } else if (targetNode.type === 'capturePhone') { botResponse.text = targetNode.data.message || 'Please enter your phone number:';
       } else if (targetNode.type === 'captureEmail') { botResponse.text = targetNode.data.message || 'Please enter your email:'; }
 
       setChatHistory(prev => [...prev, botResponse]);
 
-      if (targetNode.type === 'message') {
+      // ✨ Simulator Auto-forward logic
+      if (['message', 'delay', 'tag'].includes(targetNode.type!)) {
         processBotResponse(targetNode.id); 
       }
     }, 600); 
@@ -216,8 +226,7 @@ function WhatsAppBuilderFlow() {
       const lastBotMsg = [...chatHistory].reverse().find(m => m.sender === 'bot');
       if (lastBotMsg?.sourceNodeId) {
         const lastNode = nodes.find(n => n.id === lastBotMsg.sourceNodeId);
-        // Let Forms process naturally on submission
-        if (lastNode && lastNode.type && ['captureName', 'capturePhone', 'captureEmail', 'waForm'].includes(lastNode.type)) { 
+        if (lastNode && lastNode.type && ['captureName', 'capturePhone', 'captureEmail', 'waForm', 'location'].includes(lastNode.type)) { 
           processBotResponse(lastNode.id); 
         }
       }
@@ -292,16 +301,24 @@ function WhatsAppBuilderFlow() {
               <div className="space-y-3">
                 <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">CRM Sync</h4>
                 <DraggableNode type="waForm" label="Native WA Form" description="In-app forms (Flows)." icon={FileText} color="violet" />
+                <DraggableNode type="location" label="Ask Location" description="Native WA map pin request." icon={MapPin} color="teal" />
                 <DraggableNode type="captureName" label="Ask Name" description="Saves to Lead Profile." icon={User} color="emerald" />
                 <DraggableNode type="capturePhone" label="Ask Phone" description="Validates WA numbers." icon={Phone} color="amber" />
                 <DraggableNode type="captureEmail" label="Ask Email" description="Validates email format." icon={Mail} color="rose" />
               </div>
-              <div className="space-y-3"><h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-2">Logic (Pro) <Zap className="w-3 h-3 text-amber-500"/></h4><DraggableNode type="condition" label="Condition Split" description="Branch flow based on variables." icon={GitBranch} color="purple" /><DraggableNode type="apiRequest" label="API Webhook" description="GET/POST to external servers." icon={Webhook} color="cyan" /><DraggableNode type="handover" label="Agent Transfer" description="Alert human team." icon={HeadphonesIcon} color="slate" /></div>
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 flex items-center gap-2">Logic (Pro) <Zap className="w-3 h-3 text-amber-500"/></h4>
+                <DraggableNode type="delay" label="Time Delay" description="Wait before next message." icon={Clock} color="amber" />
+                <DraggableNode type="tag" label="Add Tag" description="Silently tag Lead profile." icon={Tag} color="orange" />
+                <DraggableNode type="condition" label="Condition Split" description="Branch flow based on variables." icon={GitBranch} color="purple" />
+                <DraggableNode type="apiRequest" label="API Webhook" description="GET/POST to external servers." icon={Webhook} color="cyan" />
+                <DraggableNode type="handover" label="Agent Transfer" description="Alert human team." icon={HeadphonesIcon} color="slate" />
+              </div>
             </div>
           </aside>
         )}
 
-        {/* PANE 2: CANVAS */}
+        {/* PANE 2: CANVAS & LIST VIEW */}
         <main className="flex-1 relative h-full" ref={reactFlowWrapper}>
           {viewMode === 'canvas' ? (
             <ReactFlow 
@@ -330,6 +347,9 @@ function WhatsAppBuilderFlow() {
                   else if (node.type === 'list') { NodeIcon = ListIcon; colorTheme = 'sky'; }
                   else if (node.type === 'carousel') { NodeIcon = LayoutGrid; colorTheme = 'pink'; }
                   else if (node.type === 'waForm') { NodeIcon = FileText; colorTheme = 'violet'; }
+                  else if (node.type === 'location') { NodeIcon = MapPin; colorTheme = 'teal'; }
+                  else if (node.type === 'delay') { NodeIcon = Clock; colorTheme = 'amber'; }
+                  else if (node.type === 'tag') { NodeIcon = Tag; colorTheme = 'orange'; }
                   else if (['captureName', 'capturePhone', 'captureEmail'].includes(node.type || '')) { NodeIcon = User; colorTheme = 'amber'; }
                   else if (node.type === 'condition') { NodeIcon = GitBranch; colorTheme = 'purple'; }
                   else if (node.type === 'apiRequest') { NodeIcon = Webhook; colorTheme = 'cyan'; }
@@ -371,6 +391,19 @@ function WhatsAppBuilderFlow() {
                           <div className="mt-3 space-y-1.5">
                             <div className="text-xs font-bold text-sky-700 bg-sky-50 inline-block px-3 py-1 rounded border border-sky-100">Menu: {node.data.menuTitle}</div>
                             <div className="text-xs font-medium text-slate-500 pl-1">{node.data.listItems.length} options configured.</div>
+                          </div>
+                        )}
+                        
+                        {node.type === 'delay' && (
+                          <div className="mt-3 bg-amber-50 rounded-xl p-3 border border-amber-100 text-xs font-bold text-amber-700">
+                            Wait for {node.data.delayValue || '1'} {node.data.delayUnit || 'Hours'} before continuing.
+                          </div>
+                        )}
+
+                        {node.type === 'tag' && (
+                          <div className="mt-3 flex items-center gap-2">
+                            <Tag className="w-3.5 h-3.5 text-orange-400" />
+                            <span className="bg-orange-50 px-2 py-1 rounded border border-orange-100 text-xs font-bold text-orange-700">{node.data.tag || 'Interested'}</span>
                           </div>
                         )}
                       </div>
@@ -423,8 +456,31 @@ function WhatsAppBuilderFlow() {
                     </div>
                   )}
 
-                  {['message', 'captureName', 'capturePhone', 'captureEmail', 'button', 'list', 'waForm'].includes(selectedNode.type!) && (
+                  {['message', 'captureName', 'capturePhone', 'captureEmail', 'button', 'list', 'waForm', 'location'].includes(selectedNode.type!) && (
                     <div><label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">{selectedNode.type === 'waForm' ? 'Form Intro Message' : 'WhatsApp Body Text'}</label><textarea rows={4} value={selectedNode.data.message || ''} onChange={(e) => updateSelectedNodeData('message', e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500/30 outline-none text-sm font-medium shadow-sm transition-all resize-y" /></div>
+                  )}
+
+                  {/* ✨ ENTERPRISE LOGIC NODES ✨ */}
+                  {selectedNode.type === 'delay' && (
+                    <div className="pt-4 border-t border-slate-100 flex gap-3">
+                      <div className="flex-1">
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase mb-2">Wait Time</label>
+                        <input type="number" value={selectedNode.data.delayValue || ''} onChange={(e) => updateSelectedNodeData('delayValue', e.target.value)} className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500/30 outline-none text-sm font-bold" />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase mb-2">Unit</label>
+                        <select value={selectedNode.data.delayUnit || 'Hours'} onChange={(e) => updateSelectedNodeData('delayUnit', e.target.value)} className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500/30 outline-none text-sm font-bold">
+                          <option>Minutes</option><option>Hours</option><option>Days</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedNode.type === 'tag' && (
+                    <div className="pt-4 border-t border-slate-100">
+                      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2">CRM Tag to Apply</label>
+                      <input type="text" value={selectedNode.data.tag || ''} onChange={(e) => updateSelectedNodeData('tag', e.target.value)} placeholder="e.g. High Intent" className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500/30 outline-none text-sm font-bold shadow-sm transition-all" />
+                    </div>
                   )}
 
                   {/* ✨ NATIVE FORM CONFIG ✨ */}
