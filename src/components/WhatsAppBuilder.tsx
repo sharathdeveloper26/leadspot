@@ -323,8 +323,7 @@ function WhatsAppBuilderFlow() {
                   <p className="text-sm font-medium text-slate-500">Your automation steps arranged visually by Y-axis position.</p>
                 </div>
                 
-                {[...nodes].sort((a, b) => a.position.y - b.position.y).map((node) => {
-                  // ✨ DYNAMIC ICON & COLOR MAPPER
+               {[...nodes].sort((a, b) => a.position.y - b.position.y).map((node) => {
                   let NodeIcon = MessageSquare; let colorTheme = 'indigo';
                   if (node.type === 'trigger') { NodeIcon = Play; colorTheme = 'emerald'; }
                   else if (node.type === 'button') { NodeIcon = MousePointerClick; colorTheme = 'blue'; }
@@ -339,10 +338,7 @@ function WhatsAppBuilderFlow() {
                   return (
                     <div key={node.id} onClick={() => { setSelectedNode(node); setViewMode('canvas'); }} className={`bg-white rounded-2xl p-5 flex items-start gap-4 border shadow-sm transition-all cursor-pointer group ${selectedNode?.id === node.id ? `border-${colorTheme}-500 ring-4 ring-${colorTheme}-50` : `border-slate-200 hover:border-${colorTheme}-300 hover:shadow-md`}`}>
                       <div className="mt-1 flex items-center justify-center text-slate-300 group-hover:text-slate-400"><GripVertical className="w-5 h-5"/></div>
-                      
-                      <div className={`p-3 rounded-xl shrink-0 bg-${colorTheme}-50 text-${colorTheme}-600`}>
-                        <NodeIcon className="w-5 h-5"/>
-                      </div>
+                      <div className={`p-3 rounded-xl shrink-0 bg-${colorTheme}-50 text-${colorTheme}-600`}><NodeIcon className="w-5 h-5"/></div>
                       
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-center mb-1">
@@ -350,14 +346,12 @@ function WhatsAppBuilderFlow() {
                           <span className={`text-[9px] font-black uppercase tracking-widest bg-slate-50 text-slate-400 border border-slate-100 px-2 py-1 rounded-md`}>{node.type}</span>
                         </div>
                         
-                        {/* Core Message Display */}
                         {node.data.message && (
                           <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-sm font-medium text-slate-600 mt-2 whitespace-pre-wrap">
                             {node.data.message}
                           </div>
                         )}
 
-                        {/* ✨ SPECIFIC NODE DATA RENDERERS ✨ */}
                         {node.type === 'button' && node.data.buttons && (
                           <div className="flex flex-wrap gap-2 mt-3">
                             {node.data.buttons.map((b: string, i: number) => <span key={i} className="px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg border border-blue-100">{b}</span>)}
@@ -377,17 +371,6 @@ function WhatsAppBuilderFlow() {
                           <div className="mt-3 space-y-1.5">
                             <div className="text-xs font-bold text-sky-700 bg-sky-50 inline-block px-3 py-1 rounded border border-sky-100">Menu: {node.data.menuTitle}</div>
                             <div className="text-xs font-medium text-slate-500 pl-1">{node.data.listItems.length} options configured.</div>
-                          </div>
-                        )}
-
-                        {node.type === 'carousel' && node.data.cards && (
-                          <div className="flex gap-2 mt-3 overflow-hidden">
-                            {node.data.cards.map((c: any, i: number) => (
-                              <div key={i} className="px-3 py-2 bg-pink-50 border border-pink-100 rounded-lg shrink-0 max-w-[120px]">
-                                <div className="text-xs font-bold text-pink-700 truncate">{c.title}</div>
-                                <div className="text-[10px] text-pink-500 mt-0.5 truncate">{c.button}</div>
-                              </div>
-                            ))}
                           </div>
                         )}
                       </div>

@@ -934,10 +934,9 @@ export const whatsappWebhook = onRequest({
                 });
 
                 // C) 🤖 AI BOT TRAVERSAL ENGINE 🤖
-                if (clientId && msg.type === "text") {
-                  const userText = messageText.toLowerCase().trim();
-
-                  // Check if a human agent clicked "Pause Bot" for this lead
+               // C) 🤖 AI BOT TRAVERSAL ENGINE 🤖
+                if (clientId) {
+                  // Check if human agent paused the bot
                   const leadSnap = await db.collection("leads")
                     .where("clientId", "==", clientId)
                     .where("phone", "==", senderPhone)
@@ -947,47 +946,87 @@ export const whatsappWebhook = onRequest({
                   const isBotPaused = !leadSnap.empty && leadSnap.docs[0].data().botStatus === 'paused';
 
                   if (!isBotPaused) {
-                    // Load the published visual flow from Firestore
                     const flowSnap = await db.collection("whatsapp_flows").doc(clientId).get();
                     
                     if (flowSnap.exists) {
                       const flow = flowSnap.data() as any;
-                      const triggerNode = flow.nodes?.find((n: any) => n.type === "trigger");
-                      const triggerKeyword = triggerNode?.data?.message?.toLowerCase().trim();
+                      let nextNodeToFire = null;
 
-                      // Match the trigger keyword
-                      if (triggerKeyword && userText === triggerKeyword) {
-                        const nextEdge = flow.edges?.find((e: any) => e.source === triggerNode.id);
+                      // 🟢 SCENARIO 1: User typed a Text Message (Trigger Match)
+                      if (msg.type === "text") {
+                        const userText = messageText.toLowerCase().trim();
+                        const triggerNode = flow.nodes?.find((n: any) => n.type === "trigger");
                         
-                        if (nextEdge) {
-                          const nextNode = flow.nodes?.find((n: any) => n.id === nextEdge.target);
-                          
-                          if (nextNode) {
-                            let botResponseText = nextNode.data.message || `[${nextNode.type} Action]`;
-                            
-                            // Formatting complex nodes gracefully as text for dispatch
-                            if (nextNode.type === 'waForm') botResponseText = `${botResponseText}\n\n[Form: ${nextNode.data.formTitle}]`;
-                            if (nextNode.type === 'list') botResponseText = `${botResponseText}\n\n[Menu: ${nextNode.data.menuTitle}]`;
-                            if (nextNode.type === 'button') {
-                              botResponseText = `${botResponseText}\n` + (nextNode.data.buttons || []).map((b:string)=>`🔘 ${b}`).join('\n');
-                            }
+                        // Split keywords by comma so "Hi, Hello, Start" all work!
+                        const triggerKeywords = (triggerNode?.data?.message || "")
+                          .toLowerCase()
+                          .split(",")
+                          .map((k: string) => k.trim());
 
-                            // D) Trigger the existing `sendOutboundWhatsApp` function!
-                            await db.collection("whatsapp_messages").add({
-                              clientId: clientId,
-                              wabaId: wabaId,
-                              senderPhone: senderPhone,
-                              text: botResponseText,
-                              type: "text", 
-                              direction: "outbound", // This triggers your background dispatcher
-                              status: "pending",
-                              agentName: "AI Bot", // Identifies the sender in the Inbox UI
-                              timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                              isRead: true
-                            });
+                        if (triggerKeywords.includes(userText)) {
+                          console.log(`[BOT ENGINE] Trigger matched for client ${clientId}`);
+                          const nextEdge = flow.edges?.find((e: any) => e.source === triggerNode.id);
+                          if (nextEdge) {
+                            nextNodeToFire = flow.nodes?.find((n: any) => n.id === nextEdge.target);
                           }
                         }
+                      } 
+                      // 🟢 SCENARIO 2: User clicked an Interactive Button or List Menu
+                      else if (msg.type === "interactive") {
+                        let interactiveText = "";
+                        if (msg.interactive?.type === "button_reply") interactiveText = msg.interactive.button_reply.title;
+                        if (msg.interactive?.type === "list_reply") interactiveText = msg.interactive.list_reply.title;
+                        
+                        console.log(`[BOT ENGINE] User clicked button: ${interactiveText}`);
+
+                        // Find which node contained this button text
+                        const sourceNode = flow.nodes?.find((n: any) => 
+                          (n.type === 'button' && n.data?.buttons?.includes(interactiveText)) ||
+                          (n.type === 'list' && n.data?.listItems?.includes(interactiveText))
+                        );
+
+                        if (sourceNode) {
+                          // Find the specific edge connected to that exact button
+                          let handleId = null;
+                          if (sourceNode.type === 'button') {
+                            const btnIndex = sourceNode.data.buttons.indexOf(interactiveText);
+                            handleId = `btn-${btnIndex}`;
+                          }
+
+                          const nextEdge = flow.edges?.find((e: any) => 
+                            e.source === sourceNode.id && (!handleId || e.sourceHandle === handleId)
+                          );
+
+                          if (nextEdge) {
+                            nextNodeToFire = flow.nodes?.find((n: any) => n.id === nextEdge.target);
+                          }
+                        }
+                      }
+
+                      // 🟢 FIRE THE OUTBOUND MESSAGE
+                      if (nextNodeToFire) {
+                        let botResponseText = nextNodeToFire.data.message || `[${nextNodeToFire.type} Action]`;
+                        
+                        // Format rich nodes as text for basic dispatch (Phase 1)
+                        if (nextNodeToFire.type === 'waForm') botResponseText = `${botResponseText}\n\n[Form: ${nextNodeToFire.data.formTitle}]`;
+                        if (nextNodeToFire.type === 'list') botResponseText = `${botResponseText}\n\n[Menu: ${nextNodeToFire.data.menuTitle}]\n` + (nextNodeToFire.data.listItems || []).map((b:string)=>`🔸 ${b}`).join('\n');
+                        if (nextNodeToFire.type === 'button') botResponseText = `${botResponseText}\n\n` + (nextNodeToFire.data.buttons || []).map((b:string)=>`🔘 ${b}`).join('\n');
+                        if (nextNodeToFire.type === 'carousel') botResponseText = `[Product Carousel Sent]`;
+
+                        await db.collection("whatsapp_messages").add({
+                          clientId: clientId,
+                          wabaId: wabaId,
+                          senderPhone: senderPhone,
+                          text: botResponseText,
+                          type: "text", 
+                          direction: "outbound", // This instantly triggers your sendOutboundWhatsApp function!
+                          status: "pending",
+                          agentName: "AI Bot",
+                          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                          isRead: true
+                        });
+                        console.log(`[BOT ENGINE] Fired node ${nextNodeToFire.id}`);
                       }
                     }
                   }
