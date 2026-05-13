@@ -984,10 +984,13 @@ export const whatsappWebhook = onRequest({
                         if (currentNode.type === 'button') botResponseText = `${botResponseText}\n\n` + (currentNode.data.buttons || []).map((b:string)=>`🔘 ${b}`).join('\n');
                         if (currentNode.type === 'carousel') botResponseText = `[Product Carousel Sent]`;
 
-                        // 1. Save and Dispatch the Message
+                       // 1. Save and Dispatch the Message
                         await db.collection("whatsapp_messages").add({
                           clientId: clientId, wabaId: wabaId, senderPhone: senderPhone,
-                          text: botResponseText, type: "text", direction: "outbound", status: "pending",
+                          text: botResponseText, // Keep text fallback for CRM Inbox UI
+                          type: currentNode.type || "text", // ✨ CRITICAL: Tell dispatcher the exact node type
+                          nodeData: currentNode.data || {}, // ✨ CRITICAL: Pass the button/list arrays
+                          direction: "outbound", status: "pending",
                           agentName: "AI Bot", timestamp: admin.firestore.FieldValue.serverTimestamp(),
                           createdAt: admin.firestore.FieldValue.serverTimestamp(), isRead: true
                         });
@@ -1176,19 +1179,57 @@ export const sendOutboundWhatsApp = onDocumentCreated({
       }
     }
 
+    // ✨ LEVEL 5 FIX: NATIVE UI PAYLOAD BUILDER ✨
+    let metaPayload: any = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: recipientPhone,
+    };
+
+    if (messageData.type === 'button' && messageData.nodeData?.buttons) {
+      // 🔘 Render Native WhatsApp Buttons (Max 3)
+      metaPayload.type = "interactive";
+      metaPayload.interactive = {
+        type: "button",
+        body: { text: messageData.nodeData.message || "Please select an option:" },
+        action: {
+          buttons: messageData.nodeData.buttons.slice(0, 3).map((btn: string, i: number) => ({
+            type: "reply",
+            reply: { id: `btn-${i}`, title: btn.substring(0, 20) } // Meta strict limit: 20 chars
+          }))
+        }
+      };
+    } 
+    else if (messageData.type === 'list' && messageData.nodeData?.listItems) {
+      // 📋 Render Native WhatsApp iOS/Android Dropdown Menu
+      metaPayload.type = "interactive";
+      metaPayload.interactive = {
+        type: "list",
+        body: { text: messageData.nodeData.message || "Please select from the menu:" },
+        action: {
+          button: (messageData.nodeData.menuTitle || "View Options").substring(0, 20), // Meta limit: 20 chars
+          sections: [{
+            title: "Options",
+            rows: messageData.nodeData.listItems.slice(0, 10).map((item: string, i: number) => ({
+              id: `list-${i}`,
+              title: item.substring(0, 24) // Meta strict limit: 24 chars
+            }))
+          }]
+        }
+      };
+    } 
+    else {
+      // 💬 Standard Text Message
+      metaPayload.type = "text";
+      metaPayload.text = { preview_url: false, body: messageData.text };
+    }
+
     // Fire actual message to Meta
     const response = await axios.post(
       `https://graph.facebook.com/v20.0/${WA_PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to: recipientPhone,
-        type: "text",
-        text: { preview_url: false, body: messageData.text }
-      },
+      metaPayload,
       { headers: { "Authorization": `Bearer ${WA_ACCESS_TOKEN}`, "Content-Type": "application/json" }, timeout: 5000 }
     );
-
     await snapshot.ref.update({
       status: "delivered_to_meta",
       metaMessageId: response.data.messages[0].id

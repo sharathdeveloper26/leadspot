@@ -878,7 +878,10 @@ exports.whatsappWebhook = (0, https_1.onRequest)({
                                                 // 1. Save and Dispatch the Message
                                                 await db.collection("whatsapp_messages").add({
                                                     clientId: clientId, wabaId: wabaId, senderPhone: senderPhone,
-                                                    text: botResponseText, type: "text", direction: "outbound", status: "pending",
+                                                    text: botResponseText, // Keep text fallback for CRM Inbox UI
+                                                    type: currentNode.type || "text", // ✨ CRITICAL: Tell dispatcher the exact node type
+                                                    nodeData: currentNode.data || {}, // ✨ CRITICAL: Pass the button/list arrays
+                                                    direction: "outbound", status: "pending",
                                                     agentName: "AI Bot", timestamp: admin.firestore.FieldValue.serverTimestamp(),
                                                     createdAt: admin.firestore.FieldValue.serverTimestamp(), isRead: true
                                                 });
@@ -1002,7 +1005,7 @@ exports.sendOutboundWhatsApp = (0, firestore_2.onDocumentCreated)({
     database: "crmdb",
     memory: "256MiB",
 }, async (event) => {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g;
     const snapshot = event.data;
     if (!snapshot)
         return;
@@ -1044,24 +1047,61 @@ exports.sendOutboundWhatsApp = (0, firestore_2.onDocumentCreated)({
                 console.warn("Typing indicator skipped, proceeding with message:", typingErr.message);
             }
         }
-        // Fire actual message to Meta
-        const response = await axios_1.default.post(`https://graph.facebook.com/v20.0/${WA_PHONE_NUMBER_ID}/messages`, {
+        // ✨ LEVEL 5 FIX: NATIVE UI PAYLOAD BUILDER ✨
+        let metaPayload = {
             messaging_product: "whatsapp",
             recipient_type: "individual",
             to: recipientPhone,
-            type: "text",
-            text: { preview_url: false, body: messageData.text }
-        }, { headers: { "Authorization": `Bearer ${WA_ACCESS_TOKEN}`, "Content-Type": "application/json" }, timeout: 5000 });
+        };
+        if (messageData.type === 'button' && ((_b = messageData.nodeData) === null || _b === void 0 ? void 0 : _b.buttons)) {
+            // 🔘 Render Native WhatsApp Buttons (Max 3)
+            metaPayload.type = "interactive";
+            metaPayload.interactive = {
+                type: "button",
+                body: { text: messageData.nodeData.message || "Please select an option:" },
+                action: {
+                    buttons: messageData.nodeData.buttons.slice(0, 3).map((btn, i) => ({
+                        type: "reply",
+                        reply: { id: `btn-${i}`, title: btn.substring(0, 20) } // Meta strict limit: 20 chars
+                    }))
+                }
+            };
+        }
+        else if (messageData.type === 'list' && ((_c = messageData.nodeData) === null || _c === void 0 ? void 0 : _c.listItems)) {
+            // 📋 Render Native WhatsApp iOS/Android Dropdown Menu
+            metaPayload.type = "interactive";
+            metaPayload.interactive = {
+                type: "list",
+                body: { text: messageData.nodeData.message || "Please select from the menu:" },
+                action: {
+                    button: (messageData.nodeData.menuTitle || "View Options").substring(0, 20), // Meta limit: 20 chars
+                    sections: [{
+                            title: "Options",
+                            rows: messageData.nodeData.listItems.slice(0, 10).map((item, i) => ({
+                                id: `list-${i}`,
+                                title: item.substring(0, 24) // Meta strict limit: 24 chars
+                            }))
+                        }]
+                }
+            };
+        }
+        else {
+            // 💬 Standard Text Message
+            metaPayload.type = "text";
+            metaPayload.text = { preview_url: false, body: messageData.text };
+        }
+        // Fire actual message to Meta
+        const response = await axios_1.default.post(`https://graph.facebook.com/v20.0/${WA_PHONE_NUMBER_ID}/messages`, metaPayload, { headers: { "Authorization": `Bearer ${WA_ACCESS_TOKEN}`, "Content-Type": "application/json" }, timeout: 5000 });
         await snapshot.ref.update({
             status: "delivered_to_meta",
             metaMessageId: response.data.messages[0].id
         });
     }
     catch (error) {
-        console.error("Meta Graph API Error:", ((_b = error.response) === null || _b === void 0 ? void 0 : _b.data) || error.message);
+        console.error("Meta Graph API Error:", ((_d = error.response) === null || _d === void 0 ? void 0 : _d.data) || error.message);
         await snapshot.ref.update({
             status: "failed",
-            errorLog: ((_e = (_d = (_c = error.response) === null || _c === void 0 ? void 0 : _c.data) === null || _d === void 0 ? void 0 : _d.error) === null || _e === void 0 ? void 0 : _e.message) || error.message
+            errorLog: ((_g = (_f = (_e = error.response) === null || _e === void 0 ? void 0 : _e.data) === null || _f === void 0 ? void 0 : _f.error) === null || _g === void 0 ? void 0 : _g.message) || error.message
         });
     }
 });
