@@ -401,7 +401,26 @@ const leads = useMemo(() => {
     const conversionRate = leads.length > 0 ? Math.round((closedWonCount / leads.length) * 100) : 0;
     return { todaysLeadsCount, activePipelineCount, conversionRate, todaysSourceChart, trendChart };
   }, [leads]);
+// ✨ LEVEL 5: Dynamic Campaign Analytics Engine ✨
+  const campaignStats = useMemo(() => {
+    let totalSent = 0;
+    let totalDelivered = 0;
+    let totalRead = 0;
+    let totalReplied = 0;
 
+    campaignsList.forEach(camp => {
+      totalSent += (camp.totalAttempted || 0);
+      totalDelivered += (camp.successCount || 0);
+      totalRead += (camp.readCount || 0);
+      totalReplied += (camp.repliedCount || 0);
+    });
+
+    const deliveredRate = totalSent > 0 ? ((totalDelivered / totalSent) * 100).toFixed(1) : '0.0';
+    const readRate = totalSent > 0 ? ((totalRead / totalSent) * 100).toFixed(1) : '0.0';
+    const replyRate = totalSent > 0 ? ((totalReplied / totalSent) * 100).toFixed(1) : '0.0';
+
+    return { totalSent, deliveredRate, readRate, replyRate };
+  }, [campaignsList]);
   const [firstName, setFirstName] = useState(''); const [lastName, setLastName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [projectProperty, setProjectProperty] = useState(''); const [status, setStatus] = useState('New'); const [source, setSource] = useState(''); const [subSource, setSubSource] = useState(''); const [assignedTo, setAssignedTo] = useState('');
   const [agentName, setAgentName] = useState(''); const [agentEmail, setAgentEmail] = useState(''); const [agentPassword, setAgentPassword] = useState(''); const [inlineEditingAgentId, setInlineEditingAgentId] = useState<string | null>(null); const [inlineEditingName, setInlineEditingName] = useState('');
   const [searchQuery, setSearchQuery] = useState(''); const [leadsViewSourceFilter, setLeadsViewSourceFilter] = useState('All'); 
@@ -2654,27 +2673,28 @@ const handleConnectWhatsApp = () => {
                       <p className="text-slate-500 text-sm font-medium">Broadcast massive campaigns and track real-time delivery analytics.</p>
                     </div>
                    <div className="flex items-center gap-3">
-    <button onClick={handleSyncTemplates} className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl shadow-sm hover:bg-slate-50 flex items-center gap-2 text-sm transition-all">
-      <RefreshCw className={`w-4 h-4 ${isSyncingTemplates ? 'animate-spin' : ''}`} /> Sync Templates
-    </button>
-    
-    {/* ✨ NEW CREATE TEMPLATE BUTTON ✨ */}
-    <button onClick={() => setIsCreateModalOpen(true)} className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 font-bold rounded-xl shadow-sm hover:bg-indigo-100 flex items-center gap-2 text-sm transition-all">
-      <PlusCircle className="w-4 h-4" /> Create Template
-    </button>
+                    <button onClick={handleSyncTemplates} className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl shadow-sm hover:bg-slate-50 flex items-center gap-2 text-sm transition-all">
+                      <RefreshCw className={`w-4 h-4 ${isSyncingTemplates ? 'animate-spin' : ''}`} /> Sync Templates
+                    </button>
+                    
+                    {/* ✨ NEW CREATE TEMPLATE BUTTON ✨ */}
+                    <button onClick={() => setIsCreateModalOpen(true)} className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 font-bold rounded-xl shadow-sm hover:bg-indigo-100 flex items-center gap-2 text-sm transition-all">
+                      <PlusCircle className="w-4 h-4" /> Create Template
+                    </button>
 
-    <button className="px-4 py-2 bg-[#25D366] text-white font-bold rounded-xl shadow-md hover:bg-[#1EBE57] flex items-center gap-2 text-sm transition-all shadow-[#25D366]/30">
-      <Megaphone className="w-4 h-4" /> New Broadcast
-    </button>
-  </div>
+                    {/* ✨ FIX: Added onClick to open the wizard modal! ✨ */}
+                    <button onClick={() => { setWizardStep(1); setIsCampaignModalOpen(true); }} className="px-4 py-2 bg-[#25D366] text-white font-bold rounded-xl shadow-md hover:bg-[#1EBE57] flex items-center gap-2 text-sm transition-all shadow-[#25D366]/30">
+                      <Megaphone className="w-4 h-4" /> New Broadcast
+                    </button>
+                  </div>
                   </div>
 
-                  {/* AiSensy Style Analytics Banner */}
+                  {/* ✨ REAL-TIME AiSensy Style Analytics Banner ✨ */}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between"><div className="space-y-1"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Sent</p><p className="text-2xl font-black text-slate-800">12,450</p></div><div className="p-3 bg-blue-50 text-blue-500 rounded-xl"><Send className="w-5 h-5"/></div></div>
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between"><div className="space-y-1"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Delivered Rate</p><p className="text-2xl font-black text-slate-800">98.2%</p></div><div className="p-3 bg-slate-50 text-slate-400 rounded-xl"><CheckCheck className="w-5 h-5"/></div></div>
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between"><div className="space-y-1"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Read Rate</p><p className="text-2xl font-black text-slate-800">42.5%</p></div><div className="p-3 bg-indigo-50 text-indigo-500 rounded-xl"><Eye className="w-5 h-5"/></div></div>
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between"><div className="space-y-1"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reply Rate</p><p className="text-2xl font-black text-[#25D366]">18.1%</p></div><div className="p-3 bg-[#25D366]/10 text-[#25D366] rounded-xl"><MessageSquare className="w-5 h-5"/></div></div>
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between"><div className="space-y-1"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Sent</p><p className="text-2xl font-black text-slate-800">{campaignStats.totalSent.toLocaleString()}</p></div><div className="p-3 bg-blue-50 text-blue-500 rounded-xl"><Send className="w-5 h-5"/></div></div>
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between"><div className="space-y-1"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Delivered Rate</p><p className="text-2xl font-black text-slate-800">{campaignStats.deliveredRate}%</p></div><div className="p-3 bg-slate-50 text-slate-400 rounded-xl"><CheckCheck className="w-5 h-5"/></div></div>
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between"><div className="space-y-1"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Read Rate</p><p className="text-2xl font-black text-slate-800">{campaignStats.readRate}%</p></div><div className="p-3 bg-indigo-50 text-indigo-500 rounded-xl"><Eye className="w-5 h-5"/></div></div>
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between"><div className="space-y-1"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reply Rate</p><p className="text-2xl font-black text-[#25D366]">{campaignStats.replyRate}%</p></div><div className="p-3 bg-[#25D366]/10 text-[#25D366] rounded-xl"><MessageSquare className="w-5 h-5"/></div></div>
                   </div>
                 </div>
 
