@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, setDoc, onSnapshot, orderBy, limit, startAfter, getDoc, arrayUnion, arrayRemove, Timestamp } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
+import {getFunctions, httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon, Megaphone, RefreshCw, FileText, Bot, Eye, MousePointerClick, CheckCheck, Smartphone, Lock, PlusCircle } from 'lucide-react';
@@ -56,10 +56,29 @@ export default function ClientDashboard() {
 
   /// ✨ LEVEL 5 SECURITY: Real-Time Workspace Status Monitor
   const [workspaceStatus, setWorkspaceStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'LOADING'>('LOADING');
-
+// ✨ LEVEL 5: Live Template Sync State ✨
+  const [waTemplates, setWaTemplates] = useState<any[]>([]);
   useEffect(() => {
     if (!user?.clientId) return;
+    // Listen to the live templates collection
+    const q = query(
+      collection(db, 'whatsapp_templates'), 
+      where('clientId', '==', user.clientId)
+    );
     
+    const unsub = onSnapshot(q, (snap) => {
+      const fetchedTemplates: any[] = [];
+      snap.forEach(doc => fetchedTemplates.push({ id: doc.id, ...doc.data() }));
+      
+      // Sort so newest templates show up first
+      fetchedTemplates.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        return timeB - timeA;
+      });
+      
+      setWaTemplates(fetchedTemplates);
+    });
     const unsubStatus = onSnapshot(doc(db, 'clients', user.clientId), 
       (docSnap) => {
         if (docSnap.exists()) {
@@ -1415,7 +1434,20 @@ const handleConnectWhatsApp = () => {
       }
     } catch (error) { console.error("Send error:", error); showDialog('error', 'Send Failed', 'Could not save message.'); }
   };
-  const handleSyncTemplates = () => { setIsSyncingTemplates(true); setTimeout(() => { setIsSyncingTemplates(false); setToastData({ show: true, title: "Templates Synced", message: "Successfully fetched 4 approved templates from Meta Graph API.", color: "from-emerald-400 to-teal-500" }); }, 1500); };
+ const handleSyncTemplates = async () => {
+    setIsSyncingTemplates(true);
+    try {
+      const functions = getFunctions();
+      const syncFn = httpsCallable(functions, 'syncWhatsAppTemplates');
+      await syncFn();
+      setToastData({ show: true, title: 'Sync Complete', message: 'Templates successfully updated from Meta.', color: 'from-[#25D366] to-[#1EBE57]' });
+    } catch (error) {
+      console.error("Sync error:", error);
+      showDialog('error', 'Sync Failed', 'Could not sync templates from Meta.');
+    } finally {
+      setIsSyncingTemplates(false);
+    }
+  };
 // ✨ LEVEL 5 FIX: Enterprise Kanban Color Mapping
   const COLUMN_STYLES: Record<string, { bg: string, text: string, border: string, dot: string }> = {
     'New': { bg: 'bg-blue-50/80', text: 'text-blue-700', border: 'border-blue-200/50', dot: 'bg-blue-500' },
@@ -1497,14 +1529,78 @@ const handleConnectWhatsApp = () => {
                 {wizardStep === 1 && (
                   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                     <div><h4 className="text-lg font-bold text-slate-800">Choose a Template</h4><p className="text-sm font-medium text-slate-500">Select an approved Meta template for this broadcast.</p></div>
-                    <div className="grid grid-cols-1 gap-4">
-                      {WA_TEMPLATES.map(template => (
-                        <div key={template.id} onClick={() => { setSelectedTemplate(template); setTemplateVars(new Array(template.variables.length).fill('')); }} className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${selectedTemplate.id === template.id ? 'border-[#25D366] bg-[#25D366]/5 shadow-sm' : 'border-slate-100 bg-white hover:border-slate-300 hover:shadow-md'}`}>
-                          <div className="flex justify-between items-start mb-2"><h5 className="font-bold text-slate-800 text-sm">{template.name}</h5><span className="px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-md bg-[#D9FDD3] text-green-700 border border-green-200">{template.status}</span></div>
-                          <p className="text-xs text-slate-500 line-clamp-2">{template.body}</p>
-                        </div>
-                      ))}
+                    {/* ✨ DYNAMIC TEMPLATE GRID ✨ */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+                  {waTemplates.length === 0 ? (
+                    <div className="col-span-full text-center p-12 bg-white rounded-3xl border border-dashed border-slate-200">
+                      <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <FileText className="w-8 h-8 text-slate-300" />
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-800 mb-2">No Templates Yet</h3>
+                      <p className="text-sm font-medium text-slate-500 max-w-md mx-auto">Create a new template to start sending broadcasts, or sync your existing templates from Meta.</p>
                     </div>
+                  ) : (
+                    waTemplates.map((tpl) => {
+                      // Extract the BODY component to show a preview
+                      const bodyComponent = tpl.components?.find((c: any) => c.type === 'BODY');
+                      const bodyText = bodyComponent?.text || 'No content preview available.';
+                      
+                      // Count the number of variables e.g., {{1}}, {{2}}
+                      const varCount = (bodyText.match(/\{\{\d+\}\}/g) || []).length;
+
+                      return (
+                        <div key={tpl.id} className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col shadow-sm hover:shadow-md transition-all relative group">
+                          
+                          {/* Header: Name, Language, Category */}
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="pr-4">
+                              <h4 className="font-bold text-slate-800 text-sm truncate">{tpl.name}</h4>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                                {tpl.category} • {tpl.language}
+                              </p>
+                            </div>
+                            
+                            {/* Dynamic Status Badge */}
+                            <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border shrink-0 ${
+                              tpl.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                              tpl.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-200' :
+                              'bg-amber-50 text-amber-600 border-amber-200 animate-pulse'
+                            }`}>
+                              {tpl.status}
+                            </span>
+                          </div>
+                          
+                          {/* Body Preview */}
+                          <div className="flex-1 bg-slate-50 rounded-xl p-4 mb-5 border border-slate-100 relative">
+                            <p className="text-xs text-slate-600 font-medium whitespace-pre-wrap line-clamp-4 leading-relaxed">
+                              {bodyText}
+                            </p>
+                            {/* Fade out effect for long text */}
+                            <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-slate-50 to-transparent rounded-b-xl"></div>
+                          </div>
+
+                          {/* Footer: Variables & Action */}
+                          <div className="flex items-center justify-between mt-auto">
+                            <span className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                              Vars: {varCount}
+                            </span>
+                            
+                            <button 
+                              disabled={tpl.status !== 'APPROVED'} 
+                              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                                tpl.status === 'APPROVED' 
+                                  ? 'bg-[#25D366]/10 text-[#1a9347] hover:bg-[#25D366]/20 border border-[#25D366]/20' 
+                                  : 'bg-slate-50 text-slate-400 border border-slate-100 cursor-not-allowed'
+                              }`}
+                            >
+                              Use Template
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
                   </div>
                 )}
 
