@@ -10,20 +10,7 @@ import { useBranding } from '../contexts/BrandingContext';
 import WhatsAppBuilder from './WhatsAppBuilder';
 import CreateTemplateModal from './CreateTemplateModal';
 // ✨ LEVEL 5 AI-SENSY ENGINE: Mock Template Data
-const WA_TEMPLATES = [
-  { id: 't1', name: 'project_launch_01', type: 'MARKETING', status: 'APPROVED', lang: 'en', 
-    body: '🚀 Exciting news! We are thrilled to announce the launch of our newest luxury property: {{1}}.\n\nReply YES for exclusive floor plans and early-bird pricing.', 
-    variables: ['Project Name'], buttons: ['YES, I am interested'] },
-  { id: 't2', name: 'site_visit_reminder', type: 'UTILITY', status: 'APPROVED', lang: 'en', 
-    body: 'Hi {{1}}, this is a quick reminder for your scheduled site visit tomorrow at {{2}}.\n\nWe look forward to showing you the property! 📍', 
-    variables: ['Lead Name', 'Time'], buttons: ['Confirm', 'Reschedule'] },
-  { id: 't3', name: 'festival_greeting', type: 'MARKETING', status: 'APPROVED', lang: 'en', 
-    body: '✨ Wishing you and your family a very Happy {{1}}!\n\nUnlock special festive discounts of up to {{2}} on bookings made this month.', 
-    variables: ['Festival Name', 'Discount %'], buttons: ['Claim Offer'] },
-  { id: 't4', name: 'price_drop_alert', type: 'MARKETING', status: 'PENDING', lang: 'en', 
-    body: 'Great news {{1}}! The price for the unit you viewed at {{2}} has just been reduced.\n\nLet me know if you would like to secure it today.', 
-    variables: ['Lead Name', 'Property Name'], buttons: ['Talk to Agent'] },
-];
+
 interface Agent { id: string; name: string; email: string; role: string; createdAt: any; designation?: string; location?: string; linkedin?: string; formId?: string; adId?: string; adName?: string; campaignId?: string; campaignName?: string; }
 const PIPELINE_STATUSES = ['New', 'Attempted Contact', 'Connected / Warm', 'Site Visit Scheduled', 'Site Visit Completed', 'Negotiation', 'Closed Won', 'Closed Lost', 'Junk / Invalid'];
 declare global { interface Window { FB: any; fbAsyncInit: any; } }
@@ -433,7 +420,7 @@ const leads = useMemo(() => {
   // ✨ BROADCAST WIZARD STATES ✨
   const [wizardStep, setWizardStep] = useState(1);
   const [campaignName, setCampaignName] = useState('');
-  const [selectedTemplate, setSelectedTemplate] = useState(WA_TEMPLATES[0]);
+  const [selectedTemplate, setSelectedTemplate] = useState<any | null>(null);
   const [templateVars, setTemplateVars] = useState<string[]>([]);
   const [campaignAudience, setCampaignAudience] = useState<'selected' | 'all' | 'tag'>('selected');
   const [audienceTag, setAudienceTag] = useState('');
@@ -1635,26 +1622,37 @@ const handleConnectWhatsApp = () => {
                   </div>
                 )}
 
-                {wizardStep === 3 && (
+                {wizardStep === 3 && selectedTemplate && (
                   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-                    <div><h4 className="text-lg font-bold text-slate-800">Map Variables</h4><p className="text-sm font-medium text-slate-500">Fill in the dynamic fields for your template.</p></div>
+                    <div><h4 className="text-lg font-bold text-slate-800">Map Variables</h4><p className="text-sm font-medium text-slate-500">Provide values for your template placeholders.</p></div>
                     <div className="space-y-5">
-                      <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Campaign Name (Internal)</label><input type="text" value={campaignName} onChange={(e) => setCampaignName(e.target.value)} placeholder="e.g. Summer Promo Blast" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold" /></div>
-                      {selectedTemplate.variables.length > 0 && (
-                        <div className="p-5 border border-slate-200 rounded-2xl bg-white shadow-sm space-y-4">
-                          <h5 className="text-xs font-black text-slate-800 uppercase tracking-widest border-b border-slate-100 pb-2">Dynamic Values</h5>
-                          {selectedTemplate.variables.map((varName, idx) => (
-                            <div key={idx}>
-                              <label className="block text-[11px] font-bold text-[#50bdaf] mb-1.5 uppercase tracking-widest">{`{{${idx + 1}}} - ${varName}`}</label>
-                              <input type="text" value={templateVars[idx] || ''} onChange={(e) => { const newVars = [...templateVars]; newVars[idx] = e.target.value; setTemplateVars(newVars); }} placeholder={`Enter value for ${varName}`} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-medium" />
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {/* Campaign Name Input (Keep your existing Campaign Name input here if you had one) */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Campaign Name</label>
+                        <input type="text" value={campaignName} onChange={(e) => setCampaignName(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#50bdaf]/30 outline-none text-sm font-bold shadow-sm transition-all" placeholder="e.g. Summer Promo Blast" />
+                      </div>
+                      
+                      {(() => {
+                        const bodyTxt = selectedTemplate.components?.find((c: any) => c.type === 'BODY')?.text || '';
+                        const varCount = (bodyTxt.match(/\{\{\d+\}\}/g) || []).length;
+                        
+                        if (varCount === 0) return null; // No variables to map
+
+                        return (
+                          <div className="p-5 border border-slate-200 rounded-2xl bg-white shadow-sm space-y-4">
+                            <h5 className="text-xs font-black text-slate-800 uppercase tracking-widest border-b border-slate-100 pb-2 mb-3">Template Variables</h5>
+                            {Array.from({ length: varCount }).map((_, idx) => (
+                              <div key={idx}>
+                                <label className="block text-[11px] font-bold text-[#50bdaf] mb-1.5 uppercase tracking-widest">{`Variable {{${idx + 1}}}`}</label>
+                                <input type="text" value={templateVars[idx] || ''} onChange={(e) => { const newVars = [...templateVars]; newVars[idx] = e.target.value; setTemplateVars(newVars); }} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#50bdaf]/30 outline-none text-sm font-medium shadow-sm transition-all" placeholder={`Value for {{${idx + 1}}}`} />
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
-
                 <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center shrink-0">
                   <button onClick={() => setWizardStep(prev => prev - 1)} disabled={wizardStep === 1} className="px-5 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 disabled:opacity-0 transition-all">Back</button>
                   {wizardStep < 3 ? (
@@ -1677,17 +1675,33 @@ const handleConnectWhatsApp = () => {
                   <div className="bg-white/90 text-slate-800 text-xs font-bold p-2.5 rounded-xl mx-auto w-fit shadow-sm my-3">Today</div>
                   <div className="flex w-full justify-start animate-in slide-in-from-bottom-2 duration-300">
                     <div className="max-w-[85%] flex flex-col">
-                      <div className="p-3 text-sm shadow-sm relative bg-white text-slate-800 rounded-2xl rounded-tl-sm border border-slate-100">
-                        <p className="leading-relaxed whitespace-pre-wrap">
-                          {selectedTemplate.body.replace(/\{\{(\d+)\}\}/g, (match, num) => { const val = templateVars[parseInt(num) - 1]; return val ? val : match; })}
-                        </p>
-                        <div className="flex justify-end gap-1 mt-1 text-slate-400"><span className="text-[9px] font-bold">Now</span></div>
-                      </div>
-                      {selectedTemplate.buttons && selectedTemplate.buttons.length > 0 && (
-                        <div className="mt-1 flex flex-col gap-1 w-full bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                          {selectedTemplate.buttons.map((btn, i) => <button key={i} className="py-2.5 text-sm font-bold text-[#0ea5e9] border-b border-slate-100 last:border-0 hover:bg-blue-50 transition-colors cursor-default">{btn}</button>)}
-                        </div>
-                      )}
+                      {(() => {
+                        const bodyTxt = selectedTemplate?.components?.find((c: any) => c.type === 'BODY')?.text || 'No body text';
+                        const btns = selectedTemplate?.components?.find((c: any) => c.type === 'BUTTONS')?.buttons || [];
+                        return (
+                          <>
+                            <div className="p-3 text-sm shadow-sm relative bg-white rounded-2xl rounded-tl-sm border border-slate-100">
+                              <p className="leading-relaxed whitespace-pre-wrap">
+                                {/* Added types (match: string, num: string) to fix TS Error */}
+                                {bodyTxt.replace(/\{\{(\d+)\}\}/g, (match: string, num: string) => { 
+                                  const val = templateVars[parseInt(num) - 1]; 
+                                  return val ? `[${val}]` : match; 
+                                })}
+                              </p>
+                              <div className="flex justify-end gap-1 mt-1 text-slate-400"><span className="text-[9px] font-bold">Now</span></div>
+                            </div>
+                            {btns.length > 0 && (
+                              <div className="mt-1 flex flex-col gap-1 w-full bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                                {btns.map((btn: any, i: number) => (
+                                  <button key={i} className="py-2.5 text-sm font-bold text-[#0ea5e9] border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
+                                    {btn.text}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -2671,22 +2685,47 @@ const handleConnectWhatsApp = () => {
 
                 {campaignViewTab === 'templates' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300">
-                    {WA_TEMPLATES.map(template => (
-                      <div key={template.id} className="bg-white/80 backdrop-blur-xl border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col relative overflow-hidden">
-                        <div className="flex justify-between items-start mb-4">
-                          <div><h4 className="text-sm font-bold text-slate-800">{template.name}</h4><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{template.type} • {template.lang}</span></div>
-                          <span className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-md border ${template.status === 'APPROVED' ? 'bg-[#D9FDD3] text-green-700 border-green-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>{template.status}</span>
+                    {waTemplates.map(template => {
+                      const bodyTxt = template.components?.find((c: any) => c.type === 'BODY')?.text || '';
+                      const varCount = (bodyTxt.match(/\{\{\d+\}\}/g) || []).length;
+                      const btns = template.components?.find((c: any) => c.type === 'BUTTONS')?.buttons || [];
+
+                      return (
+                        <div key={template.id} className="bg-white/80 backdrop-blur-xl border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col relative group">
+                          
+                          <div className="flex justify-between items-start mb-4">
+                            <div><h4 className="text-sm font-bold text-slate-800 truncate pr-2">{template.name}</h4><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{template.category}</span></div>
+                            <span className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-md border shrink-0 ${template.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>{template.status}</span>
+                          </div>
+                          
+                          <div className="flex-1 bg-slate-50 rounded-2xl p-4 border border-slate-100 shadow-inner">
+                            <p className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap line-clamp-4">{bodyTxt}</p>
+                            {btns.length > 0 && (
+                              <div className="mt-3 flex gap-2 flex-wrap">
+                                {btns.map((b: any, i: number) => (
+                                  <span key={i} className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold text-blue-500 shadow-sm">{b.text}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100">Vars: {varCount}</span>
+                            <button 
+                              disabled={template.status !== 'APPROVED'}
+                              onClick={() => { 
+                                setSelectedTemplate(template); 
+                                setTemplateVars(new Array(varCount).fill('')); 
+                                setWizardStep(2); // Or 3, depending on your wizard flow 
+                              }} 
+                              className={`px-4 py-2 font-bold text-xs rounded-xl transition-colors border ${template.status === 'APPROVED' ? 'bg-[#50bdaf]/10 text-[#3a8b81] hover:bg-[#50bdaf]/20 border-[#50bdaf]/20' : 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'}`}
+                            >
+                              Use Template
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex-1 bg-slate-50 rounded-2xl p-4 border border-slate-100 shadow-inner">
-                          <p className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{template.body}</p>
-                          {template.buttons && <div className="mt-3 flex gap-2 flex-wrap">{template.buttons.map((b,i)=><span key={i} className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold text-[#0ea5e9]">{b}</span>)}</div>}
-                        </div>
-                        <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
-                          <span className="text-[10px] font-bold text-slate-400">Vars: {template.variables.length}</span>
-                          <button onClick={() => { setSelectedTemplate(template); setTemplateVars(new Array(template.variables.length).fill('')); setSelectedLeads([]); setWizardStep(1); setIsCampaignModalOpen(true); }} className="text-xs font-bold text-[#25D366] hover:text-[#1EBE57] bg-[#25D366]/10 px-3 py-1.5 rounded-lg transition-colors">Use Template</button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden animate-in slide-in-from-bottom-2 duration-300">
