@@ -887,9 +887,44 @@ export const whatsappWebhook = onRequest({
 
       if (body.object === "whatsapp_business_account") {
         for (const entry of body.entry) {
-          for (const change of entry.changes) { 
+          const wabaId = entry.id;
+
+          for (const change of entry.changes) {
+            
+            // ====================================================================
+            // ✨ SCENARIO A: TEMPLATE STATUS UPDATE NOTIFICATION FROM META
+            // ====================================================================
+            if (change.field === "message_template_status_update") {
+              const templateData = change.value;
+              const newStatus = templateData.event; // 'APPROVED', 'REJECTED', 'PENDING'
+              const templateName = templateData.message_template_name;
+              const templateLanguage = templateData.message_template_language;
+
+              // Identify which client owns this WABA Account
+              const integrationSnap = await db.collection("whatsapp_integrations")
+                .where("wabaId", "==", wabaId)
+                .limit(1)
+                .get();
+
+              if (!integrationSnap.empty) {
+                const clientId = integrationSnap.docs[0].data().clientId;
+                const templateDocId = `${clientId}_${templateName}_${templateLanguage}`;
+
+                await db.collection("whatsapp_templates").doc(templateDocId).set({
+                  status: newStatus,
+                  metaTemplateId: templateData.message_template_id,
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                console.log(`[META WEBHOOK] Template ${templateName} updated to ${newStatus} for ${clientId}`);
+              }
+              continue; // Skip the rest of the loop since this isn't a user message
+            }
+
+            // ====================================================================
+            // ✨ SCENARIO B: INCOMING USER MESSAGE OR STATUS RECEIPT
+            // ====================================================================
             const value = change.value;
-            const wabaId = entry.id; 
             const phoneNumberId = value.metadata?.phone_number_id;
 
             // Handle Incoming Messages from Leads
@@ -933,68 +968,7 @@ export const whatsappWebhook = onRequest({
                   isRead: false
                 });
 
-                // C) 🤖 AI BOT TRAVERSAL ENGINE 🤖
-                if (clientId) {
-                  const leadSnap = await db.collection("leads").where("clientId", "==", clientId).where("phone", "==", senderPhone).limit(1).get();
-                  const isBotPaused = !leadSnap.empty && leadSnap.docs[0].data().botStatus === 'paused';
-
-                  if (!isBotPaused) {
-                    const flowSnap = await db.collection("whatsapp_flows").doc(clientId).get();
-                    
-                    if (flowSnap.exists) {
-                      const flow = flowSnap.data() as any;
-                      let nextNodeToFire = null;
-
-                      // 🟢 SCENARIO 1: TEXT MATCH (TRIGGER)
-                      if (msg.type === "text") {
-                        const userText = messageText.toLowerCase().trim();
-                        const triggerNode = flow.nodes?.find((n: any) => n.type === "trigger");
-                        const triggerKeywords = (triggerNode?.data?.message || "").toLowerCase().split(",").map((k: string) => k.trim());
-
-                        if (triggerKeywords.includes(userText)) {
-                          const nextEdge = flow.edges?.find((e: any) => e.source === triggerNode.id);
-                          if (nextEdge) nextNodeToFire = flow.nodes?.find((n: any) => n.id === nextEdge.target);
-                        }
-                      } 
-                      // 🟢 SCENARIO 2: BUTTON / LIST MATCH
-                      else if (msg.type === "interactive") {
-                        let interactiveText = "";
-                        if (msg.interactive?.type === "button_reply") interactiveText = msg.interactive.button_reply.title;
-                        if (msg.interactive?.type === "list_reply") interactiveText = msg.interactive.list_reply.title;
-                        
-                        const sourceNode = flow.nodes?.find((n: any) => (n.type === 'button' && n.data?.buttons?.includes(interactiveText)) || (n.type === 'list' && n.data?.listItems?.includes(interactiveText)));
-
-                        if (sourceNode) {
-                          let handleId = null;
-                          if (sourceNode.type === 'button') handleId = `btn-${sourceNode.data.buttons.indexOf(interactiveText)}`;
-                          const nextEdge = flow.edges?.find((e: any) => e.source === sourceNode.id && (!handleId || e.sourceHandle === handleId));
-                          if (nextEdge) nextNodeToFire = flow.nodes?.find((n: any) => n.id === nextEdge.target);
-                        }
-                      }
-
-                      // 🟢 THE LEVEL 5 AUTO-FORWARDING ENGINE
-                      let currentNode = nextNodeToFire;
-                      
-                      // Loop until we hit an interactive node (which waits for user input)
-                      while (currentNode) {
-                        let botResponseText = currentNode.data.message || `[${currentNode.type} Action]`;
-                        
-                        if (currentNode.type === 'waForm') botResponseText = `${botResponseText}\n\n[Form: ${currentNode.data.formTitle}]`;
-                        if (currentNode.type === 'list') botResponseText = `${botResponseText}\n\n[Menu: ${currentNode.data.menuTitle}]\n` + (currentNode.data.listItems || []).map((b:string)=>`🔸 ${b}`).join('\n');
-                        if (currentNode.type === 'button') botResponseText = `${botResponseText}\n\n` + (currentNode.data.buttons || []).map((b:string)=>`🔘 ${b}`).join('\n');
-                        if (currentNode.type === 'carousel') botResponseText = `[Product Carousel Sent]`;
-
-                       // 1. Save and Dispatch the Message
-                        await db.collection("whatsapp_messages").add({
-                          clientId: clientId, wabaId: wabaId, senderPhone: senderPhone,
-                          text: botResponseText, // Keep text fallback for CRM Inbox UI
-                          type: currentNode.type || "text", // ✨ CRITICAL: Tell dispatcher the exact node type
-                          nodeData: currentNode.data || {}, // ✨ CRITICAL: Pass the button/list arrays
-                          direction: "outbound", status: "pending",
-                          agentName: "AI Bot", timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                          createdAt: admin.firestore.FieldValue.serverTimestamp(), isRead: true
-                        });
-                        // ✨ UPDATE THE LEAD PROFILE FOR THE FRONTEND SIDEBAR ✨
+                // ✨ UPDATE THE LEAD PROFILE FOR THE FRONTEND SIDEBAR ✨
                 if (clientId) {
                   const leadSnap = await db.collection("leads").where("clientId", "==", clientId).where("phone", "==", senderPhone).limit(1).get();
                   if (!leadSnap.empty) {
@@ -1005,21 +979,67 @@ export const whatsappWebhook = onRequest({
                     });
                   }
                 }
-                        // 2. Pace the loop so messages queue in correct order and don't race the typing indicator
-                        //const textLength = botResponseText.length;
-                       // const simulatedDelay = Math.min(3000, Math.max(1000, textLength * 20));
+
+                // C) 🤖 AI BOT TRAVERSAL ENGINE 🤖
+                if (clientId && msg.type === "text") {
+                  const userText = messageText.toLowerCase().trim();
+
+                  // Check if a human agent clicked "Pause Bot" for this lead
+                  const leadSnap = await db.collection("leads")
+                    .where("clientId", "==", clientId)
+                    .where("phone", "==", senderPhone)
+                    .limit(1)
+                    .get();
+
+                  const isBotPaused = !leadSnap.empty && leadSnap.docs[0].data().botStatus === 'paused';
+
+                  if (!isBotPaused) {
+                    // Load the published visual flow from Firestore
+                    const flowSnap = await db.collection("whatsapp_flows").doc(clientId).get();
+                    
+                    if (flowSnap.exists) {
+                      const flow = flowSnap.data() as any;
+                      let nextNodeToFire = null;
+
+                      // Match the trigger keyword
+                      const triggerNode = flow.nodes?.find((n: any) => n.type === "trigger");
+                      const triggerKeywords = (triggerNode?.data?.message || "").toLowerCase().split(",").map((k: string) => k.trim());
+
+                      if (triggerKeywords.includes(userText)) {
+                        const nextEdge = flow.edges?.find((e: any) => e.source === triggerNode.id);
+                        if (nextEdge) nextNodeToFire = flow.nodes?.find((n: any) => n.id === nextEdge.target);
+                      }
+                      
+                      // 🟢 THE LEVEL 5 AUTO-FORWARDING ENGINE
+                      let currentNode = nextNodeToFire;
+                      
+                      while (currentNode) {
+                        let botResponseText = currentNode.data.message || `[${currentNode.type} Action]`;
+                        
+                        // Formatting complex nodes gracefully as text for dispatch
+                        if (currentNode.type === 'waForm') botResponseText = `${botResponseText}\n\n[Form: ${currentNode.data.formTitle}]`;
+                        if (currentNode.type === 'list') botResponseText = `${botResponseText}\n\n[Menu: ${currentNode.data.menuTitle}]`;
+                        if (currentNode.type === 'button') {
+                          botResponseText = `${botResponseText}\n` + (currentNode.data.buttons || []).map((b:string)=>`🔘 ${b}`).join('\n');
+                        }
+
+                        // Save and Dispatch the Message
+                        await db.collection("whatsapp_messages").add({
+                          clientId: clientId, wabaId: wabaId, senderPhone: senderPhone,
+                          text: botResponseText, type: currentNode.type || "text", nodeData: currentNode.data || {}, direction: "outbound", status: "pending",
+                          agentName: "AI Bot", timestamp: admin.firestore.FieldValue.serverTimestamp(), createdAt: admin.firestore.FieldValue.serverTimestamp(), isRead: true
+                        });
+                        
                         await new Promise(resolve => setTimeout(resolve, 300)); // Lightning fast 300ms sequence pacing
 
-                        // 3. Should we auto-forward? (Only if it's a generic message node)
                         if (currentNode.type === 'message') {
                           const nextEdge = flow.edges?.find((e: any) => e.source === currentNode.id);
                           if (nextEdge) {
                             currentNode = flow.nodes?.find((n: any) => n.id === nextEdge.target);
                           } else {
-                            currentNode = null; // End of flow
+                            currentNode = null;
                           }
                         } else {
-                          // It is an interactive node (button, list, form, capture). We STOP and wait for human reply.
                           currentNode = null; 
                         }
                       }
