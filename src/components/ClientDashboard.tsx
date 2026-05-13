@@ -163,7 +163,7 @@ const [isAutomationsMenuOpen, setIsAutomationsMenuOpen] = useState(false); // �
     } catch (e) { console.error(e); }
   };
   const [campaignsList, setCampaignsList] = useState<any[]>([]);
-  const [campaignViewTab, setCampaignViewTab] = useState<'templates' | 'history'>('templates');
+  const [campaignViewTab, setCampaignViewTab] = useState<'templates' | 'pending' | 'history'>('templates');
   const [isSyncingTemplates, setIsSyncingTemplates] = useState(false);
 
   const [dialogState, setDialogState] = useState<{ isOpen: boolean; type: 'alert' | 'confirm' | 'success' | 'error'; title: string; message: string; onConfirm?: () => void; onCloseAction?: () => void; }>({ isOpen: false, type: 'alert', title: '', message: '' });
@@ -2701,51 +2701,76 @@ const handleConnectWhatsApp = () => {
                 <div className="flex px-2 border-b border-slate-200/60">
                   <button onClick={() => setCampaignViewTab('history')} className={`pb-4 px-4 text-sm font-bold transition-colors relative ${campaignViewTab === 'history' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Broadcast History Logs{campaignViewTab === 'history' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#25D366] rounded-t-full" />}</button>
                   <button onClick={() => setCampaignViewTab('templates')} className={`pb-4 px-4 text-sm font-bold transition-colors relative ${campaignViewTab === 'templates' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Approved Templates{campaignViewTab === 'templates' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#25D366] rounded-t-full" />}</button>
+                  <button onClick={() => setCampaignViewTab('pending')} className={`pb-4 px-4 whitespace-nowrap text-sm font-bold transition-colors relative ${campaignViewTab === 'pending' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Pending / Rejected{campaignViewTab === 'pending' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#25D366] rounded-t-full" />}</button>
                 </div>
 
-                {campaignViewTab === 'templates' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300">
-                    {waTemplates.map(template => {
-                      const bodyTxt = template.components?.find((c: any) => c.type === 'BODY')?.text || '';
-                      const varCount = (bodyTxt.match(/\{\{\d+\}\}/g) || []).length;
-                      const btns = template.components?.find((c: any) => c.type === 'BUTTONS')?.buttons || [];
-
-                      return (
-                        <div key={template.id} className="bg-white/80 backdrop-blur-xl border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col relative group">
-                          
-                          <div className="flex justify-between items-start mb-4">
-                            <div><h4 className="text-sm font-bold text-slate-800 truncate pr-2">{template.name}</h4><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{template.category}</span></div>
-                            <span className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-md border shrink-0 ${template.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>{template.status}</span>
-                          </div>
-                          
-                          <div className="flex-1 bg-slate-50 rounded-2xl p-4 border border-slate-100 shadow-inner">
-                            <p className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap line-clamp-4">{bodyTxt}</p>
-                            {btns.length > 0 && (
-                              <div className="mt-3 flex gap-2 flex-wrap">
-                                {btns.map((b: any, i: number) => (
-                                  <span key={i} className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold text-blue-500 shadow-sm">{b.text}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          
-                          <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
-                            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100">Vars: {varCount}</span>
-                            <button 
-                              disabled={template.status !== 'APPROVED'}
-                              onClick={() => { 
-                                setSelectedTemplate(template); 
-                                setTemplateVars(new Array(varCount).fill('')); 
-                                setWizardStep(2); // Or 3, depending on your wizard flow 
-                              }} 
-                              className={`px-4 py-2 font-bold text-xs rounded-xl transition-colors border ${template.status === 'APPROVED' ? 'bg-[#50bdaf]/10 text-[#3a8b81] hover:bg-[#50bdaf]/20 border-[#50bdaf]/20' : 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'}`}
-                            >
-                              Use Template
-                            </button>
-                          </div>
-                        </div>
+                {campaignViewTab === 'templates' || campaignViewTab === 'pending' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300 mt-6">
+                    {(() => {
+                      // ✨ FILTER LOGIC: Separate Approved from Pending/Rejected ✨
+                      const displayedTemplates = waTemplates.filter(t => 
+                        campaignViewTab === 'templates' ? t.status === 'APPROVED' : t.status !== 'APPROVED'
                       );
-                    })}
+
+                      if (displayedTemplates.length === 0) {
+                        return (
+                          <div className="col-span-full text-center p-12 bg-white rounded-3xl border border-dashed border-slate-200">
+                            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                              <FileText className="w-8 h-8 text-slate-300" />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-800 mb-2">No {campaignViewTab === 'templates' ? 'Approved' : 'Pending'} Templates</h3>
+                            <p className="text-sm font-medium text-slate-500 max-w-md mx-auto">
+                              {campaignViewTab === 'templates' 
+                                ? "You don't have any approved templates ready for broadcasting yet." 
+                                : "You have no pending templates waiting for Meta's approval."}
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      return displayedTemplates.map(template => {
+                        const bodyTxt = template.components?.find((c: any) => c.type === 'BODY')?.text || '';
+                        const varCount = (bodyTxt.match(/\{\{\d+\}\}/g) || []).length;
+                        const btns = template.components?.find((c: any) => c.type === 'BUTTONS')?.buttons || [];
+
+                        return (
+                          <div key={template.id} className="bg-white/80 backdrop-blur-xl border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col relative group">
+                            
+                            <div className="flex justify-between items-start mb-4">
+                              <div><h4 className="text-sm font-bold text-slate-800 truncate pr-2">{template.name}</h4><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{template.category}</span></div>
+                              <span className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-md border shrink-0 ${template.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : template.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-amber-50 text-amber-600 border-amber-200 animate-pulse'}`}>{template.status}</span>
+                            </div>
+                            
+                            <div className="flex-1 bg-slate-50 rounded-2xl p-4 border border-slate-100 shadow-inner">
+                              <p className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap line-clamp-4">{bodyTxt}</p>
+                              {btns.length > 0 && (
+                                <div className="mt-3 flex gap-2 flex-wrap">
+                                  {btns.map((b: any, i: number) => (
+                                    <span key={i} className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold text-blue-500 shadow-sm">{b.text}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
+                              <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100">Vars: {varCount}</span>
+                              <button 
+                                disabled={template.status !== 'APPROVED'}
+                                onClick={() => { 
+                                  // Ensure setSelectedTemplate function and state exist where this is used
+                                  setSelectedTemplate(template); 
+                                  setTemplateVars(new Array(varCount).fill('')); 
+                                  setWizardStep(2); 
+                                }} 
+                                className={`px-4 py-2 font-bold text-xs rounded-xl transition-colors border ${template.status === 'APPROVED' ? 'bg-[#50bdaf]/10 text-[#3a8b81] hover:bg-[#50bdaf]/20 border-[#50bdaf]/20' : 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'}`}
+                              >
+                                Use Template
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 ) : (
                   <div className="bg-white/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden animate-in slide-in-from-bottom-2 duration-300">
