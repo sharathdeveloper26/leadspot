@@ -9,6 +9,7 @@ import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 import { useBranding } from '../contexts/BrandingContext';
 import WhatsAppBuilder from './WhatsAppBuilder';
 import CreateTemplateModal from './CreateTemplateModal';
+import WebsiteBotBuilder from './WebsiteBotBuilder';
 // ✨ LEVEL 5 AI-SENSY ENGINE: Mock Template Data
 
 interface Agent { id: string; name: string; email: string; role: string; createdAt: any; designation?: string; location?: string; linkedin?: string; formId?: string; adId?: string; adName?: string; campaignId?: string; campaignName?: string; }
@@ -1947,20 +1948,12 @@ const handleConnectWhatsApp = () => {
   </div>
 )}
 
-            {/* ✨ WEBSITE CHATBOT KNOWLEDGE BASE (COMING SOON) ✨ */}
+           {/* ✨ WEBSITE CHATBOT KNOWLEDGE BASE ✨ */}
             {activeTab === 'website_bot' && (
-              <div className="flex-1 h-full w-full flex items-center justify-center p-8 animate-in fade-in duration-300">
-                <div className="bg-white/80 backdrop-blur-2xl p-12 rounded-3xl shadow-lg border border-slate-200 max-w-lg text-center">
-                  <div className="w-20 h-20 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner border border-indigo-100">
-                    <Bot className="w-10 h-10 text-indigo-500" />
-                  </div>
-                  <h2 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">Website AI Chatbot</h2>
-                  <p className="text-slate-500 font-medium mb-8 leading-relaxed">Train your AI with your property brochures and deploy a custom widget to your website to answer lead queries 24/7.</p>
-                  <span className="px-4 py-2 bg-slate-100 text-slate-500 font-bold uppercase tracking-widest text-xs rounded-xl border border-slate-200">Coming in Phase 2</span>
-                </div>
+              <div className="flex-1 h-full w-full animate-in fade-in duration-300">
+                <WebsiteBotBuilder />
               </div>
             )}
-
             {/* ✨ INBOX TAB ✨ */}
             {activeTab === 'inbox' && (
               <div className="flex h-[calc(100vh-140px)] bg-white/80 backdrop-blur-2xl sm:rounded-3xl shadow-[0_8px_30px_rgba(116,235,213,0.05)] border border-white overflow-hidden animate-in fade-in duration-300">
