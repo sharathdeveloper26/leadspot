@@ -232,29 +232,52 @@ const leads = useMemo(() => {
 
   useEffect(() => { if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") { Notification.requestPermission(); } }, []);
 
+  // ✨ LEVEL 5 COST-SAVING: Targeted Message Fetching ✨
   useEffect(() => {
-    if (!user?.clientId) return;
-    const q = query(collection(db, 'whatsapp_messages'), orderBy('timestamp', 'asc'));
+    // ONLY fetch messages if the Inbox is open AND a chat is selected
+    if (!user?.clientId || activeTab !== 'inbox' || !activeChatLeadId) return;
+    
+    const activeLead = leads.find(l => l.id === activeChatLeadId);
+    if (!activeLead?.phone) return;
+
+    const normalizedPhone = normalizePhone(activeLead.phone);
+    
+    // We strictly limit the query to the active chat and the last 50 messages!
+    const q = query(
+      collection(db, 'whatsapp_messages'), 
+      where('clientId', '==', user.clientId),
+      where('senderPhone', '==', normalizedPhone),
+      orderBy('timestamp', 'desc'), // Fetch newest first
+      limit(50)
+    );
+
     const unsub = onSnapshot(q, (snap) => {
       const msgs: any[] = [];
       snap.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
-      setWaMessages(msgs);
+      // Reverse the array so the newest messages are at the bottom of the chat UI
+      setWaMessages(msgs.reverse());
     }, (err) => console.error("WhatsApp sync error:", err));
+    
     return () => unsub();
-  }, [user?.clientId]);
-
+  }, [user?.clientId, activeChatLeadId, activeTab, leads]);
+  // ✨ LEVEL 5 COST-SAVING: Unread Count Clearer ✨
   useEffect(() => {
     if (activeTab === 'inbox' && activeChatLeadId) {
       const activeLead = leads.find(l => l.id === activeChatLeadId);
+      
+      // If we open a chat and it has unread messages, zero out the lead's counter
+      if (activeLead && (activeLead as any).unreadWaCount > 0) {
+         updateDoc(doc(db, 'leads', activeLead.id), { unreadWaCount: 0 }).catch(console.error);
+      }
+
       if (activeLead && activeLead.phone) {
-        const normalizedPhone = normalizePhone(activeLead.phone);
-        setWaMessages(prev => prev.map(m => (m.senderPhone === normalizedPhone && m.direction === 'inbound' && !m.isRead) ? { ...m, isRead: true } : m));
-        const unreadMsgs = waMessages.filter(m => m.senderPhone === normalizedPhone && m.direction === 'inbound' && !m.isRead);
-        if (unreadMsgs.length > 0) { unreadMsgs.forEach(msg => { updateDoc(doc(db, 'whatsapp_messages', msg.id), { isRead: true }).catch(console.error); }); }
+        const unreadMsgs = waMessages.filter(m => m.direction === 'inbound' && !m.isRead);
+        if (unreadMsgs.length > 0) { 
+          unreadMsgs.forEach(msg => { updateDoc(doc(db, 'whatsapp_messages', msg.id), { isRead: true }).catch(console.error); }); 
+        }
       }
     }
-  }, [activeChatLeadId, activeTab, leads]);
-
+  }, [activeChatLeadId, activeTab, leads, waMessages]);
   const unreadWhatsAppCount = useMemo(() => { return waMessages.filter(m => m.direction === 'inbound' && !m.isRead).length; }, [waMessages]);
   const unreadCount = notifications.filter(n => !n.isRead).length;
   const markAllAsRead = () => { setNotifications(prev => prev.map(n => ({ ...n, isRead: true }))); setIsNotificationOpen(false); };
@@ -1814,24 +1837,30 @@ const handleConnectWhatsApp = () => {
                   <div className="p-4 border-b border-slate-200/60 bg-white/50 backdrop-blur-md sticky top-0 z-10"><h2 className="text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2"><MessageCircle className="w-5 h-5 text-[#25D366]"/> Messages</h2><div className="mt-3 relative"><Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" /><input type="text" placeholder="Search chats..." className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-[#25D366]/30 outline-none shadow-sm" /></div></div>
                   <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
                     {(() => {
-                      const leadsWithChats = leads.filter(l => l.phone).map(l => {
-                        const normalizedPhone = normalizePhone(l.phone);
-                        const msgsForLead = waMessages.filter(m => m.senderPhone === normalizedPhone);
-                        return { ...l, msgs: msgsForLead, lastMsg: msgsForLead[msgsForLead.length - 1] };
-                      }).filter(l => l.msgs.length > 0 || l.id === activeChatLeadId).sort((a, b) => {
-                        const timeA = a.lastMsg ? (a.lastMsg.timestamp?.toMillis ? a.lastMsg.timestamp.toMillis() : new Date(a.lastMsg.timestamp).getTime()) : 0;
-                        const timeB = b.lastMsg ? (b.lastMsg.timestamp?.toMillis ? b.lastMsg.timestamp.toMillis() : new Date(b.lastMsg.timestamp).getTime()) : 0;
+                      // ✨ LEVEL 5 COST-SAVING: Sidebar mapped directly from Leads data! ✨
+                      const leadsWithChats = leads.filter(l => (l as any).lastMessageTime || l.id === activeChatLeadId).sort((a, b) => {
+                        const timeA = (a as any).lastMessageTime?.toMillis ? (a as any).lastMessageTime.toMillis() : 0;
+                        const timeB = (b as any).lastMessageTime?.toMillis ? (b as any).lastMessageTime.toMillis() : 0;
                         return timeB - timeA;
                       });
 
                       if (leadsWithChats.length === 0) return (<div className="text-center p-6 mt-10"><MessageCircle className="w-8 h-8 text-slate-300 mx-auto mb-3" /><p className="text-sm font-bold text-slate-500">No messages yet</p><p className="text-xs text-slate-400 mt-1">When leads reply, they will appear here.</p></div>);
 
                       return leadsWithChats.map(l => {
-                        const unreadC = l.msgs.filter(m => m.direction === 'inbound' && !m.isRead).length;
+                        const unreadC = (l as any).unreadWaCount || 0;
+                        const lastMsgText = (l as any).lastMessageText || 'Chat started';
+                        const lastMsgTime = (l as any).lastMessageTime;
+
                         return (
                           <button key={l.id} onClick={() => setActiveChatLeadId(l.id)} className={`w-full text-left p-3 rounded-2xl transition-all flex gap-3 items-center ${activeChatLeadId === l.id ? 'bg-white shadow-md border border-slate-200' : 'hover:bg-slate-100/80 border border-transparent'}`}>
-                            <div className="relative"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#74ebd5]/20 to-[#9face6]/20 text-[#50bdaf] flex items-center justify-center font-bold shadow-inner">{l.firstName.charAt(0)}</div>{unreadC > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 border-2 border-white rounded-full"></span>}</div>
-                            <div className="flex-1 min-w-0"><div className="flex justify-between items-center mb-0.5"><h4 className="text-sm font-bold text-slate-800 truncate">{l.firstName} {l.lastName === 'Lead' ? '' : l.lastName}</h4><span className="text-[10px] font-bold text-slate-400 shrink-0">{(l.lastMsg && l.lastMsg.timestamp) ? new Date(l.lastMsg.timestamp.toDate ? l.lastMsg.timestamp.toDate() : l.lastMsg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span></div><p className={`text-xs truncate ${unreadC > 0 ? 'text-slate-900 font-bold' : 'text-slate-500 font-medium'}`}>{l.lastMsg ? (l.lastMsg.direction === 'outbound' ? `You: ${l.lastMsg.text}` : l.lastMsg.text) : 'No messages'}</p></div>
+                            <div className="relative"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#74ebd5]/20 to-[#9face6]/20 text-[#50bdaf] flex items-center justify-center font-bold shadow-inner">{l.firstName.charAt(0)}</div>{unreadC > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold flex items-center justify-center border-2 border-white rounded-full">{unreadC}</span>}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between items-center mb-0.5">
+                                <h4 className="text-sm font-bold text-slate-800 truncate">{l.firstName} {l.lastName === 'Lead' ? '' : l.lastName}</h4>
+                                <span className="text-[10px] font-bold text-slate-400 shrink-0">{lastMsgTime ? new Date(lastMsgTime.toDate ? lastMsgTime.toDate() : lastMsgTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
+                              </div>
+                              <p className={`text-xs truncate ${unreadC > 0 ? 'text-slate-900 font-bold' : 'text-slate-500 font-medium'}`}>{lastMsgText}</p>
+                            </div>
                           </button>
                         )
                       });
