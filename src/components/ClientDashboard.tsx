@@ -3,11 +3,12 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon, Megaphone, RefreshCw, FileText, Bot, Eye, MousePointerClick, CheckCheck, Smartphone, Lock } from 'lucide-react';
+import { Users, Plus, LogOut, LayoutDashboard, Building2, UserCircle2, Mail, Calendar, Phone, Home, X, Link2, Copy, Check, Globe, Facebook, Search, Zap, List, KanbanSquare, UserPlus, UserCog, Edit2, Trash2, ChevronDown, ChevronUp, Menu, Download, MessageSquare, TrendingUp, Activity, Target, Clock, Bell, Upload, AlertCircle, CheckCircle2, Info, XCircle, BarChart2, BellRing, CheckSquare, Send, MessageCircle, Save, Medal, MoreVertical, Image as ImageIcon, Megaphone, RefreshCw, FileText, Bot, Eye, MousePointerClick, CheckCheck, Smartphone, Lock, PlusCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import LeadDetailsModal, { Lead } from './LeadDetailsModal';
 import { useBranding } from '../contexts/BrandingContext';
 import WhatsAppBuilder from './WhatsAppBuilder';
+import CreateTemplateModal from './CreateTemplateModal';
 // ✨ LEVEL 5 AI-SENSY ENGINE: Mock Template Data
 const WA_TEMPLATES = [
   { id: 't1', name: 'project_launch_01', type: 'MARKETING', status: 'APPROVED', lang: 'en', 
@@ -98,7 +99,8 @@ export default function ClientDashboard() {
 const [isAutomationsMenuOpen, setIsAutomationsMenuOpen] = useState(false); // ✨ NEW STATE FOR DROPDOWN
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-
+// Template Modal State
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'pipeline'>('pipeline');
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -2541,14 +2543,20 @@ const handleConnectWhatsApp = () => {
                       <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 tracking-tight mb-1">WhatsApp Campaigns</h2>
                       <p className="text-slate-500 text-sm font-medium">Broadcast massive campaigns and track real-time delivery analytics.</p>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <button onClick={handleSyncTemplates} disabled={!whatsappConnected || isSyncingTemplates} className="flex items-center gap-2 py-2.5 px-5 rounded-xl text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50">
-                        <RefreshCw className={`w-4 h-4 ${isSyncingTemplates ? 'animate-spin' : ''}`} /> Sync Templates
-                      </button>
-                      <button onClick={() => { setSelectedLeads([]); setIsCampaignModalOpen(true); setWizardStep(1); }} className="flex items-center gap-2 py-2.5 px-6 rounded-xl shadow-lg shadow-[#25D366]/30 text-sm font-bold text-white bg-[#25D366] hover:bg-[#1EBE57] transition-all hover:-translate-y-0.5 whitespace-nowrap">
-                        <Megaphone className="w-4 h-4" /> New Broadcast
-                      </button>
-                    </div>
+                   <div className="flex items-center gap-3">
+    <button onClick={handleSyncTemplates} className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl shadow-sm hover:bg-slate-50 flex items-center gap-2 text-sm transition-all">
+      <RefreshCw className={`w-4 h-4 ${isSyncingTemplates ? 'animate-spin' : ''}`} /> Sync Templates
+    </button>
+    
+    {/* ✨ NEW CREATE TEMPLATE BUTTON ✨ */}
+    <button onClick={() => setIsCreateModalOpen(true)} className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 font-bold rounded-xl shadow-sm hover:bg-indigo-100 flex items-center gap-2 text-sm transition-all">
+      <PlusCircle className="w-4 h-4" /> Create Template
+    </button>
+
+    <button className="px-4 py-2 bg-[#25D366] text-white font-bold rounded-xl shadow-md hover:bg-[#1EBE57] flex items-center gap-2 text-sm transition-all shadow-[#25D366]/30">
+      <Megaphone className="w-4 h-4" /> New Broadcast
+    </button>
+  </div>
                   </div>
 
                   {/* AiSensy Style Analytics Banner */}
@@ -3293,7 +3301,15 @@ const handleConnectWhatsApp = () => {
           </div>
         </div>
       )}
-
+{/* ✨ NEW TEMPLATE MODAL ✨ */}
+      <CreateTemplateModal 
+        isOpen={isCreateModalOpen} 
+        onClose={() => setIsCreateModalOpen(false)} 
+        onSuccess={() => { 
+          setIsCreateModalOpen(false); 
+          handleSyncTemplates(); // Auto-sync to fetch the new PENDING template from Meta!
+        }} 
+      />
       {/* Custom Scrollbars & Enterprise Theme Engine */}
      <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }

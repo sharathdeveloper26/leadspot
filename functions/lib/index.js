@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteAgencyAccount = exports.deleteSubClientWorkspace = exports.enforceLeadLimits = exports.onSuperAdminRemoved = exports.onSuperAdminAdded = exports.autoPushToGoogleSheets = exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.createAgencyAccount = exports.createSubClientWorkspace = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
+exports.createWhatsAppTemplate = exports.syncWhatsAppTemplates = exports.deleteAgencyAccount = exports.deleteSubClientWorkspace = exports.enforceLeadLimits = exports.onSuperAdminRemoved = exports.onSuperAdminAdded = exports.autoPushToGoogleSheets = exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.createAgencyAccount = exports.createSubClientWorkspace = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
@@ -1287,6 +1287,95 @@ exports.deleteAgencyAccount = (0, https_1.onCall)(functionOpts, async (request) 
     catch (error) {
         console.error("Error deleting agency:", error);
         throw new https_1.HttpsError('internal', error.message || 'Failed to delete agency.');
+    }
+});
+// ============================================================================
+// 🚀 PHASE 4: WHATSAPP TEMPLATE MANAGEMENT (CREATION & SYNC) 🚀
+// ============================================================================
+exports.syncWhatsAppTemplates = (0, https_1.onCall)(functionOpts, async (request) => {
+    var _a, _b, _c, _d, _e;
+    if (!request.auth)
+        throw new https_1.HttpsError("unauthenticated", "Must be logged in.");
+    const clientId = request.auth.token.clientId;
+    if (!clientId)
+        throw new https_1.HttpsError("invalid-argument", "Missing Client ID.");
+    try {
+        // 1. Get Client's Meta Credentials
+        const integrationDoc = await db.collection('whatsapp_integrations').doc(clientId).get();
+        if (!integrationDoc.exists || ((_a = integrationDoc.data()) === null || _a === void 0 ? void 0 : _a.status) !== 'active') {
+            throw new https_1.HttpsError("failed-precondition", "No active WhatsApp integration found.");
+        }
+        const { wabaId, systemAccessToken } = integrationDoc.data();
+        if (!wabaId || !systemAccessToken)
+            throw new https_1.HttpsError("failed-precondition", "Missing WABA ID or Token.");
+        // 2. Fetch Templates from Meta Graph API
+        const response = await axios_1.default.get(`https://graph.facebook.com/v20.0/${wabaId}/message_templates?limit=1000`, { headers: { "Authorization": `Bearer ${systemAccessToken}` }, timeout: 8000 });
+        const templates = response.data.data;
+        // 3. Batch write to Firestore to update the CRM UI
+        const batch = db.batch();
+        const templatesRef = db.collection('whatsapp_templates');
+        // Optional: Clear old templates or just overwrite existing
+        templates.forEach((template) => {
+            const docRef = templatesRef.doc(`${clientId}_${template.name}_${template.language}`);
+            batch.set(docRef, {
+                clientId: clientId,
+                metaTemplateId: template.id,
+                name: template.name,
+                language: template.language,
+                category: template.category,
+                status: template.status, // APPROVED, PENDING, REJECTED
+                components: template.components,
+                lastSyncedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        });
+        await batch.commit();
+        return { success: true, message: `Successfully synced ${templates.length} templates from Meta.` };
+    }
+    catch (error) {
+        console.error("Template Sync Error:", ((_b = error.response) === null || _b === void 0 ? void 0 : _b.data) || error.message);
+        throw new https_1.HttpsError("internal", ((_e = (_d = (_c = error.response) === null || _c === void 0 ? void 0 : _c.data) === null || _d === void 0 ? void 0 : _d.error) === null || _e === void 0 ? void 0 : _e.message) || "Failed to sync templates.");
+    }
+});
+exports.createWhatsAppTemplate = (0, https_1.onCall)(functionOpts, async (request) => {
+    var _a, _b, _c, _d;
+    if (!request.auth)
+        throw new https_1.HttpsError("unauthenticated", "Must be logged in.");
+    const clientId = request.auth.token.clientId;
+    const { name, category, language, components } = request.data;
+    if (!name || !category || !language || !components) {
+        throw new https_1.HttpsError("invalid-argument", "Missing required template fields.");
+    }
+    try {
+        // 1. Get Client's Meta Credentials
+        const integrationDoc = await db.collection('whatsapp_integrations').doc(clientId).get();
+        if (!integrationDoc.exists)
+            throw new https_1.HttpsError("failed-precondition", "No active integration.");
+        const { wabaId, systemAccessToken } = integrationDoc.data();
+        // 2. Submit to Meta Graph API
+        const response = await axios_1.default.post(`https://graph.facebook.com/v20.0/${wabaId}/message_templates`, {
+            name: name.toLowerCase().replace(/[^a-z0-9_]/g, '_'), // Meta requires lowercase and underscores
+            category: category, // MARKETING, UTILITY, AUTHENTICATION
+            language: language,
+            components: components
+        }, { headers: { "Authorization": `Bearer ${systemAccessToken}`, "Content-Type": "application/json" }, timeout: 8000 });
+        const metaTemplateId = response.data.id;
+        // 3. Save to CRM Database as PENDING
+        await db.collection('whatsapp_templates').doc(`${clientId}_${name}_${language}`).set({
+            clientId: clientId,
+            metaTemplateId: metaTemplateId,
+            name: name.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+            language: language,
+            category: category,
+            status: "PENDING", // Meta must approve it
+            components: components,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastSyncedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return { success: true, message: "Template submitted for Meta approval.", templateId: metaTemplateId };
+    }
+    catch (error) {
+        console.error("Template Creation Error:", ((_a = error.response) === null || _a === void 0 ? void 0 : _a.data) || error.message);
+        throw new https_1.HttpsError("internal", ((_d = (_c = (_b = error.response) === null || _b === void 0 ? void 0 : _b.data) === null || _c === void 0 ? void 0 : _c.error) === null || _d === void 0 ? void 0 : _d.message) || "Failed to create template.");
     }
 });
 //# sourceMappingURL=index.js.map
