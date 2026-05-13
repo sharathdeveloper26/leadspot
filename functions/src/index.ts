@@ -853,6 +853,9 @@ export const sendBulkWhatsAppCampaign = onCall(functionOpts, async (request) => 
 // ============================================================================
 // 🚀 PHASE 2: TWO-WAY WHATSAPP INBOX WEBHOOK 🚀
 // ============================================================================
+// ============================================================================
+// 🚀 PHASE 2: TWO-WAY WHATSAPP INBOX WEBHOOK (WITH BOT ENGINE) 🚀
+// ============================================================================
 export const whatsappWebhook = onRequest({ 
   cors: true,
   memory: "256MiB",
@@ -860,7 +863,7 @@ export const whatsappWebhook = onRequest({
   maxInstances: 10,
 }, async (req, res) => {
   
-  const WHATSAPP_VERIFY_TOKEN = "LEADSPOT_WA_SECRET_2026"; // You will need this in Step 2!
+  const WHATSAPP_VERIFY_TOKEN = "LEADSPOT_WA_SECRET_2026"; // Ensure this matches Meta
 
   // 1. HANDSHAKE: Meta Webhook Verification
   if (req.method === "GET") {
@@ -877,7 +880,7 @@ export const whatsappWebhook = onRequest({
     return;
   }
 
-  // 2. MESSAGE CATCHER: Handle Incoming WhatsApp Messages
+  // 2. MESSAGE CATCHER & BOT ENGINE: Handle Incoming WhatsApp Messages
   if (req.method === "POST") {
     try {
       const body = req.body;
@@ -886,13 +889,13 @@ export const whatsappWebhook = onRequest({
         for (const entry of body.entry) {
           for (const change of entry.changes) { 
             const value = change.value;
-            const wabaId = entry.id; // WhatsApp Business Account ID
+            const wabaId = entry.id; 
             const phoneNumberId = value.metadata?.phone_number_id;
 
             // Handle Incoming Messages from Leads
             if (value.messages && value.messages.length > 0) {
               for (const msg of value.messages) {
-                const senderPhone = msg.from; // Lead's phone number
+                const senderPhone = msg.from; 
                 const messageId = msg.id;
                 const timestamp = msg.timestamp;
                 
@@ -903,28 +906,99 @@ export const whatsappWebhook = onRequest({
                   messageText = `[Received a ${msg.type} message]`;
                 }
 
-                console.log(`Received WA message from ${senderPhone}: ${messageText}`);
+                // A) Identify Client from Phone Number ID
+                const integrationSnap = await db.collection("whatsapp_integrations")
+                  .where("phoneNumberId", "==", phoneNumberId)
+                  .limit(1)
+                  .get();
 
+                let clientId = null;
+                if (!integrationSnap.empty) {
+                  clientId = integrationSnap.docs[0].data().clientId;
+                }
+
+                // B) Save incoming message to CRM Inbox
                 await db.collection("whatsapp_messages").add({
+                  clientId: clientId, // Maps the message to the correct workspace
                   wabaId: wabaId,
                   phoneNumberId: phoneNumberId,
                   messageId: messageId,
                   senderPhone: senderPhone,
                   text: messageText,
                   type: msg.type,
-                  direction: "inbound", // Mark as received
+                  direction: "inbound", 
                   status: "received",
                   timestamp: admin.firestore.Timestamp.fromMillis(parseInt(timestamp) * 1000),
                   createdAt: admin.firestore.FieldValue.serverTimestamp(),
                   isRead: false
                 });
+
+                // C) 🤖 AI BOT TRAVERSAL ENGINE 🤖
+                if (clientId && msg.type === "text") {
+                  const userText = messageText.toLowerCase().trim();
+
+                  // Check if a human agent clicked "Pause Bot" for this lead
+                  const leadSnap = await db.collection("leads")
+                    .where("clientId", "==", clientId)
+                    .where("phone", "==", senderPhone)
+                    .limit(1)
+                    .get();
+
+                  const isBotPaused = !leadSnap.empty && leadSnap.docs[0].data().botStatus === 'paused';
+
+                  if (!isBotPaused) {
+                    // Load the published visual flow from Firestore
+                    const flowSnap = await db.collection("whatsapp_flows").doc(clientId).get();
+                    
+                    if (flowSnap.exists) {
+                      const flow = flowSnap.data() as any;
+                      const triggerNode = flow.nodes?.find((n: any) => n.type === "trigger");
+                      const triggerKeyword = triggerNode?.data?.message?.toLowerCase().trim();
+
+                      // Match the trigger keyword
+                      if (triggerKeyword && userText === triggerKeyword) {
+                        const nextEdge = flow.edges?.find((e: any) => e.source === triggerNode.id);
+                        
+                        if (nextEdge) {
+                          const nextNode = flow.nodes?.find((n: any) => n.id === nextEdge.target);
+                          
+                          if (nextNode) {
+                            let botResponseText = nextNode.data.message || `[${nextNode.type} Action]`;
+                            
+                            // Formatting complex nodes gracefully as text for dispatch
+                            if (nextNode.type === 'waForm') botResponseText = `${botResponseText}\n\n[Form: ${nextNode.data.formTitle}]`;
+                            if (nextNode.type === 'list') botResponseText = `${botResponseText}\n\n[Menu: ${nextNode.data.menuTitle}]`;
+                            if (nextNode.type === 'button') {
+                              botResponseText = `${botResponseText}\n` + (nextNode.data.buttons || []).map((b:string)=>`🔘 ${b}`).join('\n');
+                            }
+
+                            // D) Trigger the existing `sendOutboundWhatsApp` function!
+                            await db.collection("whatsapp_messages").add({
+                              clientId: clientId,
+                              wabaId: wabaId,
+                              senderPhone: senderPhone,
+                              text: botResponseText,
+                              type: "text", 
+                              direction: "outbound", // This triggers your background dispatcher
+                              status: "pending",
+                              agentName: "AI Bot", // Identifies the sender in the Inbox UI
+                              timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                              isRead: true
+                            });
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
 
             // Handle Message Status Updates (Sent, Delivered, Read)
             if (value.statuses && value.statuses.length > 0) {
               for (const status of value.statuses) {
-                console.log(`Message ${status.id} is now ${status.status}`);
+                console.log(`Message ID ${status.id} updated to: ${status.status}`);
               }
             }
           }

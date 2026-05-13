@@ -24,6 +24,7 @@ export interface Lead {
   assignedTo?: string;
   assignedToId?: string;
   assignedToName?: string;
+  botStatus?: string;
   isDuplicate?: boolean;
   createdAt: any;
   notes?: LeadNote[];
