@@ -1937,9 +1937,8 @@ const handleConnectWhatsApp = () => {
             </div>
           </div>
         </header>
-
-       <div className={`flex-1 overflow-y-auto custom-scrollbar ${activeTab === 'whatsapp_bot' ? 'p-0 overflow-hidden' : activeTab === 'inbox' || activeTab === 'website_bot' ? 'p-0 sm:p-4 md:p-8' : 'p-4 md:p-8'}`}>
-  <div className={`${activeTab === 'whatsapp_bot' ? 'w-full h-full flex flex-col' : `max-w-7xl mx-auto h-full flex flex-col ${activeTab === 'inbox' || activeTab === 'website_bot' ? 'min-w-0' : 'min-w-[800px] md:min-w-0'}`}`}>
+<div className={`flex-1 overflow-y-auto custom-scrollbar ${activeTab === 'whatsapp_bot' || activeTab === 'website_bot' ? 'p-0 overflow-hidden' : activeTab === 'inbox' ? 'p-0 sm:p-4 md:p-8' : 'p-4 md:p-8'}`}>
+          <div className={`${activeTab === 'whatsapp_bot' || activeTab === 'website_bot' ? 'w-full h-full flex flex-col' : `max-w-7xl mx-auto h-full flex flex-col ${activeTab === 'inbox' ? 'min-w-0' : 'min-w-[800px] md:min-w-0'}`}`}>
             
         {/* ✨ WHATSAPP BOT BUILDER ✨ */}
 {activeTab === 'whatsapp_bot' && (
