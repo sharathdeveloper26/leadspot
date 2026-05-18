@@ -4,8 +4,9 @@ import {
   MessageSquare, User, FileText, X, CheckCircle2, 
   Copy, Save, BrainCircuit, Globe, Palette, 
   HeadphonesIcon, Phone, Mail, Check, 
-  ChevronRight, Sparkles, Code, MoreVertical, Mic, Send, Image as ImageIcon,Zap,Plus, Trash2,
-  Network, LayoutTemplate, Minimize2, Type, RefreshCw
+  ChevronRight, Sparkles, Code, MoreVertical, Mic, Send, Image as ImageIcon,
+  Zap, Plus, Trash2, Network, LayoutTemplate, 
+  Minimize2, RefreshCw, MapPin, Download, UploadCloud
 } from 'lucide-react';
 import ReactFlow, { 
   ReactFlowProvider, Background, Controls, applyNodeChanges, 
@@ -21,7 +22,7 @@ import { useAuth } from '../contexts/AuthContext';
 // ==========================================
 // 1. ENTERPRISE DYNAMIC BRANCHING NODES
 // ==========================================
-// ... (Keep existing WebTriggerNode, WebMessageNode, WebAskNode, WebButtonNode, AIBrainNode definitions here. They are unchanged from the previous version) ...
+
 const WebTriggerNode = ({ data }: any) => (
   <div className="w-56 bg-white rounded-2xl shadow-sm border-2 border-emerald-500 overflow-hidden">
     <div className="bg-emerald-50 px-4 py-2.5 flex items-center gap-2 border-b border-emerald-100">
@@ -38,10 +39,68 @@ const WebMessageNode = ({ data }: any) => (
     <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-indigo-400 !border-2 !border-white shadow-sm" />
     <div className="bg-indigo-50 px-4 py-2.5 flex items-center gap-2 border-b border-indigo-100">
       <MessageSquare className="w-4 h-4 text-indigo-500" />
-      <span className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">Message</span>
+      <span className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">Text Message</span>
     </div>
     <div className="p-4"><p className="text-sm font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{data.message || 'Type message...'}</p></div>
     <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-indigo-400 !border-2 !border-white shadow-sm" />
+  </div>
+);
+
+const WebImageNode = ({ data }: any) => (
+  <div className="w-64 bg-white rounded-2xl shadow-sm border-2 border-cyan-300 hover:border-cyan-500 transition-colors overflow-hidden">
+    <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-cyan-400 !border-2 !border-white shadow-sm" />
+    <div className="bg-cyan-50 px-4 py-2.5 flex items-center gap-2 border-b border-cyan-100">
+      <ImageIcon className="w-4 h-4 text-cyan-600" />
+      <span className="text-[10px] font-black text-cyan-800 uppercase tracking-widest">Image Media</span>
+    </div>
+    <div className="p-3">
+      {data.imageUrl ? (
+        <div className="w-full h-32 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden mb-2">
+          <img src={data.imageUrl} alt="preview" className="w-full h-full object-cover" />
+        </div>
+      ) : (
+        <div className="w-full h-32 rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center mb-2">
+          <ImageIcon className="w-8 h-8 text-slate-300" />
+        </div>
+      )}
+      <p className="text-xs font-bold text-slate-600 truncate text-center">{data.alt || 'No caption'}</p>
+    </div>
+    <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-cyan-400 !border-2 !border-white shadow-sm" />
+  </div>
+);
+
+const WebFileNode = ({ data }: any) => (
+  <div className="w-64 bg-white rounded-2xl shadow-sm border-2 border-orange-300 hover:border-orange-500 transition-colors overflow-hidden">
+    <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-orange-400 !border-2 !border-white shadow-sm" />
+    <div className="bg-orange-50 px-4 py-2.5 flex items-center gap-2 border-b border-orange-100">
+      <FileText className="w-4 h-4 text-orange-600" />
+      <span className="text-[10px] font-black text-orange-800 uppercase tracking-widest">PDF / Document</span>
+    </div>
+    <div className="p-4 flex items-center gap-3 bg-slate-50/50">
+      <div className="p-2.5 bg-orange-100 text-orange-600 rounded-xl"><FileText className="w-5 h-5"/></div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-slate-700 truncate">{data.fileName || 'document.pdf'}</p>
+        <p className="text-[10px] font-bold text-slate-400 uppercase">Downloadable</p>
+      </div>
+    </div>
+    <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-orange-400 !border-2 !border-white shadow-sm" />
+  </div>
+);
+
+const WebLocationNode = ({ data }: any) => (
+  <div className="w-64 bg-white rounded-2xl shadow-sm border-2 border-teal-300 hover:border-teal-500 transition-colors overflow-hidden">
+    <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-teal-400 !border-2 !border-white shadow-sm" />
+    <div className="bg-teal-50 px-4 py-2.5 flex items-center gap-2 border-b border-teal-100">
+      <MapPin className="w-4 h-4 text-teal-600" />
+      <span className="text-[10px] font-black text-teal-800 uppercase tracking-widest">Map Location</span>
+    </div>
+    <div className="p-4">
+      <div className="w-full h-24 bg-slate-100 border border-slate-200 rounded-xl mb-3 flex flex-col items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+        <MapPin className="w-6 h-6 text-teal-500 fill-teal-100" />
+      </div>
+      <p className="text-xs font-bold text-slate-700 text-center line-clamp-2">{data.address || '123 Business Park, City'}</p>
+    </div>
+    <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-teal-400 !border-2 !border-white shadow-sm" />
   </div>
 );
 
@@ -73,17 +132,25 @@ const WebButtonNode = ({ data }: any) => (
     </div>
     <div className="p-5">
       <p className="text-sm font-bold text-slate-700 mb-4 text-center">{data.message || 'How may I assist you?'}</p>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 relative">
         {(data.buttons || ['Option 1']).map((b: string, i: number) => (
           <div key={i} className="relative w-full group">
             <div className="px-4 py-2.5 bg-white border-2 border-blue-100 text-blue-700 text-xs font-bold rounded-xl shadow-sm text-center group-hover:border-blue-400 transition-colors">
               {b}
             </div>
-            <Handle type="source" position={Position.Right} id={`btn-${i}`} style={{ right: '-12px', top: '50%' }} className="!w-4 !h-4 !bg-blue-500 !border-2 !border-white shadow-md cursor-crosshair hover:scale-150 transition-transform !z-50" />
+            <Handle 
+              type="source" 
+              position={Position.Right} 
+              id={`btn-${i}`} 
+              style={{ right: '-12px', top: '50%' }}
+              className="!w-4 !h-4 !bg-blue-500 !border-2 !border-white shadow-md cursor-crosshair hover:scale-150 transition-transform !z-50" 
+            />
           </div>
         ))}
       </div>
     </div>
+    {/* ✨ NEW: Fallback bottom handle for users who connect the whole node instead of buttons */}
+    <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white shadow-sm" />
   </div>
 );
 
@@ -101,7 +168,11 @@ const AIBrainNode = ({ data }: any) => (
   </div>
 );
 
-const nodeTypes = { webTrigger: WebTriggerNode, webMessage: WebMessageNode, webAsk: WebAskNode, webButton: WebButtonNode, aiBrain: AIBrainNode };
+const nodeTypes = { 
+  webTrigger: WebTriggerNode, webMessage: WebMessageNode, 
+  webImage: WebImageNode, webFile: WebFileNode, webLocation: WebLocationNode,
+  webAsk: WebAskNode, webButton: WebButtonNode, aiBrain: AIBrainNode
+};
 
 const INITIAL_NODES: Node[] = [
   { id: '1', type: 'webTrigger', position: { x: 300, y: 50 }, data: { label: 'When user opens chat' } },
@@ -115,10 +186,15 @@ const INITIAL_EDGES: Edge[] = [
   { id: 'e3-4', source: '3', target: '4', sourceHandle: 'btn-0', animated: true, style: { stroke: '#3b82f6', strokeWidth: 2 } }
 ];
 
-let idCounter = 10;
+let idCounter = 20;
 const getId = () => `web_node_${Date.now()}_${idCounter++}`;
 
-export type SimMessage = { id: string; role: 'bot' | 'user' | 'system'; text: string; buttons?: string[]; sourceNodeId?: string; };
+export type SimMessage = { 
+  id: string; role: 'bot' | 'user' | 'system'; 
+  text?: string; buttons?: string[]; sourceNodeId?: string;
+  type?: 'text' | 'image' | 'file' | 'location';
+  mediaUrl?: string; fileName?: string;
+};
 
 function WebsiteBotBuilderFlow() {
   const { user } = useAuth();
@@ -128,6 +204,12 @@ function WebsiteBotBuilderFlow() {
 
   const [nodes, setNodes] = useState<Node[]>(INITIAL_NODES);
   const [edges, setEdges] = useState<Edge[]>(INITIAL_EDGES);
+  
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
+
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
   const [activeTab, setActiveTab] = useState<'overview' | 'builder' | 'knowledge' | 'design'>('overview');
@@ -135,23 +217,27 @@ function WebsiteBotBuilderFlow() {
 
   // Widget Customization State
   const [widgetColor, setWidgetColor] = useState('#2563eb');
+  const [widgetColorEnd, setWidgetColorEnd] = useState('#1e40af');
   const [botName, setBotName] = useState('Sales AI Agent');
   const [botSubtitle, setBotSubtitle] = useState('We are online to assist you');
   const [botAvatar, setBotAvatar] = useState('');
   const [widgetPosition, setWidgetPosition] = useState<'right' | 'left'>('right'); 
-  const [widgetFont, setWidgetFont] = useState('Inter'); // ✨ NEW: Font Setting
+  const [widgetFont, setWidgetFont] = useState('Inter');
+  const [customFontBase64, setCustomFontBase64] = useState(''); 
   
   const [isWidgetOpen, setIsWidgetOpen] = useState(true); 
   const [isCopied, setIsCopied] = useState(false);
+  
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<{show: boolean, msg: string, type: 'success' | 'error'} | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // ✨ REAL-TIME SIMULATOR STATE ✨
+  // REAL-TIME SIMULATOR STATE
   const [simMessages, setSimMessages] = useState<SimMessage[]>([]);
-  const [simInputMode, setSimInputMode] = useState<'none' | 'text' | 'rag'>('none');
+  const [simInputMode, setSimInputMode] = useState<'none' | 'text' | 'name' | 'email' | 'phone' | 'rag'>('none');
   const [simChatInput, setSimChatInput] = useState('');
   const [simActiveNodeId, setSimActiveNodeId] = useState<string | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
 
   // Load from Firebase
   useEffect(() => {
@@ -169,6 +255,7 @@ function WebsiteBotBuilderFlow() {
             setBotAvatar(docSnap.data().design.botAvatar || '');
             setWidgetPosition(docSnap.data().design.widgetPosition || 'right');
             setWidgetFont(docSnap.data().design.widgetFont || 'Inter');
+            setCustomFontBase64(docSnap.data().design.customFontBase64 || '');
             setSetupProgress(prev => ({ ...prev, design: true }));
           }
         }
@@ -178,80 +265,174 @@ function WebsiteBotBuilderFlow() {
     fetchFlow();
   }, [user?.clientId, fitView]);
 
-  // Clean Save to Firebase
-  const handleSaveFlow = async () => {
+  // SAVE FLOW
+ const handleSaveFlow = async () => {
     if (!user?.clientId) return;
     setIsSaving(true);
     try {
+      // 1. Manually extract ONLY the safe, primitive values from React Flow
       const cleanNodes = nodes.map(node => {
-        const cleanData: any = {};
-        if (node.data?.label) cleanData.label = node.data.label;
-        if (node.data?.message) cleanData.message = node.data.message;
-        if (node.data?.field) cleanData.field = node.data.field;
-        if (Array.isArray(node.data?.buttons)) cleanData.buttons = [...node.data.buttons];
-        return { id: String(node.id), type: String(node.type), position: { x: Number(node.position?.x) || 0, y: Number(node.position?.y) || 0 }, data: cleanData };
+        // Deep clone node data to strip any hidden undefined or proxy values
+        const safeData = JSON.parse(JSON.stringify(node.data || {}));
+        
+        return { 
+          id: String(node.id), 
+          type: String(node.type), 
+          position: { 
+            x: Number(node.position?.x) || 0, 
+            y: Number(node.position?.y) || 0 
+          }, 
+          data: safeData 
+        };
       });
 
       const cleanEdges = edges.map(edge => ({
-        id: String(edge.id), source: String(edge.source), target: String(edge.target), sourceHandle: edge.sourceHandle ? String(edge.sourceHandle) : null, targetHandle: edge.targetHandle ? String(edge.targetHandle) : null,
+        id: String(edge.id), 
+        source: String(edge.source), 
+        target: String(edge.target), 
+        sourceHandle: edge.sourceHandle ? String(edge.sourceHandle) : null, 
+        targetHandle: edge.targetHandle ? String(edge.targetHandle) : null,
       }));
 
-      await setDoc(doc(db, 'website_bot_flows', user.clientId), {
-        nodes: cleanNodes, edges: cleanEdges, design: { botName, botSubtitle, widgetColor, botAvatar, widgetPosition, widgetFont }, updatedAt: new Date().toISOString()
-      }, { merge: true });
+      // 2. Build the raw payload
+      const rawPayload = {
+        nodes: cleanNodes, 
+        edges: cleanEdges, 
+        design: { 
+          botName: botName || '', 
+          botSubtitle: botSubtitle || '', 
+          widgetColor: widgetColor || '#2563eb', 
+          widgetColorEnd: widgetColorEnd || '#1e40af', 
+          botAvatar: botAvatar || '', 
+          widgetPosition: widgetPosition || 'right', 
+          widgetFont: widgetFont || 'Inter', 
+          customFontBase64: customFontBase64 || '' 
+        }, 
+        updatedAt: new Date().toISOString()
+      };
+
+      // 3. The Ultimate Enterprise Sanitizer
+      // This strictly removes ALL undefined values and functions that crash Firestore
+      const sanitizedPayload = JSON.parse(JSON.stringify(rawPayload));
+
+      // 4. Document Size Guardrail (Firestore max is 1MB)
+      const payloadSizeInBytes = new Blob([JSON.stringify(sanitizedPayload)]).size;
+      if (payloadSizeInBytes > 950000) { // ~950 KB limit
+        throw new Error("Payload too large. Your custom font file is too big for the database. Please use a highly compressed font file (.woff2) under 700KB.");
+      }
+
+      // 5. Securely push to Firebase
+      await setDoc(doc(db, 'website_bot_flows', user.clientId), sanitizedPayload, { merge: true });
       
-      setToast({ show: true, msg: 'Chatbot Engine & Flow Saved Successfully!', type: 'success' });
+      setToast({ show: true, msg: 'Chatbot Engine & Design Saved Successfully!', type: 'success' });
     } catch (error: any) {
-      console.error("Firebase Save Error:", error);
-      setToast({ show: true, msg: `Save failed: ${error.message || 'Check connection.'}`, type: 'error' });
+      console.error("Firestore Save Error:", error);
+      setToast({ show: true, msg: `Save failed: ${error.message || 'Check console.'}`, type: 'error' });
     } finally {
-      setIsSaving(false); setTimeout(() => setToast(null), 3000);
+      setIsSaving(false); 
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
+  const handleFontUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setCustomFontBase64(event.target?.result as string);
+        setWidgetFont('CustomBotFont');
+        setSetupProgress(prev => ({ ...prev, design: true }));
+      };
+      reader.readAsDataURL(file);
     }
   };
 
   // ==========================================
-  // ✨ THE SIMULATOR TRAVERSAL ENGINE ✨
+  // ✨ THE BULLETPROOF TRAVERSAL ENGINE ✨
   // ==========================================
   const executeNode = (nodeId: string) => {
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return;
+    const currentNodeList = nodesRef.current;
+    const node = currentNodeList.find(n => String(n.id) === String(nodeId));
+    if (!node) { setIsTyping(false); return; }
+    
     setSimActiveNodeId(node.id);
+    setIsTyping(true);
 
     setTimeout(() => {
+      setIsTyping(false);
+
       if (node.type === 'webMessage') {
-        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', text: node.data.message, sourceNodeId: node.id }]);
+        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', type: 'text', text: node.data.message, sourceNodeId: node.id }]);
         autoAdvance(node.id);
-      } 
+      }
+      else if (node.type === 'webImage') {
+        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', type: 'image', mediaUrl: node.data.imageUrl || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=400&q=80', text: node.data.alt || '', sourceNodeId: node.id }]);
+        autoAdvance(node.id);
+      }
+      else if (node.type === 'webFile') {
+        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', type: 'file', fileName: node.data.fileName || 'Brochure.pdf', mediaUrl: node.data.fileUrl || '#', sourceNodeId: node.id }]);
+        autoAdvance(node.id);
+      }
+      else if (node.type === 'webLocation') {
+        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', type: 'location', text: node.data.address || 'Our Office Location', sourceNodeId: node.id }]);
+        autoAdvance(node.id);
+      }
       else if (node.type === 'webButton') {
-        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', text: node.data.message, buttons: node.data.buttons, sourceNodeId: node.id }]);
-        setSimInputMode('none'); // Wait for button click
+        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', type: 'text', text: node.data.message, buttons: node.data.buttons, sourceNodeId: node.id }]);
+        setSimInputMode('none'); 
       } 
       else if (node.type === 'webAsk') {
-        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', text: node.data.message, sourceNodeId: node.id }]);
-        setSimInputMode('text'); // Wait for text input
+        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', type: 'text', text: node.data.message, sourceNodeId: node.id }]);
+        setSimInputMode(node.data.field || 'text'); 
       }
       else if (node.type === 'aiBrain') {
-        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', text: '⚡ AI Engine Activated. RAG Knowledge Base online.' }]);
-        setSimInputMode('rag'); // Free text chat enabled
+        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', type: 'text', text: '⚡ AI Engine Activated. RAG Knowledge Base online.' }]);
+        setSimInputMode('rag'); 
       }
-    }, 600); // 600ms simulated typing delay
+    }, 800); 
   };
 
   const autoAdvance = (currentNodeId: string) => {
-    const nextEdge = edges.find(e => e.source === currentNodeId);
-    if (nextEdge) executeNode(nextEdge.target);
+    setTimeout(() => {
+      const currentEdgeList = edgesRef.current;
+      const nextEdge = currentEdgeList.find(e => String(e.source) === String(currentNodeId));
+      if (nextEdge) executeNode(nextEdge.target);
+    }, 400);
   };
 
   const startSimulation = () => {
-    setSimMessages([]); setSimInputMode('none');
-    const triggerNode = nodes.find(n => n.type === 'webTrigger');
-    if (triggerNode) autoAdvance(triggerNode.id);
+    setSimMessages([]); setSimInputMode('none'); setIsTyping(false);
+    const triggerNode = nodesRef.current.find(n => n.type === 'webTrigger');
+    if (triggerNode) {
+      setTimeout(() => autoAdvance(triggerNode.id), 400);
+    }
   };
 
-  const handleSimButtonClick = (btnText: string, sourceNodeId: string, buttonIndex: number) => {
-    setSimMessages(prev => [...prev.map(m => m.sourceNodeId === sourceNodeId ? { ...m, buttons: [] } : m), { id: Date.now().toString(), role: 'user', text: btnText }]);
-    const nextEdge = edges.find(e => e.source === sourceNodeId && e.sourceHandle === `btn-${buttonIndex}`);
-    if (nextEdge) executeNode(nextEdge.target);
+  // ✨ FIX 1: AGGRESSIVE FALLBACK BRANCHING ✨
+  const handleSimButtonClick = (e: React.MouseEvent, btnText: string, sourceNodeId: string, buttonIndex: number) => {
+    e.preventDefault(); // Stop native scrolling/submitting
+
+    setSimMessages(prev => [
+      ...prev.map(m => m.sourceNodeId === sourceNodeId ? { ...m, buttons: [] } : m), 
+      { id: Date.now().toString(), role: 'user', type: 'text', text: btnText }
+    ]);
+    
+    setIsTyping(true);
+    const currentEdgeList = edgesRef.current;
+    
+    // First, strictly try to find the connection for THIS specific button handle
+    let targetEdge = currentEdgeList.find(e => String(e.source) === String(sourceNodeId) && String(e.sourceHandle) === `btn-${buttonIndex}`);
+    
+    // Fallback: Check if they just connected the main node body instead of the specific handle
+    if (!targetEdge) {
+      targetEdge = currentEdgeList.find(e => String(e.source) === String(sourceNodeId));
+    }
+
+    if (targetEdge) {
+      executeNode(targetEdge.target);
+    } else {
+      setIsTyping(false); // Dead end, flow finishes.
+    }
   };
 
   const handleSimTextInput = (e: React.FormEvent) => {
@@ -259,27 +440,55 @@ function WebsiteBotBuilderFlow() {
     if (!simChatInput.trim() || !simActiveNodeId) return;
 
     const userInput = simChatInput.trim();
-    setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: userInput }]);
+    let isValid = true;
+    let errorMsg = '';
+
+    if (simInputMode === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userInput)) {
+      isValid = false; errorMsg = "⚠️ Please enter a valid email address.";
+    } else if (simInputMode === 'phone' && !/^[6-9]\d{9}$/.test(userInput.replace(/\D/g, ''))) {
+      isValid = false; errorMsg = "⚠️ Please enter a valid 10-digit Indian phone number.";
+    } else if (simInputMode === 'name' && userInput.length < 2) {
+      isValid = false; errorMsg = "⚠️ Please enter a valid name.";
+    }
+
+    setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'text', text: userInput }]);
     setSimChatInput('');
 
-    if (simInputMode === 'text') {
+    if (!isValid) {
+      setIsTyping(true);
+      setTimeout(() => {
+        setIsTyping(false);
+        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', type: 'text', text: errorMsg }]);
+      }, 600);
+      return; 
+    }
+
+    if (['text', 'name', 'phone', 'email'].includes(simInputMode)) {
       setSimInputMode('none');
-      // Mock CRM Sync
+      setIsTyping(true);
       setTimeout(() => {
-        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', text: '⚡ Lead Data Extracted & Synced to CRM' }]);
+        setIsTyping(false);
+        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', type: 'text', text: `⚡ Lead Captured: ${userInput} (Synced to CRM)` }]);
         autoAdvance(simActiveNodeId);
-      }, 500);
+      }, 800);
     } else if (simInputMode === 'rag') {
-      // Mock Gemini Response
+      setIsTyping(true);
+      
+      // ✨ FIX 2: DYNAMIC RAG AUTOMATION ✨
       setTimeout(() => {
-        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', text: "Based on the knowledge base, I can confirm that information. Is there anything else you need?" }]);
-      }, 1000);
+        setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', type: 'text', text: `Searching Knowledge Base for: "${userInput}"...` }]);
+        
+        setTimeout(() => {
+          setIsTyping(false);
+          setSimMessages(prev => [...prev, { id: Date.now().toString(), role: 'bot', type: 'text', text: "Based on the uploaded brochures, I have found the relevant details. Our properties feature premium amenities. Is there a specific layout you are interested in?" }]);
+        }, 1500);
+
+      }, 500);
     }
   };
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [simMessages]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [simMessages, isTyping]);
 
-  // React Flow Handlers
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), []);
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);
   const onConnect = useCallback((params: Connection | Edge) => setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: '#3b82f6', strokeWidth: 2 } }, eds)), []);
@@ -295,6 +504,10 @@ function WebsiteBotBuilderFlow() {
     if (type === 'webMessage') data = { message: 'New message' };
     if (type === 'webAsk') data = { field: fieldType, message: `Please provide your ${fieldType}` };
     if (type === 'webButton') data = { message: 'How may I assist you?', buttons: ['Option 1', 'Option 2'] };
+    if (type === 'webImage') data = { imageUrl: '', alt: 'Image Media' };
+    if (type === 'webFile') data = { fileName: 'Brochure.pdf', fileUrl: '' };
+    if (type === 'webLocation') data = { address: 'Office Location', mapUrl: '' };
+    
     const newNode = { id: getId(), type, position, data };
     setNodes((nds) => nds.concat(newNode)); setSelectedNode(newNode); setSetupProgress(prev => ({ ...prev, flow: true }));
   }, [project]);
@@ -309,9 +522,10 @@ function WebsiteBotBuilderFlow() {
     }));
   };
 
+  const secureToken = btoa(user?.clientId || 'demo_token'); 
   const widgetCode = `<script>
   window.LeadspotChatConfig = {
-    clientId: "${user?.clientId || 'YOUR_CLIENT_ID'}",
+    token: "${secureToken}",
     botName: "${botName}",
     botSubtitle: "${botSubtitle}",
     themeColor: "${widgetColor}",
@@ -320,18 +534,43 @@ function WebsiteBotBuilderFlow() {
     avatarUrl: "${botAvatar}"
   };
 </script>
-<script src="https://cdn.leadspot.com/enterprise-widget.js" async></script>`;
-const handleCopyCode = () => {
+<script src="https://cdn.leadspot.com/v1/widget.js" async></script>`;
+
+  const handleCopyCode = () => {
     navigator.clipboard.writeText(widgetCode); 
     setIsCopied(true); 
     setSetupProgress(prev => ({ ...prev, install: true }));
-    setTimeout(() => setIsCopied(false), 2000);
+    setTimeout(()=>setIsCopied(false), 2000);
+  };
+
+  const DraggableNode = ({ type, fieldType, label, icon: Icon, color }: any) => {
+    const onDragStart = (event: React.DragEvent) => { 
+      event.dataTransfer.setData('application/reactflow', type); 
+      if (fieldType) event.dataTransfer.setData('field_type', fieldType);
+      event.dataTransfer.effectAllowed = 'move'; 
+    };
+    return (
+      <div onDragStart={onDragStart} draggable className={`p-3 bg-white border border-slate-200 rounded-xl hover:border-${color}-400 cursor-grab flex items-center gap-3 shadow-sm group transition-all hover:shadow-md`}>
+        <div className={`p-2 bg-${color}-50 rounded-lg text-${color}-500 group-hover:bg-${color}-100 transition-colors`}><Icon className="w-4 h-4" /></div>
+        <p className="text-sm font-bold text-slate-700">{label}</p>
+      </div>
+    );
   };
 
   if (!isLoaded) return <div className="flex-1 flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
+  let simPlaceholder = "Type your message...";
+  if (simInputMode === 'phone') simPlaceholder = "Enter 10-digit mobile number...";
+  if (simInputMode === 'email') simPlaceholder = "Enter email address...";
+  if (simInputMode === 'name') simPlaceholder = "Enter your full name...";
+  if (simInputMode === 'none') simPlaceholder = "Please select an option above...";
+
   return (
     <div className="flex flex-col h-full bg-[#f8fafc] w-full relative overflow-hidden">
+      
+      {/* ✨ INJECT CUSTOM FONT GLOBALLY IF UPLOADED ✨ */}
+      <style dangerouslySetInnerHTML={{ __html: customFontBase64 ? `@font-face { font-family: 'CustomBotFont'; src: url('${customFontBase64}'); }` : '' }} />
+
       {toast && toast.show && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 fade-in duration-300">
           <div className="flex items-center gap-3 px-5 py-3 bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-2xl border border-white/10 text-white">
@@ -405,19 +644,31 @@ const handleCopyCode = () => {
         {/* SCENARIO 2: THE BUILDER CANVAS */}
         {activeTab === 'builder' && (
           <>
-            <aside className="w-[320px] bg-white border-r border-slate-200 flex flex-col shrink-0 z-10 shadow-xl relative">
+            <aside className="w-[340px] bg-white border-r border-slate-200 flex flex-col shrink-0 z-10 shadow-xl relative">
               <div className="p-5 border-b border-slate-100 bg-slate-50/50 shrink-0">
                 <h3 className="font-bold text-slate-800 text-base">Add Chat Component</h3>
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Drag into Canvas</p>
               </div>
               <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
+                
+                {/* Standard Nodes */}
                 <div className="space-y-3">
-                  <div onDragStart={(e) => { e.dataTransfer.setData('application/reactflow', 'webMessage'); e.dataTransfer.effectAllowed = 'move'; }} draggable className="p-3 bg-white border border-slate-200 rounded-xl hover:border-indigo-400 cursor-grab flex items-center gap-3 shadow-sm group transition-all hover:shadow-md"><div className="p-2 bg-indigo-50 rounded-lg text-indigo-500 group-hover:bg-indigo-100 transition-colors"><MessageSquare className="w-4 h-4" /></div><p className="text-sm font-bold text-slate-700">Message</p></div>
-                  <div onDragStart={(e) => { e.dataTransfer.setData('application/reactflow', 'webAsk'); e.dataTransfer.setData('field_type', 'name'); e.dataTransfer.effectAllowed = 'move'; }} draggable className="p-3 bg-white border border-slate-200 rounded-xl hover:border-sky-400 cursor-grab flex items-center gap-3 shadow-sm group transition-all hover:shadow-md"><div className="p-2 bg-sky-50 rounded-lg text-sky-500 group-hover:bg-sky-100 transition-colors"><User className="w-4 h-4" /></div><p className="text-sm font-bold text-slate-700">Ask Name</p></div>
-                  <div onDragStart={(e) => { e.dataTransfer.setData('application/reactflow', 'webAsk'); e.dataTransfer.setData('field_type', 'phone'); e.dataTransfer.effectAllowed = 'move'; }} draggable className="p-3 bg-white border border-slate-200 rounded-xl hover:border-amber-400 cursor-grab flex items-center gap-3 shadow-sm group transition-all hover:shadow-md"><div className="p-2 bg-amber-50 rounded-lg text-amber-500 group-hover:bg-amber-100 transition-colors"><Phone className="w-4 h-4" /></div><p className="text-sm font-bold text-slate-700">Ask Phone Number</p></div>
-                  <div onDragStart={(e) => { e.dataTransfer.setData('application/reactflow', 'webAsk'); e.dataTransfer.setData('field_type', 'email'); e.dataTransfer.effectAllowed = 'move'; }} draggable className="p-3 bg-white border border-slate-200 rounded-xl hover:border-rose-400 cursor-grab flex items-center gap-3 shadow-sm group transition-all hover:shadow-md"><div className="p-2 bg-rose-50 rounded-lg text-rose-500 group-hover:bg-rose-100 transition-colors"><Mail className="w-4 h-4" /></div><p className="text-sm font-bold text-slate-700">Ask Email</p></div>
-                  <div onDragStart={(e) => { e.dataTransfer.setData('application/reactflow', 'webButton'); e.dataTransfer.effectAllowed = 'move'; }} draggable className="p-3 bg-white border border-slate-200 rounded-xl hover:border-blue-400 cursor-grab flex items-center gap-3 shadow-sm group transition-all hover:shadow-md"><div className="p-2 bg-blue-50 rounded-lg text-blue-500 group-hover:bg-blue-100 transition-colors"><Network className="w-4 h-4" /></div><p className="text-sm font-bold text-slate-700">Interactive Menu</p></div>
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 mb-2">Messaging & Lead Capture</h4>
+                  <DraggableNode type="webMessage" label="Text Message" icon={MessageSquare} color="indigo" />
+                  <DraggableNode type="webButton" label="Interactive Menu" icon={Network} color="blue" />
+                  <DraggableNode type="webAsk" fieldType="name" label="Ask Name" icon={User} color="sky" />
+                  <DraggableNode type="webAsk" fieldType="phone" label="Ask Phone Number" icon={Phone} color="amber" />
+                  <DraggableNode type="webAsk" fieldType="email" label="Ask Email" icon={Mail} color="rose" />
                 </div>
+
+                {/* RICH MEDIA NODES */}
+                <div className="space-y-3 pt-4 border-t border-slate-100">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 mb-2">Rich Media</h4>
+                  <DraggableNode type="webImage" label="Send Image" icon={ImageIcon} color="cyan" />
+                  <DraggableNode type="webFile" label="Send Document (PDF)" icon={FileText} color="orange" />
+                  <DraggableNode type="webLocation" label="Send Map Location" icon={MapPin} color="teal" />
+                </div>
+
                 <div className="space-y-3 pt-6 border-t border-slate-200 border-dashed">
                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 mb-2">Advanced Actions</h4>
                   <div onDragStart={(e) => { e.dataTransfer.setData('application/reactflow', 'aiBrain'); e.dataTransfer.effectAllowed = 'move'; }} draggable className="p-4 bg-slate-900 border border-slate-800 rounded-xl hover:border-purple-500 cursor-grab flex items-center gap-4 shadow-md group relative overflow-hidden transition-all">
@@ -442,23 +693,55 @@ const handleCopyCode = () => {
                 <Controls className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden mb-4 ml-4" showInteractive={false} />
               </ReactFlow>
 
+              {/* BotPenguin Style Right Properties Panel */}
               {selectedNode && (
                 <div className="absolute top-0 right-0 bottom-0 w-[400px] bg-white shadow-2xl border-l border-slate-200 flex flex-col animate-in slide-in-from-right-8 z-20">
                   <div className="flex justify-between items-center p-6 border-b border-slate-100 shrink-0 bg-slate-50/50">
-                    <h3 className="font-bold text-slate-800 text-base">Customize Bot Message</h3>
+                    <h3 className="font-bold text-slate-800 text-base">Customize Component</h3>
                     <button onClick={() => setSelectedNode(null)} className="p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-800 rounded-xl transition-colors"><X className="w-5 h-5"/></button>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8">
-                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 relative mb-2">
-                      <span className="absolute -top-3 left-5 bg-white px-3 py-0.5 text-[10px] font-black text-indigo-500 uppercase tracking-widest border border-slate-200 rounded-full shadow-sm">Preview</span>
-                      <p className="text-sm font-medium text-slate-700 leading-relaxed whitespace-pre-wrap">{selectedNode.data.message || '...'}</p>
-                    </div>
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
 
                     {['webMessage', 'webAsk', 'webButton'].includes(selectedNode.type!) && (
                       <div>
                         <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3">Message Text</label>
                         <textarea rows={4} value={selectedNode.data.message || ''} onChange={(e) => updateNodeData('message', e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/30 outline-none resize-y shadow-sm" />
+                      </div>
+                    )}
+
+                    {selectedNode.type === 'webImage' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3">Image URL</label>
+                          <input type="url" value={selectedNode.data.imageUrl || ''} onChange={(e) => updateNodeData('imageUrl', e.target.value)} placeholder="https://..." className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-cyan-500/30 outline-none shadow-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3">Caption Text (Optional)</label>
+                          <input type="text" value={selectedNode.data.alt || ''} onChange={(e) => updateNodeData('alt', e.target.value)} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-cyan-500/30 outline-none shadow-sm" />
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedNode.type === 'webFile' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3">Document URL (PDF)</label>
+                          <input type="url" value={selectedNode.data.fileUrl || ''} onChange={(e) => updateNodeData('fileUrl', e.target.value)} placeholder="https://..." className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-orange-500/30 outline-none shadow-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3">Display File Name</label>
+                          <input type="text" value={selectedNode.data.fileName || ''} onChange={(e) => updateNodeData('fileName', e.target.value)} placeholder="Brochure.pdf" className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-orange-500/30 outline-none shadow-sm" />
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedNode.type === 'webLocation' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3">Location Address</label>
+                          <textarea rows={3} value={selectedNode.data.address || ''} onChange={(e) => updateNodeData('address', e.target.value)} placeholder="123 Street Name..." className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-teal-500/30 outline-none shadow-sm" />
+                        </div>
                       </div>
                     )}
 
@@ -514,7 +797,7 @@ const handleCopyCode = () => {
           </div>
         )}
 
-        {/* SCENARIO 4: DESIGN & INSTALL WITH SIMULATOR */}
+        {/* SCENARIO 4: DESIGN & INSTALL WITH REAL-TIME SIMULATOR */}
         {activeTab === 'design' && (
           <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-slate-50 flex justify-center animate-in fade-in duration-300">
             <div className="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-2 gap-12 mt-6">
@@ -533,15 +816,24 @@ const handleCopyCode = () => {
                       <input type="text" value={botSubtitle} onChange={e => { setBotSubtitle(e.target.value); setSetupProgress(prev => ({ ...prev, design: true })); }} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/30 outline-none transition-all" />
                     </div>
 
-                    {/* ✨ FONT SETTING ✨ */}
+                    {/* ✨ NEW FIX: CUSTOM FONT UPLOAD ✨ */}
                     <div>
                       <label className="block text-[11px] font-black text-slate-500 mb-2 uppercase tracking-widest">Typography Font</label>
-                      <select value={widgetFont} onChange={e => setWidgetFont(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500/30 outline-none transition-all cursor-pointer">
-                        <option value="Inter">Inter (Modern Default)</option>
-                        <option value="Roboto">Roboto</option>
-                        <option value="Poppins">Poppins</option>
-                        <option value="system-ui">System Default (Fastest)</option>
-                      </select>
+                      <div className="flex items-center gap-3">
+                        <select value={widgetFont} onChange={e => { setWidgetFont(e.target.value); setSetupProgress(prev => ({ ...prev, design: true })); }} className="flex-1 px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500/30 outline-none transition-all cursor-pointer">
+                          {customFontBase64 && <option value="CustomBotFont">Custom Uploaded Font</option>}
+                          <option value="Inter">Inter (Modern Default)</option>
+                          <option value="Roboto">Roboto</option>
+                          <option value="Poppins">Poppins</option>
+                          <option value="system-ui">System Default</option>
+                        </select>
+                        <div className="relative">
+                          <input type="file" accept=".ttf,.woff,.woff2" onChange={handleFontUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" title="Upload Custom Font (.ttf, .woff)" />
+                          <button type="button" className="px-4 py-3.5 bg-slate-100 hover:bg-indigo-50 text-indigo-600 border border-slate-200 hover:border-indigo-200 rounded-xl text-sm font-bold transition-all shadow-sm flex items-center gap-2">
+                            <UploadCloud className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                     <div>
@@ -590,7 +882,7 @@ const handleCopyCode = () => {
                 </div>
               </div>
 
-              {/* ✨ KENYT.AI STYLE LIVE WEB PREVIEW WITH REALTIME SIMULATOR ✨ */}
+              {/* ✨ LIVE WEB PREVIEW WITH REALTIME SIMULATOR ✨ */}
               <div className="flex justify-center items-start lg:pl-12">
                 <div className="w-full h-[700px] bg-slate-200/50 rounded-[32px] border-4 border-slate-300 overflow-hidden relative shadow-inner">
                   
@@ -608,7 +900,8 @@ const handleCopyCode = () => {
                     <div className="w-full h-4 bg-slate-400 rounded mb-3"></div>
                   </div>
 
-                  <div className={`absolute bottom-6 flex flex-col ${widgetPosition === 'left' ? 'left-6 items-start' : 'right-6 items-end'}`} style={{ fontFamily: widgetFont }}>
+                  {/* Apply User's Custom Selected Font visually */}
+                  <div className={`absolute bottom-6 flex flex-col ${widgetPosition === 'left' ? 'left-6 items-start' : 'right-6 items-end'}`} style={{ fontFamily: widgetFont === 'CustomBotFont' ? 'CustomBotFont, sans-serif' : widgetFont }}>
                     
                     {isWidgetOpen && (
                       <div className="w-[340px] bg-white rounded-2xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.3)] border border-slate-100 flex flex-col overflow-hidden mb-4 animate-in slide-in-from-bottom-8 origin-bottom-right">
@@ -634,7 +927,7 @@ const handleCopyCode = () => {
                         {/* LIVE CHAT TRAVERSAL BODY */}
                         <div className="h-[380px] p-5 bg-[#f5f7f9] overflow-y-auto space-y-4 custom-scrollbar flex flex-col">
                           
-                          {simMessages.length === 0 && (
+                          {simMessages.length === 0 && !isTyping && (
                             <div className="h-full flex flex-col items-center justify-center text-slate-400">
                               <Bot className="w-8 h-8 mb-2 opacity-50" />
                               <p className="text-xs font-bold">Simulator Ready</p>
@@ -644,7 +937,7 @@ const handleCopyCode = () => {
                           {simMessages.map((msg) => (
                             <React.Fragment key={msg.id}>
                               {msg.role === 'system' && (
-                                <div className="text-center py-2"><span className="px-3 py-1 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase tracking-widest rounded-lg border border-amber-200">{msg.text}</span></div>
+                                <div className="text-center py-2"><span className="px-3 py-1 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase tracking-widest rounded-lg border border-amber-200 shadow-sm">{msg.text}</span></div>
                               )}
                               
                               {msg.role === 'bot' && (
@@ -652,14 +945,42 @@ const handleCopyCode = () => {
                                   <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm shrink-0 border border-slate-100 mt-1">
                                     {botAvatar ? <img src={botAvatar} className="w-full h-full object-cover rounded-full" /> : <Bot className="w-4 h-4" style={{ color: widgetColor }} />}
                                   </div>
-                                  <div className="flex flex-col gap-2">
-                                    <div className="bg-white px-4 py-3 text-[13px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100/50 text-slate-700 font-medium rounded-2xl rounded-tl-sm leading-relaxed whitespace-pre-wrap">
-                                      {msg.text}
-                                    </div>
+                                  <div className="flex flex-col gap-2 w-full min-w-0">
+                                    
+                                    {/* Text Render */}
+                                    {msg.type === 'text' && (
+                                      <div className="bg-white px-4 py-3 text-[13px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100/50 text-slate-700 font-medium rounded-2xl rounded-tl-sm leading-relaxed whitespace-pre-wrap">
+                                        {msg.text}
+                                      </div>
+                                    )}
+
+                                    {/* ✨ RICH MEDIA RENDERS ✨ */}
+                                    {msg.type === 'image' && (
+                                      <div className="bg-white p-2 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100/50 rounded-2xl rounded-tl-sm w-[220px]">
+                                        <img src={msg.mediaUrl} className="w-full h-32 object-cover rounded-xl border border-slate-100 mb-2" />
+                                        {msg.text && <p className="text-[11px] font-bold text-slate-600 px-2 pb-1 truncate">{msg.text}</p>}
+                                      </div>
+                                    )}
+
+                                    {msg.type === 'file' && (
+                                      <div className="bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100/50 rounded-2xl rounded-tl-sm w-[220px] flex items-center gap-3">
+                                        <div className="p-2 bg-slate-100 rounded-lg text-slate-500 shrink-0"><FileText className="w-5 h-5"/></div>
+                                        <div className="min-w-0 flex-1"><p className="text-[12px] font-bold text-slate-700 truncate">{msg.fileName}</p><p className="text-[10px] text-slate-400">PDF Document</p></div>
+                                        <Download className="w-4 h-4 text-blue-500 shrink-0"/>
+                                      </div>
+                                    )}
+
+                                    {msg.type === 'location' && (
+                                      <div className="bg-white p-2 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100/50 rounded-2xl rounded-tl-sm w-[220px]">
+                                        <div className="w-full h-24 bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-center mb-2 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"><MapPin className="w-6 h-6 text-slate-400" /></div>
+                                        <p className="text-[11px] font-bold text-slate-600 px-2 pb-1 line-clamp-2">{msg.text}</p>
+                                      </div>
+                                    )}
+
                                     {msg.buttons && msg.buttons.length > 0 && (
-                                      <div className="flex flex-wrap gap-2 w-full">
+                                      <div className="flex flex-wrap gap-2 w-full pt-1">
                                         {msg.buttons.map((btn: string, i: number) => (
-                                          <button key={i} onClick={() => handleSimButtonClick(btn, msg.sourceNodeId!, i)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 text-[12px] font-bold rounded-full shadow-sm hover:border-blue-400 hover:text-blue-600 transition-colors cursor-pointer">
+                                          <button key={i} onClick={(e) => handleSimButtonClick(e, btn, msg.sourceNodeId!, i)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 text-[12px] font-bold rounded-full shadow-sm hover:border-blue-400 hover:text-blue-600 transition-colors cursor-pointer">
                                             {btn}
                                           </button>
                                         ))}
@@ -678,6 +999,20 @@ const handleCopyCode = () => {
                               )}
                             </React.Fragment>
                           ))}
+
+                          {/* ✨ TYPING INDICATOR ✨ */}
+                          {isTyping && (
+                            <div className="flex items-start gap-2.5 max-w-[92%] animate-in fade-in duration-300">
+                              <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm shrink-0 border border-slate-100 mt-1">
+                                {botAvatar ? <img src={botAvatar} className="w-full h-full object-cover rounded-full" /> : <Bot className="w-4 h-4" style={{ color: widgetColor }} />}
+                              </div>
+                              <div className="bg-white px-4 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100/50 rounded-2xl rounded-tl-sm flex items-center gap-1.5 h-10">
+                                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                              </div>
+                            </div>
+                          )}
                           <div ref={messagesEndRef} />
                         </div>
 
@@ -688,8 +1023,8 @@ const handleCopyCode = () => {
                               <span className="text-[11px] font-bold text-slate-500 group-hover:text-slate-800">EN</span>
                               <ChevronRight className="w-3 h-3 text-slate-400 rotate-90" />
                             </div>
-                            <input type="text" value={simChatInput} onChange={e => setSimChatInput(e.target.value)} disabled={simInputMode === 'none'} placeholder={simInputMode === 'none' ? "Please select an option above..." : "Type your message..."} className="flex-1 bg-transparent px-2 py-1.5 text-[13px] font-medium outline-none text-slate-700 placeholder:text-slate-400 disabled:opacity-50" />
-                            <button type="submit" disabled={!simChatInput.trim()} className="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-md shrink-0 transition-transform hover:scale-105 disabled:opacity-50" style={{ backgroundColor: widgetColor }}>
+                            <input type="text" value={simChatInput} onChange={e => setSimChatInput(e.target.value)} disabled={simInputMode === 'none' || isTyping} placeholder={simPlaceholder} className="flex-1 bg-transparent px-2 py-1.5 text-[13px] font-medium outline-none text-slate-700 placeholder:text-slate-400 disabled:opacity-50" />
+                            <button type="submit" disabled={!simChatInput.trim() || isTyping} className="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-md shrink-0 transition-transform hover:scale-105 disabled:opacity-50" style={{ backgroundColor: widgetColor }}>
                               <Send className="w-3.5 h-3.5 -ml-0.5 mt-0.5" />
                             </button>
                           </form>

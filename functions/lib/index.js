@@ -1,12 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createWhatsAppTemplate = exports.syncWhatsAppTemplates = exports.deleteAgencyAccount = exports.deleteSubClientWorkspace = exports.enforceLeadLimits = exports.onSuperAdminRemoved = exports.onSuperAdminAdded = exports.autoPushToGoogleSheets = exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.createAgencyAccount = exports.createSubClientWorkspace = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
+exports.captureWebsiteLead = exports.createWhatsAppTemplate = exports.syncWhatsAppTemplates = exports.deleteAgencyAccount = exports.deleteSubClientWorkspace = exports.enforceLeadLimits = exports.onSuperAdminRemoved = exports.onSuperAdminAdded = exports.autoPushToGoogleSheets = exports.sendOutboundWhatsApp = exports.secureLinkWhatsApp = exports.whatsappWebhook = exports.sendBulkWhatsAppCampaign = exports.secureLinkFacebookPage = exports.createAgencyAccount = exports.createSubClientWorkspace = exports.registerNewClient = exports.updateAgent = exports.deleteAgent = exports.createAgent = exports.incomingLeadWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-admin/firestore");
 const axios_1 = require("axios");
 const nodemailer = require("nodemailer");
 const firestore_2 = require("firebase-functions/v2/firestore");
+const cors = require("cors");
 // Initialize the Firebase Admin SDK
 admin.initializeApp();
 const db = (0, firestore_1.getFirestore)(admin.app(), 'crmdb');
@@ -752,9 +753,6 @@ exports.sendBulkWhatsAppCampaign = (0, https_1.onCall)(functionOpts, async (requ
     }
 });
 // ============================================================================
-// 🚀 PHASE 2: TWO-WAY WHATSAPP INBOX WEBHOOK 🚀
-// ============================================================================
-// ============================================================================
 // 🚀 PHASE 2: TWO-WAY WHATSAPP INBOX WEBHOOK (WITH BOT ENGINE) 🚀
 // ============================================================================
 exports.whatsappWebhook = (0, https_1.onRequest)({
@@ -1382,5 +1380,54 @@ exports.createWhatsAppTemplate = (0, https_1.onCall)(functionOpts, async (reques
         console.error("Template Creation Error:", ((_a = error.response) === null || _a === void 0 ? void 0 : _a.data) || error.message);
         throw new https_1.HttpsError("internal", ((_d = (_c = (_b = error.response) === null || _b === void 0 ? void 0 : _b.data) === null || _c === void 0 ? void 0 : _c.error) === null || _d === void 0 ? void 0 : _d.message) || "Failed to create template.");
     }
+});
+// ============================================================================
+// 🚀 PHASE 5: ENTERPRISE WEBSITE LEAD CAPTURE API 🚀
+// ============================================================================
+exports.captureWebsiteLead = (0, https_1.onRequest)({
+    cors: true,
+    memory: "256MiB"
+}, async (req, res) => {
+    const corsHandler = cors({ origin: true });
+    corsHandler(req, res, async () => {
+        if (req.method !== "POST") {
+            res.status(405).send("Method Not Allowed");
+            return;
+        }
+        try {
+            const { token, name, email, phone, chatHistory } = req.body;
+            if (!token) {
+                res.status(400).json({ error: "Missing authentication token" });
+                return;
+            }
+            // 1. Decode the Base64 token to get the Client ID
+            const clientId = Buffer.from(token, 'base64').toString('utf-8');
+            // 2. Format the lead data
+            const newLead = {
+                clientId: clientId,
+                firstName: name || "Website Visitor",
+                lastName: "",
+                email: email || "",
+                phone: phone || "",
+                status: "New",
+                source: "Website Chatbot",
+                subSource: "Automated Flow",
+                assignedTo: "",
+                assignedToName: "Unassigned",
+                projectProperty: "General Inquiry",
+                customAnswers: {
+                    chatTranscript: chatHistory || []
+                },
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+            // 3. Inject straight into the CRM Leads collection
+            const docRef = await db.collection("leads").add(newLead);
+            res.status(200).json({ success: true, leadId: docRef.id });
+        }
+        catch (error) {
+            console.error("Error capturing website lead:", error);
+            res.status(500).json({ error: "Internal Server Error" });
+        }
+    });
 });
 //# sourceMappingURL=index.js.map

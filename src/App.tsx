@@ -8,7 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { BrandingProvider } from './contexts/BrandingContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useIdleTimeout } from './hooks/useIdleTimeout';
-
+import LiveChatWidget from './components/LiveChatWidget';
 // ✨ ALL 4 TIERS IMPORTED ✨
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 import AgencyDashboard from './components/AgencyDashboard'; // <- Added Tier 2
@@ -111,6 +111,7 @@ function AppContent() {
         />
         
         <Route path="/" element={<RootRedirect />} />
+        <Route path="/live-chat" element={<LiveChatWidget />} />
       </Routes>
     </BrowserRouter>
   );

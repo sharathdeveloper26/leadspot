@@ -4,7 +4,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import axios from "axios"; 
 import * as nodemailer from "nodemailer";
 import { onDocumentCreated, onDocumentDeleted } from "firebase-functions/v2/firestore";
-
+import cors = require("cors");
 // Initialize the Firebase Admin SDK
 admin.initializeApp();
 const db = getFirestore(admin.app(), 'crmdb');
@@ -342,10 +342,10 @@ export const incomingLeadWebhook = onRequest({
         assignedTo: assignedToId,
         assignedToId: assignedToId,
         assignedToName: assignedToName,
-        designation: designation,           
-        location: location,                 
+        designation: designation,            
+        location: location,                  
         linkedin: linkedinUrl,              
-        truecallerName: truecallerName,     
+        truecallerName: truecallerName,      
         truecallerBusiness: truecallerBusiness, 
         formId: leadData.formId || "",
         adId: leadData.adId || "",
@@ -851,9 +851,6 @@ export const sendBulkWhatsAppCampaign = onCall(functionOpts, async (request) => 
 });
 
 // ============================================================================
-// 🚀 PHASE 2: TWO-WAY WHATSAPP INBOX WEBHOOK 🚀
-// ============================================================================
-// ============================================================================
 // 🚀 PHASE 2: TWO-WAY WHATSAPP INBOX WEBHOOK (WITH BOT ENGINE) 🚀
 // ============================================================================
 export const whatsappWebhook = onRequest({ 
@@ -1262,6 +1259,7 @@ export const sendOutboundWhatsApp = onDocumentCreated({
     });
   }
 });
+
 // ============================================================================
 // 🚀 BACKGROUND SYNC: AUTO-PUSH LEADS TO GOOGLE SHEETS 🚀
 // ============================================================================
@@ -1323,10 +1321,10 @@ export const autoPushToGoogleSheets = onDocumentCreated({
     console.error(`⚠️ Sheets push notice for client ${clientId}:`, error.message);
   }
 });
+
 // ============================================================================
 // 🚀 LEVEL 5 SECURITY: AUTO-SYNC SUPER ADMIN CLAIMS 🚀
 // ============================================================================
-
 export const onSuperAdminAdded = onDocumentCreated({
   document: "super_admins/{uid}",
   database: "crmdb", 
@@ -1353,6 +1351,7 @@ export const onSuperAdminRemoved = onDocumentDeleted({
     console.error("Error removing custom claims:", error);
   }
 });
+
 // ============================================================================
 // 🚀 LEVEL 5 SECURITY: SAAS BILLING GUARDRAILS (THE TRACKER) 🚀
 // ============================================================================
@@ -1400,6 +1399,7 @@ export const enforceLeadLimits = onDocumentCreated({
     console.error("Error enforcing lead limits:", error);
   }
 });
+
 // ✨ TIER 2 TO TIER 3: HARD DELETE SUB-CLIENT WORKSPACE ✨
 export const deleteSubClientWorkspace = onCall(functionOpts, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
@@ -1465,10 +1465,10 @@ export const deleteAgencyAccount = onCall(functionOpts, async (request) => {
     throw new HttpsError('internal', error.message || 'Failed to delete agency.');
   }
 });
+
 // ============================================================================
 // 🚀 PHASE 4: WHATSAPP TEMPLATE MANAGEMENT (CREATION & SYNC) 🚀
 // ============================================================================
-
 export const syncWhatsAppTemplates = onCall(functionOpts, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be logged in.");
   
@@ -1572,4 +1572,60 @@ export const createWhatsAppTemplate = onCall(functionOpts, async (request) => {
     console.error("Template Creation Error:", error.response?.data || error.message);
     throw new HttpsError("internal", error.response?.data?.error?.message || "Failed to create template.");
   }
+});
+
+// ============================================================================
+// 🚀 PHASE 5: ENTERPRISE WEBSITE LEAD CAPTURE API 🚀
+// ============================================================================
+export const captureWebsiteLead = onRequest({ 
+  cors: true,
+  memory: "256MiB"
+}, async (req, res) => {
+  const corsHandler = cors({ origin: true });
+  
+  corsHandler(req, res, async () => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
+
+    try {
+      const { token, name, email, phone, chatHistory } = req.body;
+
+      if (!token) {
+        res.status(400).json({ error: "Missing authentication token" });
+        return;
+      }
+
+      // 1. Decode the Base64 token to get the Client ID
+      const clientId = Buffer.from(token, 'base64').toString('utf-8');
+
+      // 2. Format the lead data
+      const newLead = {
+        clientId: clientId,
+        firstName: name || "Website Visitor",
+        lastName: "",
+        email: email || "",
+        phone: phone || "",
+        status: "New",
+        source: "Website Chatbot", 
+        subSource: "Automated Flow",
+        assignedTo: "", 
+        assignedToName: "Unassigned",
+        projectProperty: "General Inquiry",
+        customAnswers: {
+          chatTranscript: chatHistory || []
+        },
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      // 3. Inject straight into the CRM Leads collection
+      const docRef = await db.collection("leads").add(newLead);
+
+      res.status(200).json({ success: true, leadId: docRef.id });
+    } catch (error) {
+      console.error("Error capturing website lead:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
 });
